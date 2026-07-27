@@ -357,6 +357,34 @@ export function deleteMessagesAfter(threadId: string, messageId: string): void {
   db.prepare('DELETE FROM messages WHERE thread_id = ? AND seq > ?').run(threadId, pivot.seq)
 }
 
+/**
+ * Inserts a message immediately before `beforeSeq`, shifting everything at or
+ * after it along. Compaction summaries must land where the messages they
+ * replace were, not at the end of the thread.
+ */
+export function insertMessageBefore(
+  beforeSeq: number,
+  input: Partial<Message> & Pick<Message, 'threadId' | 'role'>
+): Message {
+  const db = getDb()
+  return db.transaction(() => {
+    db.prepare('UPDATE messages SET seq = seq + 1 WHERE thread_id = ? AND seq >= ?').run(
+      input.threadId,
+      beforeSeq
+    )
+    const message = insertMessage(input)
+    db.prepare('UPDATE messages SET seq = ? WHERE id = ?').run(beforeSeq, message.id)
+    return getMessage(message.id)!
+  })()
+}
+
+export function seqOf(messageId: string): number | null {
+  const row = getDb().prepare('SELECT seq FROM messages WHERE id = ?').get(messageId) as
+    | { seq: number }
+    | undefined
+  return row?.seq ?? null
+}
+
 export function markCompacted(messageIds: string[], summaryMessageId: string): void {
   const stmt = getDb().prepare('UPDATE messages SET compacted_into = ? WHERE id = ?')
   getDb().transaction(() => {
@@ -502,10 +530,15 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
     avg_ttft: number | null
   }
 
+  // Title-generation markers exist only to carry their cost; they are not
+  // messages anyone sent or saw.
   const messageCount = (
-    db.prepare('SELECT COUNT(*) AS n FROM messages WHERE thread_id = ?').get(threadId) as {
-      n: number
-    }
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM messages
+          WHERE thread_id = ? AND (compacted_into IS NULL OR compacted_into <> 'title')`
+      )
+      .get(threadId) as { n: number }
   ).n
 
   const toolCallCount = (
@@ -573,7 +606,14 @@ export function getGlobalStats(): GlobalStats {
   }
 
   const threadCount = (db.prepare('SELECT COUNT(*) AS n FROM threads').get() as { n: number }).n
-  const messageCount = (db.prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number }).n
+  const messageCount = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM messages
+          WHERE compacted_into IS NULL OR compacted_into <> 'title'`
+      )
+      .get() as { n: number }
+  ).n
   const toolCallCount = (
     db.prepare('SELECT COUNT(*) AS n FROM tool_invocations').get() as { n: number }
   ).n
@@ -643,6 +683,32 @@ export function getGlobalStats(): GlobalStats {
  * Search
  * ------------------------------------------------------------------ */
 
+// Private-use sentinels: FTS5 wraps matches in these, and they cannot occur
+// in real message text, so escaping afterwards is unambiguous.
+const MARK_OPEN = '\uE000'
+const MARK_CLOSE = '\uE001'
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * Snippets are rendered as HTML so matches can be highlighted. Message bodies
+ * are arbitrary text, so escape everything first and only then turn the private
+ * sentinels FTS5 inserted into real <mark> tags.
+ */
+function toSafeSnippet(raw: string): string {
+  return escapeHtml(raw)
+    .split(MARK_OPEN)
+    .join('<mark>')
+    .split(MARK_CLOSE)
+    .join('</mark>')
+}
+
 /** Turns free text into a safe FTS5 prefix query. */
 function toFtsQuery(input: string): string {
   const terms = input
@@ -676,7 +742,7 @@ export function search(query: string, limit = 50): SearchHit[] {
       threadTitle: row.title,
       messageId: null,
       role: null,
-      snippet: row.title,
+      snippet: escapeHtml(row.title),
       createdAt: row.updated_at,
       score: 1000
     })
@@ -691,7 +757,7 @@ export function search(query: string, limit = 50): SearchHit[] {
                 m.role         AS role,
                 m.created_at   AS created_at,
                 t.title        AS thread_title,
-                snippet(messages_fts, 0, '<mark>', '</mark>', '…', 12) AS snippet,
+                snippet(messages_fts, 0, ?, ?, '…', 12) AS snippet,
                 bm25(messages_fts) AS score
            FROM messages_fts
            JOIN messages m ON m.rowid = messages_fts.rowid
@@ -700,7 +766,7 @@ export function search(query: string, limit = 50): SearchHit[] {
           ORDER BY score
           LIMIT ?`
       )
-      .all(ftsQuery, limit) as {
+      .all(MARK_OPEN, MARK_CLOSE, ftsQuery, limit) as {
       message_id: string
       thread_id: string
       role: string
@@ -716,7 +782,7 @@ export function search(query: string, limit = 50): SearchHit[] {
         threadTitle: row.thread_title,
         messageId: row.message_id,
         role: row.role as Role,
-        snippet: row.snippet,
+        snippet: toSafeSnippet(row.snippet),
         createdAt: row.created_at,
         // bm25 returns lower-is-better; flip it so callers can sort descending.
         score: -row.score

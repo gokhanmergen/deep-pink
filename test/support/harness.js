@@ -1,0 +1,123 @@
+// A very small test harness. These tests run inside Electron because the app's
+// storage layer uses better-sqlite3 built against Electron's ABI, and because
+// safeStorage only exists there.
+const { app } = require('electron')
+const path = require('node:path')
+const os = require('node:os')
+const fs = require('node:fs')
+
+const GREEN = '[32m'
+const RED = '[31m'
+const DIM = '[2m'
+const RESET = '[0m'
+
+/**
+ * @param {string} suiteName
+ * @param {(t: {check: Function, section: Function, subject: any, tmpDir: string}) => Promise<void> | void} body
+ */
+function suite(suiteName, body) {
+  app.disableHardwareAcceleration()
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-pink-test-'))
+  app.setPath('userData', tmpDir)
+
+  const failures = []
+  let passed = 0
+
+  const check = (name, condition, detail) => {
+    if (condition) {
+      passed++
+      console.log(`  ${GREEN}✓${RESET} ${name}`)
+    } else {
+      failures.push(name)
+      console.log(`  ${RED}✗ ${name}${RESET}`)
+      if (detail !== undefined) {
+        console.log(`    ${DIM}${JSON.stringify(detail)}${RESET}`)
+      }
+    }
+  }
+
+  const section = (title) => console.log(`\n${DIM}${title}${RESET}`)
+
+  app.whenReady().then(async () => {
+    console.log(`\n${suiteName}`)
+    try {
+      const subject = require(path.join(__dirname, '..', '..', '.test-build', 'bundle.js'))
+      await body({ check, section, subject, tmpDir })
+    } catch (err) {
+      failures.push('suite threw')
+      console.log(`  ${RED}✗ suite threw: ${err && err.stack ? err.stack : err}${RESET}`)
+    }
+
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+
+    console.log(
+      failures.length
+        ? `\n${RED}${failures.length} failed${RESET}, ${passed} passed`
+        : `\n${GREEN}${passed} passed${RESET}`
+    )
+    app.exit(failures.length ? 1 : 0)
+  })
+}
+
+/** Builds a fake streaming Response, chopped into small chunks on purpose. */
+function sseResponse(lines) {
+  const body = lines.map((line) => `${line}\n`).join('')
+  const chunks = []
+  for (let i = 0; i < body.length; i += 7) chunks.push(body.slice(i, i + 7))
+
+  const encoder = new TextEncoder()
+  let index = 0
+
+  return {
+    ok: true,
+    status: 200,
+    headers: new Map(),
+    body: {
+      getReader: () => ({
+        read: async () =>
+          index < chunks.length
+            ? { done: false, value: encoder.encode(chunks[index++]) }
+            : { done: true, value: undefined },
+        releaseLock: () => undefined
+      })
+    }
+  }
+}
+
+/** Writes a throwaway API key so the OpenRouter client will send a request. */
+function writeTestApiKey() {
+  const { safeStorage } = require('electron')
+  const keyPath = path.join(app.getPath('userData'), 'openrouter.key')
+  fs.writeFileSync(
+    keyPath,
+    safeStorage.isEncryptionAvailable()
+      ? safeStorage.encryptString('sk-or-test')
+      : 'plain:sk-or-test'
+  )
+}
+
+/** A fully-formed Message, so tests only state the fields they care about. */
+function message(overrides) {
+  return {
+    id: 'm',
+    threadId: 't',
+    role: 'user',
+    content: '',
+    reasoning: null,
+    createdAt: 0,
+    model: null,
+    provider: null,
+    status: 'complete',
+    error: null,
+    toolCalls: null,
+    toolResult: null,
+    systemPromptSnapshot: null,
+    isCompactionSummary: false,
+    compactedInto: null,
+    usage: null,
+    ...overrides
+  }
+}
+
+module.exports = { suite, sseResponse, writeTestApiKey, message }

@@ -314,17 +314,20 @@ function patchMessage(
 function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
   const state = get()
 
-  // Events for a thread the user is not looking at only affect the thread list.
-  const relevant =
-    'threadId' in event
-      ? event.threadId === state.activeThreadId
-      : state.messages.some((m) => m.id === (event as { messageId: string }).messageId) ||
-        state.generating
-
   if (event.type === 'title') {
     void get().refreshThreads()
     return
   }
+
+  // Threads can generate concurrently, so an event only applies here if it
+  // names this thread or a message already on screen. A message-less error is
+  // a failure of the request itself and always surfaces.
+  const relevant =
+    'threadId' in event
+      ? event.threadId === state.activeThreadId
+      : event.type === 'error' && !event.messageId
+        ? true
+        : state.messages.some((m) => m.id === event.messageId)
 
   if (!relevant) return
 

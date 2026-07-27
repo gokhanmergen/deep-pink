@@ -117,6 +117,17 @@ The full list, including the ones not shown here, is in the cheatsheet — and a
 
 ---
 
+## Development
+
+```bash
+npm run dev         # hot-reloading dev build
+npm run typecheck   # main, preload and renderer
+npm test            # storage, streaming, tool handling, web guards
+npm run build       # production bundle
+```
+
+The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum npm test`.
+
 ## Project layout
 
 ```

@@ -51,12 +51,21 @@ export function resolveToolApproval(toolCallId: string, approved: boolean): void
  * Message conversion
  * ------------------------------------------------------------------ */
 
-function toChatParams(messages: Message[]): ChatMessageParam[] {
+export function toChatParams(messages: Message[]): ChatMessageParam[] {
   const params: ChatMessageParam[] = []
+
+  // Providers reject an assistant turn whose tool calls have no results, and a
+  // tool result with no matching call. Compaction or a deleted message can
+  // leave either dangling, so both sides are reconciled before sending.
+  const resultIds = new Set(
+    messages.filter((m) => m.role === 'tool' && m.toolResult).map((m) => m.toolResult!.toolCallId)
+  )
+  const emittedCallIds = new Set<string>()
 
   for (const message of messages) {
     if (message.role === 'tool') {
       if (!message.toolResult) continue
+      if (!emittedCallIds.has(message.toolResult.toolCallId)) continue
       params.push({
         role: 'tool',
         tool_call_id: message.toolResult.toolCallId,
@@ -71,14 +80,17 @@ function toChatParams(messages: Message[]): ChatMessageParam[] {
     }
 
     if (message.role === 'assistant') {
-      const hasCalls = Boolean(message.toolCalls?.length)
-      if (!message.content && !hasCalls) continue
+      const answered = (message.toolCalls ?? []).filter((call) => resultIds.has(call.id))
+      if (!message.content && !answered.length) continue
+
+      for (const call of answered) emittedCallIds.add(call.id)
+
       params.push({
         role: 'assistant',
         content: message.content,
-        ...(hasCalls
+        ...(answered.length
           ? {
-              tool_calls: message.toolCalls!.map((call) => ({
+              tool_calls: answered.map((call) => ({
                 id: call.id,
                 type: 'function' as const,
                 function: { name: call.name, arguments: call.arguments || '{}' }
@@ -193,7 +205,12 @@ export async function compactThread(
     attribution: settings.sendAppAttribution
   })
 
-  const summary = repo.insertMessage({
+  // The summary stands in for the messages it replaces, so it has to sit where
+  // they were — ahead of the recent messages that were kept verbatim.
+  const firstKept = messages[older.length]
+  const insertAt = firstKept ? (repo.seqOf(firstKept.id) ?? 0) : 0
+
+  const summary = repo.insertMessageBefore(insertAt, {
     threadId,
     role: 'system',
     content: `Summary of the earlier part of this conversation:\n\n${result.content}`,

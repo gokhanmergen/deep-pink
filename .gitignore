@@ -11,3 +11,5 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+
+.test-build/

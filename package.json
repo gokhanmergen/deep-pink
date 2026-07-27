@@ -1,7 +1,7 @@
 {
   "name": "deep-pink",
   "version": "0.1.0",
-  "description": "Deep Pink — a local-first, open-source desktop AI chat app for OpenRouter",
+  "description": "Deep Pink \u2014 a local-first, open-source desktop AI chat app for OpenRouter",
   "main": "./out/main/index.js",
   "author": "gokhanmergen",
   "license": "MIT",
@@ -14,6 +14,7 @@
     "start": "electron-vite preview",
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "node scripts/run-tests.mjs",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:mac": "npm run build && electron-builder --mac",
     "postinstall": "electron-builder install-app-deps"
