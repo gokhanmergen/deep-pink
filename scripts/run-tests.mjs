@@ -46,7 +46,9 @@ const files = readdirSync(testDir)
 let failed = 0
 
 for (const file of files) {
-  const run = spawnSync('npx', ['electron', join(testDir, file)], {
+  // These suites never open a window, so Chromium's sandbox has nothing to
+  // protect — and its setuid helper is not correctly owned in most CI images.
+  const run = spawnSync('npx', ['electron', '--no-sandbox', join(testDir, file)], {
     cwd: root,
     stdio: 'inherit',
     env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' }
