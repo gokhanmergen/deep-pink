@@ -1,0 +1,63 @@
+appId: dev.deeppink.app
+productName: Deep Pink
+copyright: Copyright © 2026 Deep Pink contributors
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+
+npmRebuild: true
+
+linux:
+  target:
+    - AppImage
+    - deb
+    - rpm
+    - tar.gz
+  category: Network;InstantMessaging;Utility
+  synopsis: Local-first desktop AI chat for OpenRouter
+  description: >-
+    Deep Pink is an open-source desktop chat client for OpenRouter models.
+    Threads, usage statistics and settings are stored locally in SQLite; the
+    only network calls the app makes are the ones you ask it to.
+  desktop:
+    entry:
+      Name: Deep Pink
+      Comment: Local-first desktop AI chat for OpenRouter
+      Keywords: AI;Chat;LLM;OpenRouter;
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libsecret-1-0
+
+rpm:
+  depends:
+    - libsecret
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+
+win:
+  target:
+    - nsis
