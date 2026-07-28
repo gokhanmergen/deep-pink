@@ -86,6 +86,22 @@ const api = window.deepPink
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
+/**
+ * Guards against subscribing to the main process more than once.
+ *
+ * React's StrictMode invokes effects twice, and any future remount would do the
+ * same. Two listeners means every streamed delta is applied twice — replies
+ * come out as "11.. Install Install via via" — and every turn paints a
+ * duplicate placeholder.
+ */
+let initialised = false
+const unsubscribers: (() => void)[] = []
+
+export function disposeStore(): void {
+  while (unsubscribers.length) unsubscribers.pop()?.()
+  initialised = false
+}
+
 export const useStore = create<State>((set, get) => ({
   ready: false,
   settings: null,
@@ -105,6 +121,9 @@ export const useStore = create<State>((set, get) => ({
   highlightMessageId: null,
 
   async init() {
+    if (initialised) return
+    initialised = true
+
     const [settings, threads, mcpStatuses] = await Promise.all([
       api.settings.get(),
       api.threads.list(),
@@ -117,8 +136,8 @@ export const useStore = create<State>((set, get) => ({
       await get().selectThread(threads[0].id)
     }
 
-    api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses }))
-    api.chat.onEvent((event) => handleStreamEvent(event, set, get))
+    unsubscribers.push(api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses })))
+    unsubscribers.push(api.chat.onEvent((event) => handleStreamEvent(event, set, get)))
 
     // The catalogue is cached on disk; refreshing in the background keeps the
     // first paint instant.
@@ -311,6 +330,29 @@ function patchMessage(
   return messages.map((m) => (m.id === id ? patch(m) : m))
 }
 
+/**
+ * Reconciles the stored transcript with what is currently on screen.
+ *
+ * The database is authoritative for which messages exist and in what order.
+ * The only thing it does not have is the text of a reply still arriving, which
+ * is held in memory until the turn completes — so that is layered back on top.
+ */
+function mergeStreamed(persisted: Message[], onScreen: Message[]): Message[] {
+  const live = new Map(onScreen.map((m) => [m.id, m]))
+
+  return persisted.map((stored) => {
+    const painted = live.get(stored.id)
+    if (!painted || painted.status !== 'streaming') return stored
+    return {
+      ...stored,
+      content: painted.content || stored.content,
+      reasoning: painted.reasoning ?? stored.reasoning,
+      status: 'streaming',
+      usage: stored.usage ?? painted.usage
+    }
+  })
+}
+
 function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
   const state = get()
 
@@ -333,6 +375,12 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
 
   switch (event.type) {
     case 'start': {
+      // Never add the same turn twice, however many times this fires.
+      if (state.messages.some((m) => m.id === event.messageId)) {
+        set({ generating: true })
+        break
+      }
+
       const placeholder: Message = {
         id: event.messageId,
         threadId: event.threadId,
@@ -351,18 +399,28 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
         compactedInto: null,
         usage: null
       }
-      // Replace the optimistic user message with whatever the main process
-      // actually stored, then append the assistant placeholder.
+      // Drop the optimistic echo of the user's message; the real row is on disk.
       set({
         generating: true,
         messages: [...state.messages.filter((m) => !m.id.startsWith('optimistic-')), placeholder]
       })
-      void api.messages.list(event.threadId).then((persisted) => {
-        const live = get().messages.find((m) => m.id === event.messageId)
-        set({ messages: live ? [...persisted.filter((m) => m.id !== live.id), live] : persisted })
-      })
+
+      // The main process writes this row before it emits, so the database
+      // already knows where the turn belongs. Take its ordering, and keep only
+      // the text that exists nowhere else yet — the deltas streamed so far.
+      void api.messages
+        .list(event.threadId)
+        .then((persisted) => set({ messages: mergeStreamed(persisted, get().messages) }))
       break
     }
+
+    case 'aborted':
+      // The turn produced nothing and was discarded rather than persisted.
+      set({
+        generating: false,
+        messages: state.messages.filter((m) => m.id !== event.messageId)
+      })
+      break
 
     case 'content':
       set({

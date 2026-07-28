@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
+import { reconcileInterruptedMessages } from './db/repo'
 import { registerIpc } from './ipc'
 import * as mcp from './mcp/host'
 
@@ -57,9 +58,34 @@ function createWindow(): BrowserWindow {
   return win
 }
 
+// One database, one writer. Two copies of the app on the same profile interleave
+// their writes, which shows up as messages from one appearing mid-conversation
+// in the other.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+}
+
+app.on('second-instance', () => {
+  const [win] = BrowserWindow.getAllWindows()
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+})
+
 app.whenReady().then(async () => {
   // Open the database first — everything else assumes migrations have run.
   getDb()
+
+  // Clear up anything a previous run left mid-flight before the UI reads it.
+  const { removed, settled } = reconcileInterruptedMessages()
+  if (removed || settled) {
+    console.log(
+      `Recovered from an interrupted session: removed ${removed} empty ${
+        removed === 1 ? 'reply' : 'replies'
+      }, settled ${settled}.`
+    )
+  }
+
   registerIpc()
   createWindow()
 

@@ -389,6 +389,8 @@ export type StreamEvent =
   | { type: 'usage'; messageId: string; usage: Usage }
   | { type: 'done'; messageId: string; message: Message }
   | { type: 'error'; messageId: string; error: string }
+  /** The turn was stopped before it produced anything and was discarded. */
+  | { type: 'aborted'; messageId: string; threadId: string }
   | { type: 'compaction-start'; threadId: string }
   | { type: 'compaction-done'; threadId: string; summaryMessageId: string; freedTokens: number }
   | { type: 'title'; threadId: string; title: string }

@@ -34,6 +34,20 @@ export function MessageItem({ message, ui, isLast }: Props): React.JSX.Element |
   // Marker rows exist only to attribute title-generation cost; never shown.
   if (message.compactedInto === 'title') return null
 
+  // A finished assistant turn with nothing in it has nothing to say. Showing it
+  // as an empty bubble — with a caret, if it still claims to be streaming —
+  // is never what the user wants.
+  if (
+    message.role === 'assistant' &&
+    message.status !== 'streaming' &&
+    !message.content &&
+    !message.reasoning &&
+    !message.toolCalls?.length &&
+    !message.error
+  ) {
+    return null
+  }
+
   const copy = (): void => {
     void navigator.clipboard.writeText(message.content)
     showToast('Copied to clipboard')

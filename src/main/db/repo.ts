@@ -392,6 +392,40 @@ export function markCompacted(messageIds: string[], summaryMessageId: string): v
   })()
 }
 
+/**
+ * Tidies up turns that were interrupted rather than finished — the app being
+ * quit or killed mid-request, most often.
+ *
+ * An assistant row is written before the request goes out, so an interrupted
+ * turn leaves a row marked `streaming` that nothing will ever complete. The
+ * transcript then shows an empty bubble with a blinking caret forever. Nothing
+ * can still be streaming at startup, so anything that claims to be is not.
+ */
+export function reconcileInterruptedMessages(): { removed: number; settled: number } {
+  const db = getDb()
+
+  return db.transaction(() => {
+    // A turn that produced nothing at all is not worth keeping.
+    const removed = db
+      .prepare(
+        `DELETE FROM messages
+          WHERE role = 'assistant'
+            AND status <> 'complete'
+            AND content = ''
+            AND (reasoning IS NULL OR reasoning = '')
+            AND tool_calls IS NULL`
+      )
+      .run().changes
+
+    // Anything that did produce output keeps it, but stops claiming to be live.
+    const settled = db
+      .prepare(`UPDATE messages SET status = 'aborted' WHERE status = 'streaming'`)
+      .run().changes
+
+    return { removed, settled }
+  })()
+}
+
 /* ------------------------------------------------------------------ *
  * Usage & tool invocations
  * ------------------------------------------------------------------ */

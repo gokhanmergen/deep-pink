@@ -50,6 +50,29 @@ if (app.status !== 0) {
   process.exit(1)
 }
 
+// The renderer store is bundled on its own: it reads `window.deepPink` at
+// module scope, so its test installs a stub bridge before requiring it.
+const storeBundle = spawnSync(
+  'npx',
+  [
+    'esbuild',
+    join(testDir, 'support', 'entry-store.ts'),
+    '--bundle',
+    '--platform=node',
+    '--format=cjs',
+    '--external:electron',
+    `--alias:@renderer=${join(root, 'src', 'renderer', 'src')}`,
+    `--alias:@shared=${join(root, 'src', 'shared')}`,
+    `--outfile=${join(buildDir, 'store.js')}`
+  ],
+  { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] }
+)
+
+if (storeBundle.status !== 0) {
+  console.error('Could not bundle the renderer store.')
+  process.exit(1)
+}
+
 const files = readdirSync(testDir)
   .filter((name) => name.endsWith('.test.js'))
   .sort()

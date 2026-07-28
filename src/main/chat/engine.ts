@@ -489,15 +489,27 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
               ? err.message
               : String(err)
 
-        const finished = repo.updateMessage(assistant.id, {
-          status: aborted ? 'aborted' : 'error',
-          error: aborted ? null : message
-        })
+        // A turn that produced nothing leaves nothing behind. Keeping the empty
+        // placeholder would show a bubble that never says anything, and on a
+        // later launch it would still claim to be streaming.
+        const current = repo.getMessage(assistant.id)
+        const producedNothing =
+          !current?.content && !current?.reasoning && !current?.toolCalls?.length
+
         if (aborted) {
-          emit({ type: 'done', messageId: assistant.id, message: finished! })
-        } else {
-          emit({ type: 'error', messageId: assistant.id, error: message })
+          if (producedNothing) {
+            repo.deleteMessage(assistant.id)
+            emit({ type: 'aborted', messageId: assistant.id, threadId: thread.id })
+          } else {
+            const finished = repo.updateMessage(assistant.id, { status: 'aborted' })
+            emit({ type: 'done', messageId: assistant.id, message: finished! })
+          }
+          return
         }
+
+        // Errors keep their message so the failure is visible in the transcript.
+        repo.updateMessage(assistant.id, { status: 'error', error: message })
+        emit({ type: 'error', messageId: assistant.id, error: message })
         return
       }
 
