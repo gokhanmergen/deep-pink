@@ -1,0 +1,107 @@
+name: Release
+
+# Publishes Linux builds whenever a version tag is pushed:
+#
+#   pnpm version patch    # or minor / major — writes package.json and tags
+#   git push --follow-tags
+#
+# The workflow can also be started by hand from the Actions tab, which builds
+# the artefacts and attaches them to a draft release for checking first.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: Publish as a draft release
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install system libraries Electron needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 libsecret-1-0 \
+            rpm fakeroot xvfb
+
+      - run: pnpm install --frozen-lockfile
+
+      # A tag that fails its own tests should not become a release.
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: xvfb-run --auto-servernum pnpm test
+
+      - name: Check the tag matches the version in package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          declared=$(node -p "require('./package.json').version")
+          if [ "$tagged" != "$declared" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $declared." >&2
+            exit 1
+          fi
+
+      - name: Build AppImage, deb, rpm and tarball
+        run: pnpm run dist:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect the artefacts
+        run: |
+          mkdir -p artifacts
+          find release -maxdepth 1 -type f \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+               -o -name '*.tar.gz' -o -name 'latest-linux.yml' \) \
+            -exec cp {} artifacts/ \;
+          ( cd artifacts && sha256sum * > SHA256SUMS.txt )
+          ls -lh artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deep-pink-linux
+          path: artifacts/
+          retention-days: 14
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          generate_release_notes: true
+          body: |
+            Linux builds of Deep Pink ${{ github.ref_name }}.
+
+            | Format | Use it when |
+            | --- | --- |
+            | `.AppImage` | You want a single file — `chmod +x` it and run |
+            | `.deb` | Debian, Ubuntu, Mint |
+            | `.rpm` | Fedora, openSUSE, RHEL |
+            | `.tar.gz` | You would rather unpack it yourself |
+
+            Verify a download against `SHA256SUMS.txt`:
+
+            ```bash
+            sha256sum -c SHA256SUMS.txt --ignore-missing
+            ```
+
+            These builds are unsigned. Your desktop may ask you to confirm the
+            first launch.

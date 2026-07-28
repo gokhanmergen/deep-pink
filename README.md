@@ -43,21 +43,38 @@ Every action has a binding, every binding is rebindable, and `Ctrl/⌘ K` opens 
 
 ## Install
 
+### Download a build
+
+Every tagged version publishes Linux builds to the
+[releases page](https://github.com/gokhanmergen/deep-pink/releases): an
+AppImage, a `.deb`, an `.rpm` and a tarball, with `SHA256SUMS.txt` to check
+them against.
+
+```bash
+chmod +x 'Deep Pink-0.1.0-arm64.AppImage' && ./'Deep Pink-0.1.0-arm64.AppImage'
+```
+
 ### From source
 
 ```bash
 git clone https://github.com/gokhanmergen/deep-pink.git
 cd deep-pink
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
-Node 20 or newer. `npm install` compiles or downloads a native SQLite binding for your Electron version; on Linux that needs `build-essential` and `python3` if no prebuilt binary matches your platform.
+Node 20 or newer, and [pnpm](https://pnpm.io/installation). pnpm is used rather
+than npm because electron-builder needs a package manager it can drive to
+rebuild the native SQLite binding against Electron's ABI, and because npm's
+hoisting quietly hides undeclared dependencies.
 
-### Build a Linux package
+`pnpm install` downloads or compiles that SQLite binding; on Linux it needs
+`build-essential` and `python3` if no prebuilt binary matches your platform.
+
+### Build a Linux package yourself
 
 ```bash
-npm run dist:linux
+pnpm dist:linux
 ```
 
 Produces AppImage, `.deb`, `.rpm` and a tarball in `release/`.
@@ -67,7 +84,7 @@ Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 li
 ### Build a macOS app
 
 ```bash
-npm run dist:mac
+pnpm dist:mac
 ```
 
 Produces `release/Deep Pink-<version>-arm64.dmg` and a `.zip`. Drag the app to
@@ -151,13 +168,22 @@ The full list, including the ones not shown here, is in the cheatsheet — and a
 ## Development
 
 ```bash
-npm run dev         # hot-reloading dev build
-npm run typecheck   # main, preload and renderer
-npm test            # storage, streaming, tool handling, web guards
-npm run build       # production bundle
+pnpm dev         # hot-reloading dev build
+pnpm typecheck   # main, preload and renderer
+pnpm test        # storage, streaming, tool handling, layout, web guards
+pnpm build       # production bundle
 ```
 
-The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum npm test`.
+To cut a release, bump the version and push the tag — the workflow builds the
+Linux artefacts, refuses to publish if the tests fail or the tag disagrees with
+`package.json`, and attaches everything to a GitHub release:
+
+```bash
+pnpm version patch
+git push --follow-tags
+```
+
+The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum pnpm test`.
 
 ## Project layout
 

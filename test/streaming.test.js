@@ -129,6 +129,45 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   check('a different thread does not paint here', state().messages.length === before,
     state().messages.map((m) => m.id))
 
+  section('tool rounds read as one turn')
+  const { groupIntoTurns } = require(path.join(__dirname, '..', '.test-build', 'store.js'))
+
+  const turnRows = [
+    message({ id: 'u', role: 'user', content: 'search for it' }),
+    message({ id: 'a', role: 'assistant', content: 'Let me look.', model: 'm',
+      toolCalls: [{ id: 'c1', name: 'web_search', arguments: '{}' }] }),
+    message({ id: 't', role: 'tool', content: 'results',
+      toolResult: { toolCallId: 'c1', name: 'web_search', content: 'results', isError: false, durationMs: 9 } }),
+    message({ id: 'a2', role: 'assistant', content: 'Here is the answer.', model: 'm' }),
+    message({ id: 'u2', role: 'user', content: 'thanks' })
+  ]
+  const blocks = groupIntoTurns(turnRows)
+
+  check('a tool round does not split the reply apart', blocks.length === 3, blocks.map((b) => b.kind))
+  check('the user message stands alone', blocks[0].kind === 'message' && blocks[0].id === 'u')
+  check(
+    'the reply, its tool call and its conclusion are one turn',
+    blocks[1].kind === 'turn' && blocks[1].messages.map((m) => m.id).join() === 'a,t,a2',
+    blocks[1].kind === 'turn' ? blocks[1].messages.map((m) => m.id) : blocks[1]
+  )
+  check('the following user message starts a new block', blocks[2].id === 'u2')
+
+  check(
+    'title-cost markers are never shown',
+    groupIntoTurns([message({ id: 'x', role: 'system', content: '', compactedInto: 'title' })]).length === 0
+  )
+  check(
+    'a turn of nothing but empty placeholders is dropped',
+    groupIntoTurns([
+      message({ id: 'e1', role: 'assistant', content: '', status: 'aborted' }),
+      message({ id: 'e2', role: 'assistant', content: '', status: 'error' })
+    ]).length === 0
+  )
+  check(
+    'a streaming placeholder is still shown',
+    groupIntoTurns([message({ id: 's', role: 'assistant', content: '', status: 'streaming' })]).length === 1
+  )
+
   disposeStore()
   check('disposing removes the listeners', chatListeners.length === 0)
 })

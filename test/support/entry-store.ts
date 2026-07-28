@@ -3,3 +3,4 @@
  * scope, so its test installs a stub bridge before requiring this.
  */
 export { useStore, disposeStore } from '@renderer/store'
+export { groupIntoTurns, isEmptyAssistantMessage } from '@renderer/turns'

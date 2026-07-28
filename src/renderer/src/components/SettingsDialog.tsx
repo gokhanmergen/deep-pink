@@ -322,13 +322,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   })
                 }
               >
-                <option value="duckduckgo">DuckDuckGo (no key, queried directly)</option>
+                <option value="duckduckgo">DuckDuckGo (free, no key)</option>
                 <option value="searxng">SearXNG (your own instance)</option>
                 <option value="openrouter">OpenRouter web plugin (billed per search)</option>
               </select>
               <span className="field__hint">
-                The first two run as ordinary tools the model calls. The OpenRouter plugin instead
-                appends `:online` to the model and lets OpenRouter do the searching.
+                DuckDuckGo publishes no API, so this scrapes their HTML endpoint — free, but it
+                rate-limits bursts and can break without notice. SearXNG is the dependable free
+                option if you run one. The OpenRouter plugin needs no setup but is billed per
+                search.
+                <br />
+                The first two are tools the model chooses to call, so they need a tool-capable
+                model. The plugin instead appends `:online` and lets OpenRouter search.
               </span>
             </div>
 

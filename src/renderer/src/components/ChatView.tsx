@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CompactionStatus } from '@shared/types'
 import { useStore } from '../store'
 import { MessageItem } from './MessageItem'
+import { AssistantTurn } from './AssistantTurn'
+import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, modelShortName } from '../format'
@@ -187,14 +189,18 @@ export function ChatView(): React.JSX.Element {
               </p>
             </div>
           ) : (
-            messages.map((message, index) => (
-              <MessageItem
-                key={message.id}
-                message={message}
-                ui={settings.ui}
-                isLast={index === messages.length - 1}
-              />
-            ))
+            groupIntoTurns(messages).map((block, index, blocks) =>
+              block.kind === 'message' ? (
+                <MessageItem key={block.id} message={block.message} ui={settings.ui} />
+              ) : (
+                <AssistantTurn
+                  key={block.id}
+                  messages={block.messages}
+                  ui={settings.ui}
+                  isLast={index === blocks.length - 1}
+                />
+              )
+            )
           )}
 
           {compacting && (

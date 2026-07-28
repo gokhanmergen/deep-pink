@@ -832,6 +832,17 @@ button {
   flex-wrap: wrap;
 }
 
+.composer__notice {
+  margin-bottom: 8px;
+  padding: 7px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(229, 162, 60, 0.35);
+  background: rgba(229, 162, 60, 0.08);
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .composer__hint {
   margin-left: auto;
   font-size: 11px;
@@ -1232,4 +1243,14 @@ button {
 .toast[data-tone='error'] {
   border-left-color: var(--red);
   color: var(--red);
+}
+
+/* One answer may contain several parts — replies either side of tool work. */
+.turn-part + .turn-part,
+.tool-step + .turn-part {
+  margin-top: 10px;
+}
+
+.tool-step {
+  margin: 8px 0;
 }

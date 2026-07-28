@@ -449,6 +449,15 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         ...toChatParams(history)
       ]
 
+      // OpenRouter silently drops parameters a provider does not implement. For
+      // this model several providers do not support tool calling at all, so
+      // without this the request routes to one of them, the model never sees
+      // the tools, and web search appears to do nothing.
+      const routing = resolveRouting(thread, settings, model)
+      const routingForTurn = context.tools.length
+        ? { ...routing, requireParameters: true }
+        : routing
+
       const assistant = repo.insertMessage({
         threadId: thread.id,
         role: 'assistant',
@@ -468,7 +477,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             temperature: thread.config.temperature ?? settings.temperature,
             maxTokens: thread.config.maxTokens ?? settings.maxTokens,
             tools: context.tools.length ? context.tools : undefined,
-            providerRouting: resolveRouting(thread, settings, model),
+            providerRouting: routingForTurn,
             includeReasoning: settings.streamReasoning,
             attribution: settings.sendAppAttribution,
             webPlugin: settings.web.engine === 'openrouter' && (thread.config.webAccessEnabled ?? settings.web.enabled),

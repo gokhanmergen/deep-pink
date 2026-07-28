@@ -18,8 +18,9 @@ const testDir = join(root, 'test')
 mkdirSync(buildDir, { recursive: true })
 
 const bundle = spawnSync(
-  'npx',
+  'pnpm',
   [
+    'exec',
     'esbuild',
     join(testDir, 'support', 'entry.ts'),
     '--bundle',
@@ -40,7 +41,7 @@ if (bundle.status !== 0) {
 }
 
 // The layout suite boots the real app, so it needs a current build.
-const app = spawnSync('npx', ['electron-vite', 'build'], {
+const app = spawnSync('pnpm', ['exec', 'electron-vite', 'build'], {
   cwd: root,
   stdio: ['ignore', 'ignore', 'inherit']
 })
@@ -53,8 +54,9 @@ if (app.status !== 0) {
 // The renderer store is bundled on its own: it reads `window.deepPink` at
 // module scope, so its test installs a stub bridge before requiring it.
 const storeBundle = spawnSync(
-  'npx',
+  'pnpm',
   [
+    'exec',
     'esbuild',
     join(testDir, 'support', 'entry-store.ts'),
     '--bundle',
@@ -82,7 +84,7 @@ let failed = 0
 for (const file of files) {
   // These suites never open a window, so Chromium's sandbox has nothing to
   // protect — and its setuid helper is not correctly owned in most CI images.
-  const run = spawnSync('npx', ['electron', '--no-sandbox', join(testDir, file)], {
+  const run = spawnSync('pnpm', ['exec', 'electron', '--no-sandbox', join(testDir, file)], {
     cwd: root,
     stdio: 'inherit',
     env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' }

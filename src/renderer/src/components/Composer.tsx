@@ -17,8 +17,16 @@ export function Composer(): React.JSX.Element {
   const threads = useStore((s) => s.threads)
   const setOverlay = useStore((s) => s.setOverlay)
 
+  const models = useStore((s) => s.models)
+
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   const webOn = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
+
+  // Web access works by giving the model tools. A model that cannot call tools
+  // will simply ignore them, which looks exactly like search being broken.
+  const activeModel = thread?.config.model ?? settings?.defaultModel
+  const modelInfo = models.find((m) => m.id === activeModel)
+  const toolsUnsupported = webOn && modelInfo != null && !modelInfo.supportsTools
 
   // Grow with the content, up to the CSS max-height.
   useEffect(() => {
@@ -27,6 +35,22 @@ export function Composer(): React.JSX.Element {
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
   }, [value])
+
+  // Opening a thread means you are about to type in it. Don't steal focus from
+  // someone who is already typing somewhere else, though — a search box, a
+  // settings field, or a message they are editing.
+  useEffect(() => {
+    if (!activeThreadId) return
+    const active = document.activeElement
+    const busyElsewhere =
+      active instanceof HTMLElement &&
+      active !== textareaRef.current &&
+      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
+    if (busyElsewhere) return
+
+    const frame = requestAnimationFrame(() => textareaRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [activeThreadId])
 
   const submit = (): void => {
     const content = value.trim()
@@ -65,6 +89,13 @@ export function Composer(): React.JSX.Element {
   return (
     <div className="composer">
       <div className="composer__inner">
+        {toolsUnsupported && (
+          <div className="composer__notice">
+            <strong>{modelInfo?.name ?? activeModel}</strong> cannot call tools, so web search and
+            MCP will be ignored on this thread. Pick a tool-capable model with{' '}
+            <span className="kbd">{formatBinding(keybinds['model.picker'] ?? 'mod+m')}</span>.
+          </div>
+        )}
         <div className="composer__box">
           <textarea
             id={COMPOSER_ID}

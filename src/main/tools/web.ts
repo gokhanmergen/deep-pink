@@ -194,42 +194,78 @@ export interface SearchResult {
 const USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
-async function searchDuckDuckGo(query: string, limit: number): Promise<SearchResult[]> {
-  const res = await fetch('https://html.duckduckgo.com/html/', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': USER_AGENT
-    },
-    body: new URLSearchParams({ q: query }).toString(),
-    signal: AbortSignal.timeout(20_000)
-  })
-  if (!res.ok) throw new Error(`DuckDuckGo returned HTTP ${res.status}`)
+function unwrapRedirect(href: string): string {
+  let url = decodeEntities(href)
+  // DuckDuckGo wraps hits in a redirector; follow it to the real destination.
+  const wrapped = /[?&]uddg=([^&]+)/.exec(url)
+  if (wrapped) url = decodeURIComponent(wrapped[1])
+  if (url.startsWith('//')) url = `https:${url}`
+  return url
+}
 
-  const html = await res.text()
+/** Parses the markup used by html.duckduckgo.com. */
+function parseDuckDuckGoHtml(html: string, limit: number): SearchResult[] {
   const results: SearchResult[] = []
   const blockRe = /<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
 
   let match: RegExpExecArray | null
   while ((match = blockRe.exec(html)) !== null && results.length < limit) {
-    let url = decodeEntities(match[1])
-    // DDG wraps hits in a redirector; unwrap to the real destination.
-    const wrapped = /[?&]uddg=([^&]+)/.exec(url)
-    if (wrapped) url = decodeURIComponent(wrapped[1])
-    if (url.startsWith('//')) url = `https:${url}`
-
-    const title = htmlToText(match[2])
     const after = html.slice(match.index, match.index + 2500)
-    const snippetMatch = /class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i.exec(after)
-
+    const snippet = /class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i.exec(after)
     results.push({
-      title,
-      url,
-      snippet: snippetMatch ? htmlToText(snippetMatch[1]) : ''
+      title: htmlToText(match[2]),
+      url: unwrapRedirect(match[1]),
+      snippet: snippet ? htmlToText(snippet[1]) : ''
     })
   }
-
   return results
+}
+
+async function post(url: string, query: string): Promise<string> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': USER_AGENT,
+      Accept: 'text/html'
+    },
+    body: new URLSearchParams({ q: query }).toString(),
+    signal: AbortSignal.timeout(20_000)
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.text()
+}
+
+const DDG_ENDPOINT = 'https://html.duckduckgo.com/html/'
+
+/**
+ * DuckDuckGo publishes no free API, so this scrapes their HTML endpoint. That
+ * endpoint rate-limits bursts and occasionally answers with an interstitial
+ * instead of results, so a blocked attempt is retried briefly before giving up.
+ *
+ * When it does give up it says so loudly. Returning an empty list would look
+ * to the model — and then to the user — like the web simply had no answer.
+ */
+async function searchDuckDuckGo(query: string, limit: number): Promise<SearchResult[]> {
+  const attempts: string[] = []
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, attempt * 700))
+    try {
+      const results = parseDuckDuckGoHtml(await post(DDG_ENDPOINT, query), limit)
+      if (results.length) return results
+      attempts.push('no results in the response (usually a rate-limit interstitial)')
+    } catch (err) {
+      attempts.push(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  throw new Error(
+    'DuckDuckGo returned nothing usable after three attempts. It rate-limits scraping and ' +
+      'changes its markup without notice. Switch the backend in Settings › Web access — a ' +
+      'SearXNG instance or the OpenRouter web plugin is more dependable. ' +
+      `Attempts: ${attempts.join('; ')}`
+  )
 }
 
 async function searchSearxng(

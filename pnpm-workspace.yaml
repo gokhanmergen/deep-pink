@@ -1,0 +1,10 @@
+# pnpm blocks dependency install scripts by default. These three genuinely need
+# them: Electron downloads its binary, esbuild downloads its platform binary,
+# and better-sqlite3 fetches or compiles the native SQLite binding — without it
+# the app has no database at all.
+allowBuilds:
+  better-sqlite3: true
+  electron: true
+  esbuild: true
+  # Windows installer tooling; this project does not build Windows artefacts.
+  electron-winstaller: false
