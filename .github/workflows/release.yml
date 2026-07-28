@@ -59,10 +59,10 @@ jobs:
             exit 1
           fi
 
+      # No token here on purpose: with one, electron-builder tries to publish
+      # the artefacts itself. Publishing is the release step's job.
       - name: Build AppImage, deb, rpm and tarball
         run: pnpm run dist:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Collect the artefacts
         run: |
