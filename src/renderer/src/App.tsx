@@ -41,6 +41,18 @@ export function App(): React.JSX.Element {
     void init()
   }, [init])
 
+  // Window dragging is a macOS-windowed-mode affair only. Enabling it under a
+  // Wayland compositor — or in fullscreen anywhere — breaks click targets
+  // elsewhere in the window, including the composer.
+  useEffect(() => {
+    const apply = (fullscreen: boolean): void => {
+      const draggable = window.deepPink.platform === 'darwin' && !fullscreen
+      document.documentElement.dataset.windowDrag = draggable ? 'on' : 'off'
+    }
+    apply(false)
+    return window.deepPink.window.onState((state) => apply(state.fullscreen))
+  }, [])
+
   // Reflect appearance settings onto the document.
   useEffect(() => {
     if (!settings) return

@@ -132,6 +132,20 @@ const api = {
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url)
   },
 
+  window: {
+    /** Fullscreen / maximised state, so the UI can adapt its chrome. */
+    onState: (
+      listener: (state: { fullscreen: boolean; maximized: boolean }) => void
+    ): (() => void) => {
+      const handler = (
+        _e: unknown,
+        payload: { fullscreen: boolean; maximized: boolean }
+      ): void => listener(payload)
+      ipcRenderer.on('window:state', handler)
+      return () => ipcRenderer.removeListener('window:state', handler)
+    }
+  },
+
   platform: process.platform
 }
 

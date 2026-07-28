@@ -4,6 +4,7 @@ import { Overlay } from './Overlay'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS } from '@shared/defaults'
 import { modelShortName } from '../format'
+import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 
 type Tab = 'account' | 'models' | 'prompts' | 'web' | 'context' | 'appearance' | 'keys' | 'data'
 
@@ -214,11 +215,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
             <div className="field">
               <span className="field__label">Naming prompt</span>
-              <textarea
+              <DebouncedTextarea
                 className="textarea"
                 rows={6}
                 value={settings.titlePrompt}
-                onChange={(event) => void saveSettings({ titlePrompt: event.target.value })}
+                onCommit={(next) => void saveSettings({ titlePrompt: next })}
               />
             </div>
 
@@ -236,16 +237,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
             <div className="field">
               <span className="field__label">Maximum output tokens</span>
-              <input
+              <DebouncedInput
                 className="input"
                 type="number"
                 min={0}
                 placeholder="Provider default"
-                value={settings.maxTokens ?? ''}
-                onChange={(event) =>
-                  void saveSettings({
-                    maxTokens: event.target.value ? Number(event.target.value) : null
-                  })
+                value={settings.maxTokens != null ? String(settings.maxTokens) : ''}
+                onCommit={(next) =>
+                  void saveSettings({ maxTokens: next ? Number(next) : null })
                 }
               />
             </div>
@@ -264,11 +263,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           <>
             <div className="section-title">Base system prompt</div>
             <div className="field">
-              <textarea
+              <DebouncedTextarea
                 className="textarea"
                 rows={10}
                 value={settings.baseSystemPrompt}
-                onChange={(event) => void saveSettings({ baseSystemPrompt: event.target.value })}
+                onCommit={(next) => void saveSettings({ baseSystemPrompt: next })}
               />
               <span className="field__hint">
                 Sent with every thread unless you switch it off for that thread in the prompt
@@ -336,53 +335,51 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             {settings.web.engine === 'searxng' && (
               <div className="field">
                 <span className="field__label">SearXNG URL</span>
-                <input
+                <DebouncedInput
                   className="input mono"
                   value={settings.web.searxngUrl}
-                  onChange={(event) => void saveSettings({ web: { searxngUrl: event.target.value } })}
+                  onCommit={(next) => void saveSettings({ web: { searxngUrl: next } })}
                 />
               </div>
             )}
 
             <div className="field">
               <span className="field__label">Results per search</span>
-              <input
+              <DebouncedInput
                 className="input"
                 type="number"
                 min={1}
                 max={10}
-                value={settings.web.maxResults}
-                onChange={(event) =>
-                  void saveSettings({ web: { maxResults: Number(event.target.value) } })
-                }
+                value={String(settings.web.maxResults)}
+                onCommit={(next) => void saveSettings({ web: { maxResults: Number(next) || 1 } })}
               />
             </div>
 
             <div className="field">
               <span className="field__label">Characters kept per fetched page</span>
-              <input
+              <DebouncedInput
                 className="input"
                 type="number"
                 min={1000}
                 step={1000}
-                value={settings.web.fetchCharLimit}
-                onChange={(event) =>
-                  void saveSettings({ web: { fetchCharLimit: Number(event.target.value) } })
+                value={String(settings.web.fetchCharLimit)}
+                onCommit={(next) =>
+                  void saveSettings({ web: { fetchCharLimit: Number(next) || 1000 } })
                 }
               />
             </div>
 
             <div className="field">
               <span className="field__label">Blocked domains</span>
-              <textarea
+              <DebouncedTextarea
                 className="textarea mono"
                 rows={3}
                 placeholder={'example.com\ninternal.corp'}
-                defaultValue={settings.web.blockedDomains.join('\n')}
-                onBlur={(event) =>
+                value={settings.web.blockedDomains.join('\n')}
+                onCommit={(next) =>
                   void saveSettings({
                     web: {
-                      blockedDomains: event.target.value.split('\n').map((d) => d.trim()).filter(Boolean)
+                      blockedDomains: next.split('\n').map((d) => d.trim()).filter(Boolean)
                     }
                   })
                 }
@@ -449,28 +446,24 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
             <div className="field">
               <span className="field__label">Messages always kept verbatim</span>
-              <input
+              <DebouncedInput
                 className="input"
                 type="number"
                 min={2}
-                value={settings.compaction.keepRecentMessages}
-                onChange={(event) =>
-                  void saveSettings({
-                    compaction: { keepRecentMessages: Number(event.target.value) }
-                  })
+                value={String(settings.compaction.keepRecentMessages)}
+                onCommit={(next) =>
+                  void saveSettings({ compaction: { keepRecentMessages: Number(next) || 2 } })
                 }
               />
             </div>
 
             <div className="field">
               <span className="field__label">Summarisation prompt</span>
-              <textarea
+              <DebouncedTextarea
                 className="textarea"
                 rows={10}
                 value={settings.compaction.prompt}
-                onChange={(event) =>
-                  void saveSettings({ compaction: { prompt: event.target.value } })
-                }
+                onCommit={(next) => void saveSettings({ compaction: { prompt: next } })}
               />
             </div>
           </>

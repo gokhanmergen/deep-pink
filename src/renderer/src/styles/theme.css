@@ -127,7 +127,10 @@ button {
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   overflow: hidden;
+  /* Grid and flex children default to min-*: auto, which refuses to shrink
+     below their content. Every scroll container below depends on this. */
   min-width: 0;
+  min-height: 0;
 }
 
 .sidebar__brand {
@@ -135,7 +138,19 @@ button {
   align-items: center;
   gap: 8px;
   padding: 14px 14px 10px;
+}
+
+/* Draggable regions are only switched on where they are actually needed: the
+   macOS hidden title bar, and never in fullscreen. Chromium's hit-testing for
+   these regions misbehaves under Wayland compositors and swallows clicks
+   elsewhere in the window. */
+:root[data-window-drag='on'] .sidebar__brand,
+:root[data-window-drag='on'] .topbar {
   -webkit-app-region: drag;
+}
+
+:root[data-window-drag='on'] .topbar > * {
+  -webkit-app-region: no-drag;
 }
 
 .sidebar__brand-mark {
@@ -163,6 +178,7 @@ button {
 
 .sidebar__list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0 6px 12px;
 }
@@ -236,6 +252,7 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   height: 100%;
 }
 
@@ -246,12 +263,7 @@ button {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
-  -webkit-app-region: drag;
   flex: none;
-}
-
-.topbar > * {
-  -webkit-app-region: no-drag;
 }
 
 .topbar__title {
@@ -462,7 +474,9 @@ button {
 
 .transcript {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 22px 0 8px;
 }
 
@@ -879,6 +893,7 @@ button {
   padding: 16px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .panel__foot {
@@ -907,6 +922,7 @@ button {
   overflow-y: auto;
   padding: 6px;
   flex: 1;
+  min-height: 0;
 }
 
 .cmdlist__section {

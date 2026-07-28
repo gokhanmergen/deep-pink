@@ -39,6 +39,17 @@ if (bundle.status !== 0) {
   process.exit(1)
 }
 
+// The layout suite boots the real app, so it needs a current build.
+const app = spawnSync('npx', ['electron-vite', 'build'], {
+  cwd: root,
+  stdio: ['ignore', 'ignore', 'inherit']
+})
+
+if (app.status !== 0) {
+  console.error('Could not build the app.')
+  process.exit(1)
+}
+
 const files = readdirSync(testDir)
   .filter((name) => name.endsWith('.test.js'))
   .sort()

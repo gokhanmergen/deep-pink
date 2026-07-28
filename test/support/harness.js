@@ -13,13 +13,27 @@ const RESET = '[0m'
 
 /**
  * @param {string} suiteName
- * @param {(t: {check: Function, section: Function, subject: any, tmpDir: string}) => Promise<void> | void} body
+ * @param {(t: {check: Function, section: Function, subject: any, tmpDir: string, getWindow: Function}) => Promise<void> | void} body
+ * @param {{bootApp?: boolean}} [options] `bootApp` starts the real built app
+ *   first, so a suite can inspect the UI it actually renders.
  */
-function suite(suiteName, body) {
+function suite(suiteName, body, options = {}) {
   app.disableHardwareAcceleration()
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-pink-test-'))
   app.setPath('userData', tmpDir)
+
+  if (options.bootApp) {
+    const built = path.join(__dirname, '..', '..', 'out', 'main', 'index.js')
+    if (!fs.existsSync(built)) {
+      console.error(`\n${RED}${suiteName} needs a build — run electron-vite build first.${RESET}`)
+      app.exit(1)
+      return
+    }
+    // Registers its own whenReady handler first, so the window exists by the
+    // time this suite's handler runs.
+    require(built)
+  }
 
   const failures = []
   let passed = 0
@@ -43,7 +57,9 @@ function suite(suiteName, body) {
     console.log(`\n${suiteName}`)
     try {
       const subject = require(path.join(__dirname, '..', '..', '.test-build', 'bundle.js'))
-      await body({ check, section, subject, tmpDir })
+      const { BrowserWindow } = require('electron')
+      const getWindow = () => BrowserWindow.getAllWindows()[0]
+      await body({ check, section, subject, tmpDir, getWindow })
     } catch (err) {
       failures.push('suite threw')
       console.log(`  ${RED}✗ suite threw: ${err && err.stack ? err.stack : err}${RESET}`)
@@ -120,4 +136,9 @@ function message(overrides) {
   }
 }
 
-module.exports = { suite, sseResponse, writeTestApiKey, message }
+/** Resolves after `ms`, for the few places where a render has to settle. */
+function settle(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+module.exports = { suite, sseResponse, writeTestApiKey, message, settle }

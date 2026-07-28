@@ -27,6 +27,21 @@ function createWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => win.show())
 
+  // The renderer switches its draggable regions off in fullscreen, so it needs
+  // to know. `maximize` is reported too because tiling compositors use it.
+  const reportState = (): void => {
+    if (win.isDestroyed()) return
+    win.webContents.send('window:state', {
+      fullscreen: win.isFullScreen(),
+      maximized: win.isMaximized()
+    })
+  }
+  win.on('enter-full-screen', reportState)
+  win.on('leave-full-screen', reportState)
+  win.on('maximize', reportState)
+  win.on('unmaximize', reportState)
+  win.webContents.on('did-finish-load', reportState)
+
   // Links always open in the user's browser, never inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) shell.openExternal(url)

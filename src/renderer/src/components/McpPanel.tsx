@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { McpServerConfig, McpServerStatus } from '@shared/types'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
+import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 
 function parseArgs(input: string): string[] {
   return input.split(/\s+/).filter(Boolean)
@@ -70,10 +71,10 @@ function ServerEditor({
         <div style={{ marginTop: 14 }}>
           <div className="field">
             <span className="field__label">Name</span>
-            <input
+            <DebouncedInput
               className="input"
               value={config.name}
-              onChange={(event) => onChange({ name: event.target.value })}
+              onCommit={(next) => onChange({ name: next })}
             />
           </div>
 
@@ -95,39 +96,39 @@ function ServerEditor({
             <>
               <div className="field">
                 <span className="field__label">Command</span>
-                <input
+                <DebouncedInput
                   className="input mono"
                   placeholder="npx"
                   value={config.command ?? ''}
-                  onChange={(event) => onChange({ command: event.target.value })}
+                  onCommit={(next) => onChange({ command: next })}
                 />
               </div>
               <div className="field">
                 <span className="field__label">Arguments</span>
-                <input
+                <DebouncedInput
                   className="input mono"
                   placeholder="-y @modelcontextprotocol/server-filesystem /home/you/notes"
-                  defaultValue={config.args.join(' ')}
-                  onBlur={(event) => onChange({ args: parseArgs(event.target.value) })}
+                  value={config.args.join(' ')}
+                  onCommit={(next) => onChange({ args: parseArgs(next) })}
                 />
               </div>
               <div className="field">
                 <span className="field__label">Working directory</span>
-                <input
+                <DebouncedInput
                   className="input mono"
                   placeholder="(optional)"
                   value={config.cwd ?? ''}
-                  onChange={(event) => onChange({ cwd: event.target.value || null })}
+                  onCommit={(next) => onChange({ cwd: next || null })}
                 />
               </div>
               <div className="field">
                 <span className="field__label">Environment</span>
-                <textarea
+                <DebouncedTextarea
                   className="textarea mono"
                   rows={3}
                   placeholder={'KEY=value\nANOTHER=value'}
-                  defaultValue={stringifyEnv(config.env)}
-                  onBlur={(event) => onChange({ env: parseEnv(event.target.value) })}
+                  value={stringifyEnv(config.env)}
+                  onCommit={(next) => onChange({ env: parseEnv(next) })}
                 />
                 <span className="field__hint">
                   One per line. These are stored in your local database in plain text.
@@ -138,21 +139,21 @@ function ServerEditor({
             <>
               <div className="field">
                 <span className="field__label">URL</span>
-                <input
+                <DebouncedInput
                   className="input mono"
                   placeholder="https://example.com/mcp"
                   value={config.url ?? ''}
-                  onChange={(event) => onChange({ url: event.target.value })}
+                  onCommit={(next) => onChange({ url: next })}
                 />
               </div>
               <div className="field">
                 <span className="field__label">Headers</span>
-                <textarea
+                <DebouncedTextarea
                   className="textarea mono"
                   rows={2}
                   placeholder="Authorization=Bearer …"
-                  defaultValue={stringifyEnv(config.headers)}
-                  onBlur={(event) => onChange({ headers: parseEnv(event.target.value) })}
+                  value={stringifyEnv(config.headers)}
+                  onCommit={(next) => onChange({ headers: parseEnv(next) })}
                 />
               </div>
             </>
