@@ -64,6 +64,18 @@ Produces AppImage, `.deb`, `.rpm` and a tarball in `release/`.
 
 Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
 
+### Wayland
+
+Electron defaults to XWayland, which is usually fine but can render blurry on
+HiDPI and can behave oddly with tiling compositors. To run natively:
+
+```bash
+deep-pink --ozone-platform-hint=auto
+```
+
+The app itself declares no draggable window regions outside macOS, because
+Chromium's hit-testing for them misbehaves under Wayland and swallows clicks.
+
 ### First run
 
 Open Settings (`Ctrl/⌘ ,`), paste an [OpenRouter key](https://openrouter.ai/keys), and start a thread.
