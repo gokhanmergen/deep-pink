@@ -64,6 +64,25 @@ Produces AppImage, `.deb`, `.rpm` and a tarball in `release/`.
 
 Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
 
+### Build a macOS app
+
+```bash
+npm run dist:mac
+```
+
+Produces `release/Deep Pink-<version>-arm64.dmg` and a `.zip`. Drag the app to
+`/Applications` and open it.
+
+The build is **ad-hoc signed**, because this project has no Apple Developer ID.
+That is enough for Apple Silicon to run it locally, and the entitlements in
+`build/entitlements.mac.plist` let the hardened runtime load the native SQLite
+binding. macOS may still warn the first time — right-click the app and choose
+*Open*, or clear the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Deep Pink.app"
+```
+
 ### Wayland
 
 Electron defaults to XWayland, which is usually fine but can render blurry on
