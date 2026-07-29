@@ -23,9 +23,11 @@ on:
         type: boolean
         default: false
       draft:
-        description: Create it as a draft, so you can look before it goes public
+        # Off by default: a draft is invisible to anything reading
+        # /releases/latest, so an updater will never see it.
+        description: Hold it back as a draft instead of publishing
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -102,9 +104,13 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: Deep Pink ${{ steps.meta.outputs.version }}
           files: artifacts/*
-          # A tag push is a deliberate release. A manual run is a rehearsal
-          # unless you say otherwise.
+          # A tag push always publishes. A manual run publishes too unless the
+          # draft box was ticked.
           draft: ${{ github.ref_type != 'tag' && inputs.draft }}
+          # Never a prerelease: /releases/latest skips those, and an updater
+          # pointed at "latest" would silently never update.
+          prerelease: false
+          make_latest: true
           generate_release_notes: true
           body: |
             Linux builds of Deep Pink ${{ steps.meta.outputs.version }}.

@@ -45,10 +45,19 @@ Every action has a binding, every binding is rebindable, and `Ctrl/⌘ K` opens 
 
 ### Download a build
 
-Every tagged version publishes Linux builds to the
+Linux builds are published to the
 [releases page](https://github.com/gokhanmergen/deep-pink/releases): an
 AppImage, a `.deb`, an `.rpm` and a tarball, with `SHA256SUMS.txt` to check
-them against.
+them against. Built for x86-64.
+
+The newest one is always at
+[`/releases/latest`](https://github.com/gokhanmergen/deep-pink/releases/latest),
+so an auto-updater can follow it:
+
+```bash
+curl -s https://api.github.com/repos/gokhanmergen/deep-pink/releases/latest \
+  | grep -o 'https://[^"]*\.AppImage'
+```
 
 ```bash
 chmod +x 'Deep Pink-0.1.0-arm64.AppImage' && ./'Deep Pink-0.1.0-arm64.AppImage'
