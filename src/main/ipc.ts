@@ -178,6 +178,32 @@ export function registerIpc(): void {
     }
   })
 
+  /* ---------------- window ---------------- */
+
+  // Chromium's own zoom, which scales the whole interface rather than only text.
+  // Each step multiplies by 1.2, and the range keeps it legible at both ends.
+  const ZOOM_STEP = 0.5
+  const ZOOM_MIN = -3
+  const ZOOM_MAX = 4
+
+  ipcMain.handle('window:zoom', (event, direction: 'in' | 'out' | 'reset'): number => {
+    const contents = event.sender
+    const current = contents.getZoomLevel()
+
+    const next =
+      direction === 'reset'
+        ? 0
+        : Math.min(
+            Math.max(current + (direction === 'in' ? ZOOM_STEP : -ZOOM_STEP), ZOOM_MIN),
+            ZOOM_MAX
+          )
+
+    contents.setZoomLevel(next)
+    // Remember it, so the window comes back the size the user left it.
+    saveSettings({ ui: { zoomLevel: next } })
+    return next
+  })
+
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
     const parsed = new URL(url)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return

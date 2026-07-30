@@ -12,8 +12,19 @@ const KEY_ALIASES: Record<string, string> = {
   arrowright: 'right',
   escape: 'esc',
   ' ': 'space',
-  '+': 'plus'
+  // `+` and `_` are the shifted forms of `=` and `-`. Treating them as the same
+  // key is what lets a `mod+=` binding answer to the `+` on the keycap.
+  '+': '=',
+  _: '-'
 }
+
+/**
+ * Keys whose shifted form is a different character. A binding on one of these
+ * ignores shift, so `mod+=`, `mod++` and `mod+shift+=` all mean zoom in — which
+ * is how every browser behaves, and what users expect from whichever symbol is
+ * printed on their keyboard.
+ */
+const SHIFT_AGNOSTIC = new Set(['=', '-'])
 
 function normalizeKey(key: string): string {
   const lower = key.toLowerCase()
@@ -48,7 +59,7 @@ export function matchesBinding(event: KeyboardEvent, binding: string): boolean {
   const modPressed = isMac ? event.metaKey : event.ctrlKey
 
   if (parsed.mod !== modPressed) return false
-  if (parsed.shift !== event.shiftKey) return false
+  if (parsed.shift !== event.shiftKey && !SHIFT_AGNOSTIC.has(parsed.key)) return false
   if (parsed.alt !== event.altKey) return false
   // `mod` already accounts for Ctrl on non-Mac platforms.
   if (!isMac && !parsed.mod && parsed.ctrl !== event.ctrlKey) return false

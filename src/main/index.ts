@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
 import { reconcileInterruptedMessages } from './db/repo'
+import { loadSettings } from './settings'
 import { registerIpc } from './ipc'
 import * as mcp from './mcp/host'
 
@@ -41,7 +42,13 @@ function createWindow(): BrowserWindow {
   win.on('leave-full-screen', reportState)
   win.on('maximize', reportState)
   win.on('unmaximize', reportState)
-  win.webContents.on('did-finish-load', reportState)
+  win.webContents.on('did-finish-load', () => {
+    reportState()
+    // Restore the zoom the user left the app at. This has to happen after load,
+    // because Chromium resets the level for each new page.
+    const { zoomLevel } = loadSettings().ui
+    if (zoomLevel !== 0) win.webContents.setZoomLevel(zoomLevel)
+  })
 
   // Links always open in the user's browser, never inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {

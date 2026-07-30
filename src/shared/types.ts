@@ -369,6 +369,11 @@ export type SettingsPatch = Omit<
 export interface UiSettings {
   accent: string
   fontSize: number
+  /**
+   * Chromium zoom level, where 0 is 100% and each step scales by 1.2. Scales the
+   * whole interface, unlike `fontSize` which only changes text.
+   */
+  zoomLevel: number
   messageDensity: 'comfortable' | 'compact'
   codeTheme: string
   showReasoningByDefault: boolean

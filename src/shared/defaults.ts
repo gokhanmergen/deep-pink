@@ -59,6 +59,7 @@ Reply with the title and nothing else.`
 export const DEFAULT_UI: UiSettings = {
   accent: '#ff1493',
   fontSize: 14,
+  zoomLevel: 0,
   messageDensity: 'comfortable',
   codeTheme: 'github-dark-default',
   showReasoningByDefault: false,

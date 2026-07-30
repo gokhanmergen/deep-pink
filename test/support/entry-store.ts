@@ -4,3 +4,4 @@
  */
 export { useStore, disposeStore } from '@renderer/store'
 export { groupIntoTurns, isEmptyAssistantMessage } from '@renderer/turns'
+export { matchesBinding, parseBinding, formatBinding } from '@renderer/keybinds'

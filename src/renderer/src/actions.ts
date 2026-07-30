@@ -15,11 +15,13 @@ function focusComposer(): void {
   el?.focus()
 }
 
-function zoom(delta: number | 'reset'): void {
-  const root = document.documentElement
-  const current = Number.parseFloat(root.style.fontSize || '16')
-  const next = delta === 'reset' ? 16 : Math.min(Math.max(current + delta, 10), 26)
-  root.style.fontSize = `${next}px`
+/**
+ * Zoom is Chromium's, applied in the main process. An earlier version set the
+ * root element's font-size, which did nothing at all: no stylesheet here uses
+ * `rem`, and body's size is set explicitly from settings.
+ */
+function zoom(direction: 'in' | 'out' | 'reset'): void {
+  void window.deepPink.window.zoom(direction)
 }
 
 /**
@@ -283,8 +285,8 @@ export function buildActions(): AppAction[] {
     },
 
     // View
-    { id: 'view.zoomIn', label: 'Zoom in', group: 'View', hidden: true, run: () => zoom(1) },
-    { id: 'view.zoomOut', label: 'Zoom out', group: 'View', hidden: true, run: () => zoom(-1) },
+    { id: 'view.zoomIn', label: 'Zoom in', group: 'View', hidden: true, run: () => zoom('in') },
+    { id: 'view.zoomOut', label: 'Zoom out', group: 'View', hidden: true, run: () => zoom('out') },
     { id: 'view.zoomReset', label: 'Reset zoom', group: 'View', hidden: true, run: () => zoom('reset') }
   ]
 }

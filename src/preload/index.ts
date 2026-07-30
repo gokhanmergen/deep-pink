@@ -133,6 +133,10 @@ const api = {
   },
 
   window: {
+    /** Scales the whole interface. Returns the level actually applied. */
+    zoom: (direction: 'in' | 'out' | 'reset'): Promise<number> =>
+      ipcRenderer.invoke('window:zoom', direction),
+
     /** Fullscreen / maximised state, so the UI can adapt its chrome. */
     onState: (
       listener: (state: { fullscreen: boolean; maximized: boolean }) => void

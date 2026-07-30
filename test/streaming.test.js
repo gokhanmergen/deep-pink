@@ -168,6 +168,41 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     groupIntoTurns([message({ id: 's', role: 'assistant', content: '', status: 'streaming' })]).length === 1
   )
 
+  section('zoom shortcuts match the keys people actually press')
+  const { matchesBinding } = require(path.join(__dirname, '..', '.test-build', 'store.js'))
+  // The stub reports platform 'linux', so `mod` is Ctrl here.
+  const press = (key, mods = {}) => ({
+    key,
+    ctrlKey: Boolean(mods.ctrl),
+    metaKey: Boolean(mods.meta),
+    shiftKey: Boolean(mods.shift),
+    altKey: Boolean(mods.alt)
+  })
+
+  check("ctrl+= zooms in", matchesBinding(press('=', { ctrl: true }), 'mod+='))
+  check(
+    "ctrl+shift+= zooms in, because that is the '+' on the keycap",
+    matchesBinding(press('+', { ctrl: true, shift: true }), 'mod+=')
+  )
+  check('ctrl+- zooms out', matchesBinding(press('-', { ctrl: true }), 'mod+-'))
+  check(
+    "ctrl+shift+- zooms out, because that is '_'",
+    matchesBinding(press('_', { ctrl: true, shift: true }), 'mod+-')
+  )
+  check('ctrl+0 resets zoom', matchesBinding(press('0', { ctrl: true }), 'mod+0'))
+
+  check('a bare = does not zoom without the modifier', !matchesBinding(press('='), 'mod+='))
+  check(
+    'shift is still significant for ordinary keys',
+    matchesBinding(press('k', { ctrl: true }), 'mod+k') &&
+      !matchesBinding(press('k', { ctrl: true, shift: true }), 'mod+k')
+  )
+  check(
+    'and a shift binding still requires shift',
+    matchesBinding(press('m', { ctrl: true, shift: true }), 'mod+shift+m') &&
+      !matchesBinding(press('m', { ctrl: true }), 'mod+shift+m')
+  )
+
   disposeStore()
   check('disposing removes the listeners', chatListeners.length === 0)
 })
