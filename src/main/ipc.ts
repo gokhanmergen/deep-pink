@@ -214,6 +214,9 @@ export function registerIpc(): void {
     await shell.openPath(path)
   })
 
+  // Full text of a text attachment, fetched only when the reader expands it.
+  ipcMain.handle('attachments:text', (_e, id: string) => attachments.readText(id))
+
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
     const parsed = new URL(url)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return

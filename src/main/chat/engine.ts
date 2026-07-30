@@ -53,6 +53,50 @@ export function resolveToolApproval(toolCallId: string, approved: boolean): void
  * Message conversion
  * ------------------------------------------------------------------ */
 
+/** Fence language from a filename, so inlined code arrives tagged. */
+const FENCE_LANG: Record<string, string> = {
+  ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx', mjs: 'js', cjs: 'js',
+  py: 'python', rb: 'ruby', go: 'go', rs: 'rust', java: 'java', kt: 'kotlin',
+  c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp', cs: 'csharp', swift: 'swift',
+  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'fish', ps1: 'powershell',
+  sql: 'sql', json: 'json', jsonc: 'jsonc', yaml: 'yaml', yml: 'yaml', toml: 'toml',
+  xml: 'xml', html: 'html', css: 'css', scss: 'scss', md: 'markdown', tex: 'latex',
+  lua: 'lua', vim: 'vim', nix: 'nix', dockerfile: 'docker', diff: 'diff', patch: 'diff'
+}
+
+function fenceLanguage(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  return FENCE_LANG[ext] ?? ''
+}
+
+/**
+ * Renders text attachments into the message body.
+ *
+ * OpenRouter has no concept of a text file, so a "pasted text" attachment is a
+ * composer convenience: by the time it reaches a provider it is just text. It is
+ * fenced and labelled so the model can tell it apart from what the user typed.
+ */
+function inlineTextAttachments(message: Message): string {
+  const texts = (message.attachments ?? []).filter((a) => a.kind === 'text')
+  if (!texts.length) return message.content
+
+  const blocks = texts.map((attachment) => {
+    const body = attachments.readText(attachment.id) ?? ''
+    const lines = body ? body.split('\n').length : 0
+    // A fence long enough that content containing ``` cannot break out of it.
+    const longest = Math.max(0, ...[...body.matchAll(/`{3,}/g)].map((m) => m[0].length))
+    const fence = '`'.repeat(Math.max(3, longest + 1))
+    return [
+      `Attached file: ${attachment.filename} (${lines} line${lines === 1 ? '' : 's'})`,
+      `${fence}${fenceLanguage(attachment.filename)}`,
+      body,
+      fence
+    ].join('\n')
+  })
+
+  return [message.content, ...blocks].filter(Boolean).join('\n\n')
+}
+
 export function toChatParams(messages: Message[], allowImages = true): ChatMessageParam[] {
   const params: ChatMessageParam[] = []
 
@@ -103,9 +147,11 @@ export function toChatParams(messages: Message[], allowImages = true): ChatMessa
       continue
     }
 
-    const images = message.attachments ?? []
+    const text = inlineTextAttachments(message)
+    const images = (message.attachments ?? []).filter((a) => a.kind === 'image')
+
     if (!images.length) {
-      params.push({ role: 'user', content: message.content })
+      params.push({ role: 'user', content: text })
       continue
     }
 
@@ -113,14 +159,14 @@ export function toChatParams(messages: Message[], allowImages = true): ChatMessa
       // Sending an image to a text-only model is a hard request error, so say
       // what was dropped rather than silently losing it or failing the turn.
       const note = `[${images.length} image${images.length === 1 ? '' : 's'} omitted — the selected model does not accept images]`
-      params.push({ role: 'user', content: message.content ? `${message.content}\n\n${note}` : note })
+      params.push({ role: 'user', content: text ? `${text}\n\n${note}` : note })
       continue
     }
 
     params.push({
       role: 'user',
       content: [
-        ...(message.content ? [{ type: 'text' as const, text: message.content }] : []),
+        ...(text ? [{ type: 'text' as const, text }] : []),
         ...images.map((image) => ({
           type: 'image_url' as const,
           image_url: { url: attachments.toDataUrl(image) }
@@ -496,7 +542,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       const model = resolveModel(thread, settings)
       const context = assembleContext(thread, settings)
       const history = repo.getMessages(thread.id)
-      const allowImages = history.some((m) => m.attachments?.length)
+      const allowImages = history.some((m) => m.attachments?.some((a) => a.kind === 'image'))
         ? await modelAcceptsImages(model)
         : true
 

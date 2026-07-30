@@ -562,6 +562,25 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span>Expand reasoning traces by default</span>
             </label>
 
+            <div className="field">
+              <span className="field__label">Turn a long paste into an attachment</span>
+              <DebouncedInput
+                className="input"
+                type="number"
+                min={0}
+                step={500}
+                value={String(settings.ui.pasteAsFileThreshold)}
+                onCommit={(next) =>
+                  void saveSettings({ ui: { pasteAsFileThreshold: Math.max(Number(next) || 0, 0) } })
+                }
+              />
+              <span className="field__hint">
+                Pastes at least this many characters become a removable file chip instead of
+                filling the composer. The model still receives them as text — this only keeps
+                long input readable. Set to 0 to paste everything inline.
+              </span>
+            </div>
+
             <label className="switch">
               <input
                 type="checkbox"

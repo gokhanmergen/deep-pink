@@ -130,7 +130,9 @@ const api = {
 
   attachments: {
     /** Opens a stored image at full size in the desktop's image viewer. */
-    open: (id: string): Promise<void> => ipcRenderer.invoke('attachments:open', id)
+    open: (id: string): Promise<void> => ipcRenderer.invoke('attachments:open', id),
+    /** Full text of a text attachment; null for images. */
+    text: (id: string): Promise<string | null> => ipcRenderer.invoke('attachments:text', id)
   },
 
   shell: {

@@ -1351,3 +1351,52 @@ button {
   width: auto;
   display: block;
 }
+
+/* Pasted text and dropped code files */
+
+.textchip {
+  position: relative;
+  width: 190px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  flex: none;
+  overflow: hidden;
+}
+
+.textchip__name {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  padding-right: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.textchip__meta {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.textchip__excerpt {
+  margin: 5px 0 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--text-dim);
+  max-height: 34px;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.textfiles {
+  margin-bottom: 8px;
+}
+
+.textfile {
+  margin: 0 0 6px;
+}

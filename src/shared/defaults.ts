@@ -63,7 +63,8 @@ export const DEFAULT_UI: UiSettings = {
   messageDensity: 'comfortable',
   codeTheme: 'github-dark-default',
   showReasoningByDefault: false,
-  sendOnEnter: true
+  sendOnEnter: true,
+  pasteAsFileThreshold: 2000
 }
 
 /**

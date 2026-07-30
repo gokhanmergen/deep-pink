@@ -193,6 +193,51 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
     width: null, height: null
   }))
 
+  section('long text as an attachment')
+  const textThread = repo.createThread('With code')
+  const codeMsg = repo.insertMessage({ threadId: textThread.id, role: 'user', content: 'review this' })
+  const CODE = 'int main(void) {\n  return 0;\n}\n'
+  const storedText = attachments.store(textThread.id, codeMsg.id, {
+    mime: 'text/plain', filename: 'main.c',
+    data: Buffer.from(CODE, 'utf8').toString('base64'),
+    width: null, height: null
+  })
+
+  check('text is stored as a text attachment', storedText.kind === 'text', storedText.kind)
+  check('a preview is captured for the chip', (storedText.preview || '').startsWith('int main'), storedText.preview)
+  check('the full body reads back intact', attachments.readText(storedText.id) === CODE)
+  check('images are still classified as images', attachments.kindOf('image/png') === 'image')
+
+  const refuseText = (input) => {
+    try { attachments.store(textThread.id, codeMsg.id, input); return false } catch { return true }
+  }
+  check(
+    'binary masquerading as text is refused',
+    refuseText({ mime: 'text/plain', filename: 'a.bin',
+      data: Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01]).toString('base64'),
+      width: null, height: null })
+  )
+
+  section('a text attachment reaches the model as inlined text')
+  const { toChatParams } = subject
+  const params = toChatParams(repo.getMessages(textThread.id))
+  const sent = params.find((p) => p.role === 'user')
+  check('it is sent as a plain string, not an image part', typeof sent.content === 'string', typeof sent.content)
+  check('the typed message survives', sent.content.includes('review this'), sent.content.slice(0, 60))
+  check('the file is labelled by name', sent.content.includes('Attached file: main.c'), sent.content)
+  check('the code is fenced with its language', sent.content.includes('```c'), sent.content)
+  check('the body is included verbatim', sent.content.includes('int main(void)'), sent.content)
+
+  section('a file containing fences cannot break out of its own block')
+  const trickyMsg = repo.insertMessage({ threadId: textThread.id, role: 'user', content: '' })
+  attachments.store(textThread.id, trickyMsg.id, {
+    mime: 'text/plain', filename: 'readme.md',
+    data: Buffer.from('```\nnot escaping\n```', 'utf8').toString('base64'),
+    width: null, height: null
+  })
+  const tricky = toChatParams(repo.getMessages(textThread.id)).filter((p) => p.role === 'user').pop()
+  check('the wrapper fence is longer than any inside', tricky.content.includes('````'), tricky.content)
+
   section('attachments follow their message')
   repo.deleteThread(imgThread.id)
   check('rows go when the thread goes', attachments.forMessage(withImage.id).length === 0)

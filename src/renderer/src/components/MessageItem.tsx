@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Message, UiSettings } from '@shared/types'
 import { Markdown } from './Markdown'
+import { TextAttachment } from './TextAttachment'
 import { useStore } from '../store'
 
 /**
@@ -91,9 +92,21 @@ export function MessageItem({
         </div>
       </div>
 
-      {message.attachments.length > 0 && (
+      {message.attachments.some((a) => a.kind === 'text') && (
+        <div className="textfiles">
+          {message.attachments
+            .filter((a) => a.kind === 'text')
+            .map((file) => (
+              <TextAttachment key={file.id} attachment={file} />
+            ))}
+        </div>
+      )}
+
+      {message.attachments.some((a) => a.kind === 'image') && (
         <div className="attachments">
-          {message.attachments.map((image) => (
+          {message.attachments
+            .filter((a) => a.kind === 'image')
+            .map((image) => (
             <a
               key={image.id}
               className="attachment"
@@ -114,7 +127,7 @@ export function MessageItem({
                 loading="lazy"
               />
             </a>
-          ))}
+            ))}
         </div>
       )}
 

@@ -128,5 +128,9 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_attachments_message ON attachments (message_id);
   CREATE INDEX idx_attachments_thread  ON attachments (thread_id);
+  `,
+
+  /* 4 — attachments may be text as well as images */ `
+  ALTER TABLE attachments ADD COLUMN preview TEXT;
   `
 ]

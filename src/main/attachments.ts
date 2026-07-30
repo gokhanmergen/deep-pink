@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, protocol } from 'electron'
-import type { Attachment, PendingAttachment } from '@shared/types'
+import type { Attachment, AttachmentKind, PendingAttachment } from '@shared/types'
 import { getDb } from './db/index'
 
 /**
@@ -15,12 +15,21 @@ import { getDb } from './db/index'
  * of megabytes on every render.
  */
 
-/** Formats every provider accepts. Anything else is refused rather than guessed. */
-const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+/** Image formats every provider accepts. Anything else is refused, not guessed. */
+const ALLOWED_IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 /** Well beyond any screenshot, and far below what would stall a request. */
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+/** Text is inlined into the prompt, so the ceiling is much lower than an image. */
+export const MAX_TEXT_BYTES = 2 * 1024 * 1024
 export const MAX_ATTACHMENTS_PER_MESSAGE = 8
+
+/** Text is anything not an image; the composer decides what it will offer. */
+export function kindOf(mime: string): AttachmentKind {
+  return mime.startsWith('image/') ? 'image' : 'text'
+}
+
+const PREVIEW_CHARS = 600
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -49,6 +58,7 @@ interface AttachmentRow {
   width: number | null
   height: number | null
   created_at: number
+  preview: string | null
 }
 
 function toAttachment(row: AttachmentRow): Attachment {
@@ -61,7 +71,9 @@ function toAttachment(row: AttachmentRow): Attachment {
     width: row.width,
     height: row.height,
     createdAt: row.created_at,
-    url: `${SCHEME}://attachment/${row.id}`
+    url: `${SCHEME}://attachment/${row.id}`,
+    kind: kindOf(row.mime),
+    preview: row.preview ?? null
   }
 }
 
@@ -71,19 +83,32 @@ export function store(
   messageId: string,
   input: PendingAttachment
 ): Attachment {
-  if (!ALLOWED_MIME.has(input.mime)) {
+  const kind = kindOf(input.mime)
+  if (kind === 'image' && !ALLOWED_IMAGE_MIME.has(input.mime)) {
     throw new Error(`${input.mime || 'that file type'} is not a supported image format`)
   }
 
   const buffer = Buffer.from(input.data, 'base64')
-  if (!buffer.length) throw new Error('That image was empty')
-  if (buffer.length > MAX_ATTACHMENT_BYTES) {
+  if (!buffer.length) throw new Error('That attachment was empty')
+
+  const limit = kind === 'image' ? MAX_ATTACHMENT_BYTES : MAX_TEXT_BYTES
+  if (buffer.length > limit) {
     throw new Error(
-      `That image is ${(buffer.length / 1024 / 1024).toFixed(1)} MB; the limit is ${
-        MAX_ATTACHMENT_BYTES / 1024 / 1024
-      } MB`
+      `That ${kind === 'image' ? 'image' : 'text'} is ${(buffer.length / 1024 / 1024).toFixed(
+        1
+      )} MB; the limit is ${limit / 1024 / 1024} MB`
     )
   }
+
+  // Reject anything claiming to be text that is actually binary — a NUL byte in
+  // the first few KB is the usual giveaway, and inlining binary into a prompt
+  // wastes tokens and confuses the model.
+  if (kind === 'text' && buffer.subarray(0, 8192).includes(0)) {
+    throw new Error(`${input.filename || 'That file'} looks binary, not text`)
+  }
+
+  const preview =
+    kind === 'text' ? buffer.subarray(0, PREVIEW_CHARS * 4).toString('utf8').slice(0, PREVIEW_CHARS) : null
 
   const id = randomUUID()
   writeFileSync(fileFor(id), buffer, { mode: 0o600 })
@@ -91,8 +116,8 @@ export function store(
   const now = Date.now()
   getDb()
     .prepare(
-      `INSERT INTO attachments (id, message_id, thread_id, mime, filename, bytes, width, height, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO attachments (id, message_id, thread_id, mime, filename, bytes, width, height, created_at, preview)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -103,7 +128,8 @@ export function store(
       buffer.length,
       input.width,
       input.height,
-      now
+      now,
+      preview
     )
 
   return toAttachment({
@@ -115,7 +141,8 @@ export function store(
     bytes: buffer.length,
     width: input.width,
     height: input.height,
-    created_at: now
+    created_at: now,
+    preview
   })
 }
 
@@ -148,6 +175,19 @@ export function forThread(threadId: string): Map<string, Attachment[]> {
     byMessage.set(row.message_id, list)
   }
   return byMessage
+}
+
+/** Full text of a text attachment. Read on demand, never held in the row. */
+export function readText(id: string): string | null {
+  const row = getDb().prepare('SELECT id, mime FROM attachments WHERE id = ?').get(id) as
+    | { id: string; mime: string }
+    | undefined
+  if (!row || kindOf(row.mime) === 'image') return null
+  try {
+    return readFileSync(fileFor(row.id), 'utf8')
+  } catch {
+    return null
+  }
 }
 
 /** The data URL a provider expects. Read from disk only when a request needs it. */

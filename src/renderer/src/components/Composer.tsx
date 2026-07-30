@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   MAX_COUNT,
+  attachableFilesFrom,
   formatBytes,
-  imageFilesFrom,
-  stageImages,
-  type StagedImage
-} from './attachImages'
+  stageFiles,
+  stageText,
+  type StagedFile
+} from './attachFiles'
 import { useStore } from '../store'
 import { formatBinding, matchesBinding } from '../keybinds'
 
@@ -13,7 +14,7 @@ export const COMPOSER_ID = 'composer-input'
 
 export function Composer(): React.JSX.Element {
   const [value, setValue] = useState('')
-  const [images, setImages] = useState<StagedImage[]>([])
+  const [images, setImages] = useState<StagedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -39,7 +40,9 @@ export function Composer(): React.JSX.Element {
   const modelInfo = models.find((m) => m.id === activeModel)
   const toolsUnsupported = webOn && modelInfo != null && !modelInfo.supportsTools
   const imagesUnsupported =
-    images.length > 0 && modelInfo != null && !modelInfo.inputModalities.includes('image')
+    images.some((i) => i.kind === 'image') &&
+    modelInfo != null &&
+    !modelInfo.inputModalities.includes('image')
 
   // Grow with the content, up to the CSS max-height.
   useEffect(() => {
@@ -67,9 +70,25 @@ export function Composer(): React.JSX.Element {
 
   const add = async (files: File[]): Promise<void> => {
     if (!files.length) return
-    const { staged, rejected } = await stageImages(files, images.length)
+    const { staged, rejected } = await stageFiles(files, images.length)
     if (staged.length) setImages((current) => [...current, ...staged])
     if (rejected.length) showToast(rejected[0], 'error')
+  }
+
+  const pasteThreshold = settings?.ui.pasteAsFileThreshold ?? 2000
+
+  /**
+   * A long paste becomes an attachment rather than burying the composer. The
+   * model still receives it as text — this only keeps it readable and removable.
+   */
+  const capturePastedText = (text: string): boolean => {
+    if (!pasteThreshold || text.length < pasteThreshold) return false
+    if (images.length >= MAX_COUNT) return false
+
+    const index = images.filter((i) => i.kind === 'text').length + 1
+    setImages((current) => [...current, stageText(text, `pasted-text-${index}.txt`)])
+    showToast(`Attached ${text.length.toLocaleString()} characters as a file`)
+    return true
   }
 
   const submit = (): void => {
@@ -135,13 +154,13 @@ export function Composer(): React.JSX.Element {
           className="composer__box"
           data-dragging={dragging}
           onDragOver={(event) => {
-            if (!imageFilesFrom(event.dataTransfer).length) return
+            if (!attachableFilesFrom(event.dataTransfer).length) return
             event.preventDefault()
             setDragging(true)
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={(event) => {
-            const files = imageFilesFrom(event.dataTransfer)
+            const files = attachableFilesFrom(event.dataTransfer)
             setDragging(false)
             if (!files.length) return
             event.preventDefault()
@@ -150,21 +169,42 @@ export function Composer(): React.JSX.Element {
         >
           {images.length > 0 && (
             <div className="thumbs">
-              {images.map((image) => (
-                <div className="thumb" key={image.key}>
-                  <img src={image.preview} alt={image.filename} />
+              {images.map((item) => {
+                const remove = (
                   <button
                     className="thumb__remove"
-                    onClick={() => setImages((c) => c.filter((i) => i.key !== image.key))}
+                    onClick={() => setImages((c) => c.filter((i) => i.key !== item.key))}
                     title="Remove"
                     type="button"
-                    aria-label={`Remove ${image.filename}`}
+                    aria-label={`Remove ${item.filename}`}
                   >
                     ✕
                   </button>
-                  <span className="thumb__meta">{formatBytes(image.bytes)}</span>
-                </div>
-              ))}
+                )
+
+                if (item.kind === 'image') {
+                  return (
+                    <div className="thumb" key={item.key}>
+                      <img src={item.preview ?? ''} alt={item.filename} />
+                      {remove}
+                      <span className="thumb__meta">{formatBytes(item.bytes)}</span>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="textchip" key={item.key} title={item.excerpt ?? ''}>
+                    {remove}
+                    <span className="textchip__name">{item.filename}</span>
+                    <span className="textchip__meta">
+                      {item.lines?.toLocaleString()} {item.lines === 1 ? 'line' : 'lines'} ·{' '}
+                      {formatBytes(item.bytes)} · ~
+                      {Math.ceil(item.bytes / 4).toLocaleString()} tokens
+                    </span>
+                    <pre className="textchip__excerpt">{item.excerpt}</pre>
+                  </div>
+                )
+              })}
             </div>
           )}
 
@@ -180,19 +220,23 @@ export function Composer(): React.JSX.Element {
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={onKeyDown}
             onPaste={(event) => {
-              const files = imageFilesFrom(event.clipboardData)
-              if (!files.length) return
-              // Only swallow the paste when it actually carries an image, so
-              // pasting text keeps working normally.
-              event.preventDefault()
-              void add(files)
+              const files = attachableFilesFrom(event.clipboardData)
+              if (files.length) {
+                // Only swallow the paste when it carries something attachable,
+                // so pasting ordinary text keeps working normally.
+                event.preventDefault()
+                void add(files)
+                return
+              }
+              const text = event.clipboardData.getData('text/plain')
+              if (text && capturePastedText(text)) event.preventDefault()
             }}
           />
           <div className="composer__bar">
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept="image/*,text/*,.txt,.md,.json,.yaml,.yml,.toml,.csv,.log,.ts,.tsx,.js,.jsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.hpp,.cs,.sh,.sql,.xml,.html,.css,.diff,.patch"
               multiple
               hidden
               onChange={(event) => {
@@ -203,7 +247,7 @@ export function Composer(): React.JSX.Element {
             <button
               className="btn"
               onClick={() => fileInputRef.current?.click()}
-              title={`Attach images (up to ${MAX_COUNT})`}
+              title={`Attach images or text files (up to ${MAX_COUNT})`}
               type="button"
               disabled={images.length >= MAX_COUNT}
             >

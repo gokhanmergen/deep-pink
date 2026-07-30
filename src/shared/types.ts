@@ -33,21 +33,31 @@ export interface ToolResult {
  * IPC. The renderer loads the image through the `dpimg://` protocol so a thread
  * full of pictures does not have to be serialised into the transcript payload.
  */
+export type AttachmentKind = 'image' | 'text'
+
 export interface Attachment {
   id: string
   messageId: string
   mime: string
   filename: string
   bytes: number
-  /** Intrinsic size, when it could be determined. */
+  /** Intrinsic size, for images. */
   width: number | null
   height: number | null
   createdAt: number
   /** Where the renderer should load it from: `dpimg://attachment/<id>`. */
   url: string
+  /**
+   * Images travel to the model as `image_url` parts. Text is inlined into the
+   * message — OpenRouter has no notion of a text file, so treating a long paste
+   * as an attachment is a composer convenience, not a protocol feature.
+   */
+  kind: AttachmentKind
+  /** First few lines, so the transcript can show a collapsed chip cheaply. */
+  preview: string | null
 }
 
-/** An image on its way to being sent, before it has been stored. */
+/** An attachment on its way to being sent, before it has been stored. */
 export interface PendingAttachment {
   mime: string
   filename: string
@@ -410,6 +420,11 @@ export interface UiSettings {
   codeTheme: string
   showReasoningByDefault: boolean
   sendOnEnter: boolean
+  /**
+   * Pasted text at least this long becomes an attachment instead of filling the
+   * composer. 0 disables the behaviour.
+   */
+  pasteAsFileThreshold: number
 }
 
 /* ------------------------------------------------------------------ *
