@@ -157,9 +157,14 @@ export async function getCredits(
  * Chat completions
  * ------------------------------------------------------------------ */
 
+/** A part of a multimodal message. Images ride along as data URLs. */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export interface ChatMessageParam {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
+  content: string | ContentPart[]
   name?: string
   tool_call_id?: string
   tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]

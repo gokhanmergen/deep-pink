@@ -4,6 +4,7 @@ import { closeDb, getDb } from './db/index'
 import { reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
 import { registerIpc } from './ipc'
+import * as attachments from './attachments'
 import * as mcp from './mcp/host'
 
 const isDev = !app.isPackaged
@@ -65,6 +66,10 @@ function createWindow(): BrowserWindow {
   return win
 }
 
+// Must happen before the app is ready: Chromium decides how to treat a custom
+// scheme at startup, and attachments are served over one.
+attachments.registerScheme()
+
 // One database, one writer. Two copies of the app on the same profile interleave
 // their writes, which shows up as messages from one appearing mid-conversation
 // in the other.
@@ -92,6 +97,10 @@ app.whenReady().then(async () => {
       }, settled ${settled}.`
     )
   }
+
+  attachments.registerProtocolHandler()
+  const orphans = attachments.collectOrphans()
+  if (orphans) console.log(`Removed ${orphans} orphaned attachment file(s).`)
 
   registerIpc()
   createWindow()

@@ -12,6 +12,7 @@ import type {
 import * as repo from './db/repo'
 import { dbPath } from './db/index'
 import * as mcp from './mcp/host'
+import * as attachments from './attachments'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
@@ -202,6 +203,15 @@ export function registerIpc(): void {
     // Remember it, so the window comes back the size the user left it.
     saveSettings({ ui: { zoomLevel: next } })
     return next
+  })
+
+  // Opens an image the user attached themselves, in whatever their desktop uses
+  // for images. Resolved from the database, so only stored attachments are
+  // reachable — a path never comes from the renderer.
+  ipcMain.handle('attachments:open', async (_e, id: string) => {
+    const path = attachments.filePath(id)
+    if (!path) return
+    await shell.openPath(path)
   })
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => {

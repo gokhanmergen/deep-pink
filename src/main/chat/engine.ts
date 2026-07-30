@@ -20,6 +20,8 @@ import {
   type StreamResult
 } from '../providers/openrouter'
 import { runWebFetch, runWebSearch } from '../tools/web'
+import * as attachments from '../attachments'
+import { MAX_ATTACHMENTS_PER_MESSAGE } from '../attachments'
 import { assembleContext, estimateTokens } from './prompt'
 
 export type Emit = (event: StreamEvent) => void
@@ -51,7 +53,7 @@ export function resolveToolApproval(toolCallId: string, approved: boolean): void
  * Message conversion
  * ------------------------------------------------------------------ */
 
-export function toChatParams(messages: Message[]): ChatMessageParam[] {
+export function toChatParams(messages: Message[], allowImages = true): ChatMessageParam[] {
   const params: ChatMessageParam[] = []
 
   // Providers reject an assistant turn whose tool calls have no results, and a
@@ -101,7 +103,30 @@ export function toChatParams(messages: Message[]): ChatMessageParam[] {
       continue
     }
 
-    params.push({ role: 'user', content: message.content })
+    const images = message.attachments ?? []
+    if (!images.length) {
+      params.push({ role: 'user', content: message.content })
+      continue
+    }
+
+    if (!allowImages) {
+      // Sending an image to a text-only model is a hard request error, so say
+      // what was dropped rather than silently losing it or failing the turn.
+      const note = `[${images.length} image${images.length === 1 ? '' : 's'} omitted — the selected model does not accept images]`
+      params.push({ role: 'user', content: message.content ? `${message.content}\n\n${note}` : note })
+      continue
+    }
+
+    params.push({
+      role: 'user',
+      content: [
+        ...(message.content ? [{ type: 'text' as const, text: message.content }] : []),
+        ...images.map((image) => ({
+          type: 'image_url' as const,
+          image_url: { url: attachments.toDataUrl(image) }
+        }))
+      ]
+    })
   }
 
   return params
@@ -121,6 +146,18 @@ function resolveRouting(thread: Thread, settings: Settings, model: string) {
     settings.modelProviderRouting[model] ??
     settings.defaultProviderRouting
   )
+}
+
+/** Whether the model accepts image input at all. */
+export async function modelAcceptsImages(model: string): Promise<boolean> {
+  try {
+    const models = await listModels()
+    const found = models.find((m) => m.id === model)
+    // Unknown model: assume it does, and let the provider be the authority.
+    return found ? found.inputModalities.includes('image') : true
+  } catch {
+    return true
+  }
 }
 
 export async function contextLimitFor(model: string): Promise<number | null> {
@@ -426,8 +463,24 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
   try {
     if (req.regenerateFromMessageId) {
       repo.deleteMessagesAfter(thread.id, req.regenerateFromMessageId)
-    } else if (req.content.trim()) {
-      repo.insertMessage({ threadId: thread.id, role: 'user', content: req.content })
+    } else if (req.content.trim() || req.attachments?.length) {
+      const userMessage = repo.insertMessage({
+        threadId: thread.id,
+        role: 'user',
+        content: req.content
+      })
+      for (const pending of (req.attachments ?? []).slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
+        try {
+          attachments.store(thread.id, userMessage.id, pending)
+        } catch (err) {
+          // One bad image must not lose the message the user just wrote.
+          emit({
+            type: 'error',
+            messageId: userMessage.id,
+            error: err instanceof Error ? err.message : String(err)
+          })
+        }
+      }
     }
 
     // Compact before building the request, so the turn goes out at the smaller size.
@@ -443,10 +496,13 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       const model = resolveModel(thread, settings)
       const context = assembleContext(thread, settings)
       const history = repo.getMessages(thread.id)
+      const allowImages = history.some((m) => m.attachments?.length)
+        ? await modelAcceptsImages(model)
+        : true
 
       const params: ChatMessageParam[] = [
         ...(context.systemText ? [{ role: 'system' as const, content: context.systemText }] : []),
-        ...toChatParams(history)
+        ...toChatParams(history, allowImages)
       ]
 
       // OpenRouter silently drops parameters a provider does not implement. For

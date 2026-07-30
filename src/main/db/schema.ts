@@ -113,5 +113,20 @@ export const MIGRATIONS: string[] = [
     VALUES ('delete', old.rowid, old.content);
     INSERT INTO messages_fts (rowid, content) VALUES (new.rowid, new.content);
   END;
+  `,
+/* 3 — image attachments; bytes live on disk, this is the index */ `
+  CREATE TABLE attachments (
+    id         TEXT PRIMARY KEY,
+    message_id TEXT    NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
+    thread_id  TEXT    NOT NULL,
+    mime       TEXT    NOT NULL,
+    filename   TEXT    NOT NULL DEFAULT '',
+    bytes      INTEGER NOT NULL DEFAULT 0,
+    width      INTEGER,
+    height     INTEGER,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX idx_attachments_message ON attachments (message_id);
+  CREATE INDEX idx_attachments_thread  ON attachments (thread_id);
   `
 ]

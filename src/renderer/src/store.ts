@@ -4,6 +4,7 @@ import type {
   Message,
   OpenRouterModel,
   SearchHit,
+  PendingAttachment,
   Settings,
   SettingsPatch,
   StreamEvent,
@@ -67,7 +68,7 @@ interface State {
       config?: Partial<ThreadConfig>
     }
   ) => Promise<void>
-  send: (content: string) => Promise<void>
+  send: (content: string, attachments?: PendingAttachment[]) => Promise<void>
   regenerate: (messageId: string) => Promise<void>
   abort: () => Promise<void>
   compact: () => Promise<void>
@@ -191,7 +192,7 @@ export const useStore = create<State>((set, get) => ({
     await get().refreshThreads()
   },
 
-  async send(content) {
+  async send(content, pending = []) {
     let threadId = get().activeThreadId
     if (!threadId) {
       const thread = await get().createThread()
@@ -215,11 +216,12 @@ export const useStore = create<State>((set, get) => ({
       systemPromptSnapshot: null,
       isCompactionSummary: false,
       compactedInto: null,
-      usage: null
+      usage: null,
+      attachments: []
     }
     set({ messages: [...get().messages, optimistic], generating: true })
 
-    await api.chat.send({ threadId, content })
+    await api.chat.send({ threadId, content, attachments: pending })
     await get().refreshThreads()
   },
 
@@ -397,7 +399,8 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
         systemPromptSnapshot: null,
         isCompactionSummary: false,
         compactedInto: null,
-        usage: null
+        usage: null,
+        attachments: []
       }
       // Drop the optimistic echo of the user's message; the real row is on disk.
       set({

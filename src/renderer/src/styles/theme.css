@@ -1254,3 +1254,100 @@ button {
 .tool-step {
   margin: 8px 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * Image attachments
+ * ------------------------------------------------------------------ */
+
+.composer__box[data-dragging='true'] {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 10px 0;
+}
+
+.thumb {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  flex: none;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb__remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(5, 5, 8, 0.78);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumb__remove:hover {
+  background: var(--red);
+  color: #14040c;
+}
+
+.thumb__meta {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1px 4px;
+  font-size: 9px;
+  text-align: center;
+  color: var(--text-muted);
+  background: rgba(5, 5, 8, 0.72);
+}
+
+/* In the transcript */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attachment {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  line-height: 0;
+  max-width: 320px;
+  transition: border-color 0.12s;
+}
+
+.attachment:hover {
+  border-color: var(--accent-line);
+}
+
+.attachment img {
+  max-width: 100%;
+  height: auto;
+  max-height: 320px;
+  width: auto;
+  display: block;
+}

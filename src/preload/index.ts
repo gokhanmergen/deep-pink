@@ -128,6 +128,11 @@ const api = {
       ipcRenderer.invoke('data:exportThread', threadId)
   },
 
+  attachments: {
+    /** Opens a stored image at full size in the desktop's image viewer. */
+    open: (id: string): Promise<void> => ipcRenderer.invoke('attachments:open', id)
+  },
+
   shell: {
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url)
   },

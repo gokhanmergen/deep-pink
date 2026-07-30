@@ -32,6 +32,22 @@ suite(
       })
     }
 
+    // A user message with an image, so the transcript has one to render.
+    const PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+    const withImage = repo.insertMessage({
+      threadId: thread.id,
+      role: 'user',
+      content: 'what is in this image?'
+    })
+    const storedImage = subject.attachments.store(thread.id, withImage.id, {
+      mime: 'image/png',
+      filename: 'probe.png',
+      data: PNG,
+      width: 1,
+      height: 1
+    })
+
     const win = getWindow()
     check('the window exists', Boolean(win))
     if (!win) return
@@ -104,6 +120,40 @@ suite(
     )
     check('the send button is reachable', chrome.sendButtonVisible, chrome)
     check('the top bar is on screen', chrome.topbarVisible, chrome)
+
+    section('image attachments render and load')
+    // The app only ever renders these as <img>, never fetches them, and the CSP
+    // deliberately allows dpimg: for images only — so decoding the element is
+    // both the real path and the strongest available assertion.
+    const images = await run(`(async () => {
+      const el = document.querySelector('.attachment img')
+      if (!el) return { rendered: 0 }
+      try { await el.decode() } catch (e) { return { rendered: 1, decodeError: String(e) } }
+      return {
+        rendered: document.querySelectorAll('.attachment img').length,
+        src: el.src,
+        complete: el.complete,
+        naturalWidth: el.naturalWidth,
+        naturalHeight: el.naturalHeight
+      }
+    })()`)
+
+    check('the attachment is rendered in the transcript', images.rendered === 1, images)
+    check(
+      'it is addressed over the dpimg protocol',
+      String(images.src || '').startsWith('dpimg://attachment/'),
+      images.src
+    )
+    check(
+      'the protocol served bytes the browser could decode',
+      images.complete === true && images.naturalWidth === 1 && images.naturalHeight === 1,
+      images
+    )
+    check(
+      'the rendered image is the one that was stored',
+      String(images.src || '').endsWith(storedImage.id),
+      { src: images.src, id: storedImage.id }
+    )
 
     section('drag regions are confined to the macOS title bar')
     const drag = await run(`document.documentElement.dataset.windowDrag`)

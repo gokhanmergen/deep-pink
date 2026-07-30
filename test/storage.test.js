@@ -155,6 +155,50 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   repo.deleteThread(long.id)
   check('deleting a thread removes its messages', repo.getMessages(long.id, true).length === 0)
 
+  section('image attachments')
+  const { attachments } = subject
+  // A 1x1 red PNG.
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+
+  const imgThread = repo.createThread('With pictures')
+  const withImage = repo.insertMessage({ threadId: imgThread.id, role: 'user', content: 'look' })
+  const storedImage = attachments.store(imgThread.id, withImage.id, {
+    mime: 'image/png', filename: 'shot.png', data: PNG, width: 1, height: 1
+  })
+
+  check('the image is stored and given an id', Boolean(storedImage.id), storedImage.id)
+  check('it is addressed by the custom protocol', storedImage.url === `dpimg://attachment/${storedImage.id}`, storedImage.url)
+  check('its byte count is recorded', storedImage.bytes > 0 && storedImage.bytes < 200, storedImage.bytes)
+  check('the file exists on disk', attachments.filePath(storedImage.id) !== null)
+  check(
+    'it comes back attached to its message',
+    repo.getMessages(imgThread.id)[0].attachments.length === 1,
+    repo.getMessages(imgThread.id)[0].attachments
+  )
+  check(
+    'it converts to a data URL for the provider',
+    attachments.toDataUrl(storedImage).startsWith('data:image/png;base64,iVBOR'),
+    attachments.toDataUrl(storedImage).slice(0, 40)
+  )
+
+  const refuse = (input) => {
+    try { attachments.store(imgThread.id, withImage.id, input); return false } catch { return true }
+  }
+  check('a non-image type is refused', refuse({ mime: 'application/pdf', filename: 'a.pdf', data: PNG, width: null, height: null }))
+  check('an executable disguised by mime is refused', refuse({ mime: 'application/x-mach-binary', filename: 'x', data: PNG, width: null, height: null }))
+  check('an empty payload is refused', refuse({ mime: 'image/png', filename: 'e.png', data: '', width: null, height: null }))
+  check('an oversized image is refused', refuse({
+    mime: 'image/png', filename: 'big.png',
+    data: 'A'.repeat(Math.ceil((attachments.MAX_ATTACHMENT_BYTES + 4) / 3) * 4),
+    width: null, height: null
+  }))
+
+  section('attachments follow their message')
+  repo.deleteThread(imgThread.id)
+  check('rows go when the thread goes', attachments.forMessage(withImage.id).length === 0)
+  check('and the orphaned file is swept up', attachments.collectOrphans() >= 1)
+  check('sweeping twice finds nothing more', attachments.collectOrphans() === 0)
+
   section('settings round trip')
   repo.setSetting('probe', { nested: { value: 7 } })
   check('settings survive a round trip', repo.getSetting('probe', null).nested.value === 7)

@@ -27,6 +27,36 @@ export interface ToolResult {
   durationMs: number
 }
 
+/**
+ * An image attached to a message. The bytes live on disk under the user data
+ * directory; only metadata is stored in the database and only metadata crosses
+ * IPC. The renderer loads the image through the `dpimg://` protocol so a thread
+ * full of pictures does not have to be serialised into the transcript payload.
+ */
+export interface Attachment {
+  id: string
+  messageId: string
+  mime: string
+  filename: string
+  bytes: number
+  /** Intrinsic size, when it could be determined. */
+  width: number | null
+  height: number | null
+  createdAt: number
+  /** Where the renderer should load it from: `dpimg://attachment/<id>`. */
+  url: string
+}
+
+/** An image on its way to being sent, before it has been stored. */
+export interface PendingAttachment {
+  mime: string
+  filename: string
+  /** Base64 payload, without a data-URL prefix. */
+  data: string
+  width: number | null
+  height: number | null
+}
+
 export interface Message {
   id: string
   threadId: string
@@ -54,6 +84,8 @@ export interface Message {
   /** Compacted-away messages are hidden from the transcript but kept on disk. */
   compactedInto: string | null
   usage: Usage | null
+  /** Images the user attached to this message. */
+  attachments: Attachment[]
 }
 
 export interface Thread {
@@ -405,6 +437,8 @@ export interface SendMessageRequest {
   content: string
   /** Regenerate from an existing message instead of appending a new user turn. */
   regenerateFromMessageId?: string
+  /** Images to attach to the user turn. */
+  attachments?: PendingAttachment[]
 }
 
 /* ------------------------------------------------------------------ *

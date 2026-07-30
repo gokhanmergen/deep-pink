@@ -91,6 +91,33 @@ export function MessageItem({
         </div>
       </div>
 
+      {message.attachments.length > 0 && (
+        <div className="attachments">
+          {message.attachments.map((image) => (
+            <a
+              key={image.id}
+              className="attachment"
+              href={image.url}
+              onClick={(event) => {
+                // Open at full size in the default image viewer rather than
+                // navigating the app away from the conversation.
+                event.preventDefault()
+                void window.deepPink.attachments.open(image.id)
+              }}
+              title={`${image.filename} — ${Math.round(image.bytes / 1024)} KB`}
+            >
+              <img
+                src={image.url}
+                alt={image.filename}
+                width={image.width ?? undefined}
+                height={image.height ?? undefined}
+                loading="lazy"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+
       <div className="message__body">
         {editing ? (
           <div>

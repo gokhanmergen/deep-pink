@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type {
+  Attachment,
   DailyUsage,
   GlobalStats,
   McpServerConfig,
@@ -13,6 +14,7 @@ import type {
   Usage
 } from '@shared/types'
 import { getDb } from './index'
+import * as attachments from '../attachments'
 
 /* ------------------------------------------------------------------ *
  * Row shapes
@@ -97,7 +99,11 @@ function toThread(row: ThreadRow): Thread {
   }
 }
 
-function toMessage(row: MessageRow, usage: Usage | null = null): Message {
+function toMessage(
+  row: MessageRow,
+  usage: Usage | null = null,
+  attachments: Attachment[] = []
+): Message {
   return {
     id: row.id,
     threadId: row.thread_id,
@@ -114,7 +120,8 @@ function toMessage(row: MessageRow, usage: Usage | null = null): Message {
     systemPromptSnapshot: parseJson(row.system_prompt_snapshot, null),
     isCompactionSummary: row.is_compaction_summary === 1,
     compactedInto: row.compacted_into,
-    usage
+    usage,
+    attachments
   }
 }
 
@@ -318,7 +325,7 @@ export function getMessage(id: string): Message | null {
   const usageRow = getDb().prepare('SELECT * FROM usage WHERE message_id = ?').get(id) as
     | UsageRow
     | undefined
-  return toMessage(row, usageRow ? toUsage(usageRow) : null)
+  return toMessage(row, usageRow ? toUsage(usageRow) : null, attachments.forMessage(id))
 }
 
 /**
@@ -340,7 +347,11 @@ export function getMessages(threadId: string, includeCompacted = false): Message
   )[]
   const usageByMessage = new Map(usageRows.map((u) => [u.message_id, toUsage(u)]))
 
-  return rows.map((row) => toMessage(row, usageByMessage.get(row.id) ?? null))
+  const attachmentsByMessage = attachments.forThread(threadId)
+
+  return rows.map((row) =>
+    toMessage(row, usageByMessage.get(row.id) ?? null, attachmentsByMessage.get(row.id) ?? [])
+  )
 }
 
 export function deleteMessage(id: string): void {
