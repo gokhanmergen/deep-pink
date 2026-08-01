@@ -113,8 +113,11 @@ button {
   height: 100%;
 }
 
+/* With the sidebar hidden it is not rendered at all, so the grid must drop to a
+   single column. Leaving a `0 1fr` template puts the only child in the zero-wide
+   first column and crushes the whole app into the left edge. */
 .app[data-sidebar='hidden'] {
-  grid-template-columns: 0 1fr;
+  grid-template-columns: 1fr;
 }
 
 /* ------------------------------------------------------------------ *

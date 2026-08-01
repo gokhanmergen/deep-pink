@@ -121,6 +121,64 @@ suite(
     check('the send button is reachable', chrome.sendButtonVisible, chrome)
     check('the top bar is on screen', chrome.topbarVisible, chrome)
 
+    section('hiding the sidebar keeps the app full width')
+    const measure = () => run(`(() => {
+      const main = document.querySelector('.main')
+      const composer = document.getElementById('composer-input')
+      return {
+        sidebarState: document.querySelector('.app').dataset.sidebar,
+        sidebarRendered: !!document.querySelector('.sidebar'),
+        mainWidth: main ? Math.round(main.getBoundingClientRect().width) : 0,
+        composerWidth: composer ? Math.round(composer.getBoundingClientRect().width) : 0,
+        composerCentre: composer
+          ? Math.round(composer.getBoundingClientRect().left + composer.getBoundingClientRect().width / 2)
+          : 0,
+        mainCentre: main
+          ? Math.round(main.getBoundingClientRect().left + main.getBoundingClientRect().width / 2)
+          : 0,
+        viewport: window.innerWidth
+      }
+    })()`)
+    const toggle = () => run(
+      `[...document.querySelectorAll('.topbar .btn')].find((b) => b.textContent.trim() === '\u2630').click()`
+    )
+
+    const shown = await measure()
+    check('the main column leaves room for the sidebar', shown.mainWidth < shown.viewport, shown)
+
+    await toggle()
+    await settle(400)
+    const hidden = await measure()
+
+    check('the sidebar is gone', hidden.sidebarState === 'hidden' && !hidden.sidebarRendered, hidden)
+    check(
+      'the main column takes the whole window instead of collapsing',
+      hidden.mainWidth >= hidden.viewport - 2,
+      hidden
+    )
+    // The composer is deliberately capped for line length, so it recentres
+    // rather than growing — what matters is that it stays centred and readable.
+    check(
+      'the composer keeps its readable width',
+      hidden.composerWidth === shown.composerWidth && hidden.composerWidth > 400,
+      { hidden: hidden.composerWidth, shown: shown.composerWidth }
+    )
+    check(
+      'and recentres in the wider column',
+      Math.abs(hidden.composerCentre - hidden.mainCentre) <= 2 &&
+        hidden.composerCentre < shown.composerCentre,
+      { hidden, shown: shown.composerCentre }
+    )
+
+    await toggle()
+    await settle(400)
+    const restored = await measure()
+    check(
+      'toggling back restores the sidebar and the original width',
+      restored.sidebarRendered && Math.abs(restored.mainWidth - shown.mainWidth) <= 2,
+      restored
+    )
+
     section('image attachments render and load')
     // The app only ever renders these as <img>, never fetches them, and the CSP
     // deliberately allows dpimg: for images only — so decoding the element is
