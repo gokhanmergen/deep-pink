@@ -138,6 +138,19 @@ button {
   align-items: center;
   gap: 8px;
   padding: 14px 14px 10px;
+  transition: padding-left 0.15s;
+}
+
+/* macOS puts its window buttons over the top-left of the content, so move the
+   brand clear of them — and put it back in fullscreen, where they are gone. */
+:root[data-traffic-lights='on'] .sidebar__brand {
+  padding-left: 78px;
+}
+
+/* With the sidebar hidden there is no brand row, and the buttons land on the
+   top bar's controls instead. */
+:root[data-traffic-lights='on'] .app[data-sidebar='hidden'] .topbar {
+  padding-left: 82px;
 }
 
 /* Draggable regions are only switched on where they are actually needed: the

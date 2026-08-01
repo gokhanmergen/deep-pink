@@ -46,8 +46,12 @@ export function App(): React.JSX.Element {
   // elsewhere in the window, including the composer.
   useEffect(() => {
     const apply = (fullscreen: boolean): void => {
-      const draggable = window.deepPink.platform === 'darwin' && !fullscreen
-      document.documentElement.dataset.windowDrag = draggable ? 'on' : 'off'
+      // macOS draws its close/minimise/zoom buttons inside our content area
+      // when the title bar is hidden, and hides them in fullscreen. The same
+      // condition governs both: where they sit, and where dragging works.
+      const overlapping = window.deepPink.platform === 'darwin' && !fullscreen
+      document.documentElement.dataset.windowDrag = overlapping ? 'on' : 'off'
+      document.documentElement.dataset.trafficLights = overlapping ? 'on' : 'off'
     }
     apply(false)
     return window.deepPink.window.onState((state) => apply(state.fullscreen))
