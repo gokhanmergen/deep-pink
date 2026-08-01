@@ -198,6 +198,16 @@ git push --follow-tags
 
 The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum pnpm test`.
 
+To change the app icon, point the generator at one square image and rebuild:
+
+```bash
+python3 scripts/make-icons.py artwork.png
+```
+
+It writes `build/icon.icns` (macOS, padded to Apple's 824-in-1024 grid),
+`build/icon.png` (Linux, full-bleed) and `build/icon.ico` (Windows). Needs
+Pillow; the `.icns` step needs macOS.
+
 ## Project layout
 
 ```
