@@ -393,31 +393,76 @@ suite(
     await settle(300)
     check('escape dismisses it', (await menu()).open === false)
 
-    section('deleting from the menu asks first')
+    section('deleting asks in-app, not with a native dialog')
     const threadsBefore = repo.listThreads().length
 
-    // Decline: nothing should happen.
-    await run(`(() => { window.confirm = () => false; return 'stubbed' })()`)
-    await rightClick('Context menu fixture')
-    await settle(300)
-    await run(
-      `[...document.querySelectorAll('.context-menu__item')].find((b) => b.textContent.includes('Delete')).click()`
-    )
-    await settle(700)
-    check('declining keeps the thread', repo.listThreads().length === threadsBefore, repo.listThreads().length)
+    const openDeleteDialog = async () => {
+      await rightClick('Context menu fixture')
+      await settle(300)
+      await run(
+        `[...document.querySelectorAll('.context-menu__item')].find((b) => b.textContent.includes('Delete')).click()`
+      )
+      await settle(400)
+      return run(`(() => {
+        const d = document.querySelector('.dialog')
+        if (!d) return { open: false }
+        return {
+          open: true,
+          title: d.querySelector('.dialog__title')?.textContent?.trim(),
+          body: d.querySelector('.dialog__text')?.textContent?.trim(),
+          buttons: [...d.querySelectorAll('.dialog__actions .btn')].map((b) => b.textContent.trim()),
+          focused: document.activeElement?.textContent?.trim()
+        }
+      })()`)
+    }
 
-    // Accept: it goes, and takes its messages with it.
-    await run(`(() => { window.confirm = () => true; return 'stubbed' })()`)
-    await rightClick('Context menu fixture')
-    await settle(300)
-    await run(
-      `[...document.querySelectorAll('.context-menu__item')].find((b) => b.textContent.includes('Delete')).click()`
-    )
+    const dialog = await openDeleteDialog()
+    check('an in-app dialog appears', dialog.open === true, dialog)
+    check('it names the thread', /Context menu fixture/.test(dialog.title ?? ''), dialog.title)
+    check('it warns the messages go too', /cannot be undone/.test(dialog.body ?? ''), dialog.body)
+    check('it offers cancel and delete', JSON.stringify(dialog.buttons) === '["Cancel","Delete"]', dialog.buttons)
+    check('the confirming button takes focus', dialog.focused === 'Delete', dialog.focused)
+
+    // Escape must back out without deleting.
+    await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+    await settle(400)
+    check('escape dismisses it', await run(`!document.querySelector('.dialog')`))
+    check('and nothing was deleted', repo.listThreads().length === threadsBefore, repo.listThreads().length)
+
+    // Cancel must back out too.
+    await openDeleteDialog()
+    await run(`[...document.querySelectorAll('.dialog__actions .btn')].find((b) => b.textContent.trim() === 'Cancel').click()`)
+    await settle(500)
+    check('cancelling keeps the thread', repo.listThreads().length === threadsBefore, repo.listThreads().length)
+
+    // Confirming deletes it.
+    await openDeleteDialog()
+    await run(`[...document.querySelectorAll('.dialog__actions .btn')].find((b) => b.textContent.trim() === 'Delete').click()`)
     await settle(900)
 
     check('confirming removes it', repo.listThreads().length === threadsBefore - 1, repo.listThreads().length)
     check('its messages go too', repo.getMessages(extra.id, true).length === 0)
+    check('the dialog closes', await run(`!document.querySelector('.dialog')`))
 
+    section('the About box reports the real version')
+    await run(`[...document.querySelectorAll('.sidebar__footer .btn')]
+      .find((b) => b.textContent.trim() === 'Settings').click()`)
+    await settle(500)
+    await run(`[...document.querySelectorAll('.tab')].find((t) => t.textContent.trim() === 'Data').click()`)
+    await settle(800)
+
+    const about = await run(`(() => {
+      const heading = [...document.querySelectorAll('.section-title')].find((e) => e.textContent.trim() === 'About')
+      return heading?.nextElementSibling?.textContent?.trim() ?? null
+    })()`)
+    const declared = require('../package.json').version
+
+    check('About shows a version at all', typeof about === 'string' && about.length > 0, about)
+    check(
+      'and it matches package.json rather than a written-down one',
+      (about ?? '').includes(`Deep Pink ${declared}`),
+      { about, declared }
+    )
   },
   { bootApp: true }
 )

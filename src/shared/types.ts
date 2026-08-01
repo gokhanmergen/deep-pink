@@ -505,6 +505,16 @@ export interface ImportResult extends ImportPreview {
   imagesMissing: number
 }
 
+/** Build identity, read from Electron rather than written down. */
+export interface AppInfo {
+  version: string
+  electron: string
+  chromium: string
+  node: string
+  platform: string
+  arch: string
+}
+
 export interface SearchHit {
   threadId: string
   threadTitle: string

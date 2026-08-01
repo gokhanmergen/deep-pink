@@ -180,6 +180,19 @@ export function registerIpc(): void {
     }
   })
 
+  /* ---------------- about ---------------- */
+
+  // Read from Electron rather than written down anywhere, so a release cannot
+  // ship an About box claiming the wrong version.
+  ipcMain.handle('app:info', () => ({
+    version: __APP_VERSION__,
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    node: process.versions.node,
+    platform: process.platform,
+    arch: process.arch
+  }))
+
   /* ---------------- import ---------------- */
 
   ipcMain.handle('import:choose', async (event): Promise<string | null> => {

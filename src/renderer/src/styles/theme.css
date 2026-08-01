@@ -1493,3 +1493,53 @@ button {
   color: var(--text-dim);
   font-family: var(--mono);
 }
+
+/* ------------------------------------------------------------------ *
+ * Confirm / prompt dialog
+ * ------------------------------------------------------------------ */
+
+.dialog__overlay {
+  z-index: 200;
+}
+
+.dialog {
+  max-width: 420px;
+}
+
+.dialog__body {
+  padding: 18px 20px 4px;
+}
+
+.dialog__title {
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+
+.dialog__text {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 18px;
+}
+
+.btn--danger-solid {
+  background: var(--red);
+  border-color: var(--red);
+  color: #1a0406;
+  font-weight: 600;
+}
+
+.btn--danger-solid:hover {
+  background: #ff6b70;
+  border-color: #ff6b70;
+  color: #1a0406;
+}

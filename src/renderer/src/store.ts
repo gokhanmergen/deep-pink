@@ -37,6 +37,41 @@ export interface Toast {
   tone: 'info' | 'error'
 }
 
+/**
+ * An in-app replacement for window.confirm / window.prompt.
+ *
+ * The native ones are OS-drawn, ignore the app's theme, and block the renderer
+ * while they are open. This keeps the promise-based shape of the originals so
+ * call sites read the same way.
+ */
+export interface DialogRequest {
+  kind: 'confirm' | 'prompt'
+  title: string
+  body?: string
+  confirmLabel: string
+  cancelLabel: string
+  danger: boolean
+  defaultValue: string
+  placeholder?: string
+  resolve: (value: string | null) => void
+}
+
+export interface ConfirmOptions {
+  title: string
+  body?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  danger?: boolean
+}
+
+export interface PromptOptions {
+  title: string
+  body?: string
+  defaultValue?: string
+  placeholder?: string
+  confirmLabel?: string
+}
+
 interface State {
   ready: boolean
   settings: Settings | null
@@ -53,6 +88,7 @@ interface State {
   searchHits: SearchHit[]
   pendingApproval: PendingApproval | null
   toast: Toast | null
+  dialog: DialogRequest | null
   /** Message id the transcript should scroll to and flash. */
   highlightMessageId: string | null
 
@@ -81,6 +117,11 @@ interface State {
   showToast: (message: string, tone?: Toast['tone']) => void
   approveTool: (approved: boolean) => Promise<void>
   setHighlight: (messageId: string | null) => void
+  /** Resolves true if the user confirms. */
+  askConfirm: (options: ConfirmOptions) => Promise<boolean>
+  /** Resolves the entered text, or null if cancelled. */
+  askPrompt: (options: PromptOptions) => Promise<string | null>
+  resolveDialog: (value: string | null) => void
 }
 
 const api = window.deepPink
@@ -119,6 +160,7 @@ export const useStore = create<State>((set, get) => ({
   searchHits: [],
   pendingApproval: null,
   toast: null,
+  dialog: null,
   highlightMessageId: null,
 
   async init() {
@@ -314,6 +356,47 @@ export const useStore = create<State>((set, get) => ({
 
   setHighlight(messageId) {
     set({ highlightMessageId: messageId })
+  },
+
+  askConfirm(options) {
+    return new Promise<boolean>((resolve) => {
+      set({
+        dialog: {
+          kind: 'confirm',
+          title: options.title,
+          body: options.body,
+          confirmLabel: options.confirmLabel ?? 'Confirm',
+          cancelLabel: options.cancelLabel ?? 'Cancel',
+          danger: options.danger ?? false,
+          defaultValue: '',
+          resolve: (value) => resolve(value !== null)
+        }
+      })
+    })
+  },
+
+  askPrompt(options) {
+    return new Promise<string | null>((resolve) => {
+      set({
+        dialog: {
+          kind: 'prompt',
+          title: options.title,
+          body: options.body,
+          confirmLabel: options.confirmLabel ?? 'Save',
+          cancelLabel: 'Cancel',
+          danger: false,
+          defaultValue: options.defaultValue ?? '',
+          placeholder: options.placeholder,
+          resolve
+        }
+      })
+    })
+  },
+
+  resolveDialog(value) {
+    const pending = get().dialog
+    set({ dialog: null })
+    pending?.resolve(value)
   }
 }))
 

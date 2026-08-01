@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const buildDir = join(root, '.test-build')
 const testDir = join(root, 'test')
 
@@ -28,6 +29,7 @@ const bundle = spawnSync(
     '--format=cjs',
     '--external:electron',
     '--external:better-sqlite3',
+    `--define:__APP_VERSION__=${JSON.stringify(version)}`,
     `--alias:@=${join(root, 'src', 'main')}`,
     `--alias:@shared=${join(root, 'src', 'shared')}`,
     `--outfile=${join(buildDir, 'bundle.js')}`

@@ -14,6 +14,7 @@ import { GlobalStatsPanel, ThreadStatsPanel } from './components/StatsPanels'
 import { McpPanel } from './components/McpPanel'
 import { KeybindCheatsheet } from './components/KeybindCheatsheet'
 import { ToolApprovalDialog } from './components/ToolApprovalDialog'
+import { Dialog } from './components/Dialog'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -153,6 +154,7 @@ export function App(): React.JSX.Element {
       {overlay === 'keybinds' && <KeybindCheatsheet onClose={close} />}
 
       <ToolApprovalDialog />
+      <Dialog />
 
       {toast && (
         <div className="toast" data-tone={toast.tone}>

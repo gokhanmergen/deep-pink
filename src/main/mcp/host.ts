@@ -91,7 +91,8 @@ export async function connect(serverId: string): Promise<McpServerStatus> {
 
   try {
     const client = new Client(
-      { name: 'deep-pink', version: '0.1.0' },
+      // Servers see this in their logs; a hardcoded version would go stale.
+      { name: 'deep-pink', version: __APP_VERSION__ },
       { capabilities: {} }
     )
 

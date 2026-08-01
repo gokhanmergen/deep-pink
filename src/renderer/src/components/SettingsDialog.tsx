@@ -5,7 +5,7 @@ import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS } from '@shared/defaults'
 import { modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
-import type { ImportPreview, ImportResult } from '@shared/types'
+import type { AppInfo, ImportPreview, ImportResult } from '@shared/types'
 
 type Tab = 'account' | 'models' | 'prompts' | 'web' | 'context' | 'appearance' | 'keys' | 'data'
 
@@ -31,6 +31,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [apiKey, setApiKey] = useState('')
   const [dbLocation, setDbLocation] = useState('')
   const [encryption, setEncryption] = useState(true)
+  const [info, setInfo] = useState<AppInfo | null>(null)
   const [capturing, setCapturing] = useState<string | null>(null)
   const [importPath, setImportPath] = useState<string | null>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
@@ -40,6 +41,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   useEffect(() => {
     void window.deepPink.data.path().then(setDbLocation)
     void window.deepPink.settings.encryptionAvailable().then(setEncryption)
+    void window.deepPink.app.info().then(setInfo)
   }, [])
 
   // While capturing a shortcut, swallow the keystroke and store it.
@@ -797,7 +799,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <button
                   className="btn btn--danger"
                   onClick={async () => {
-                    if (!window.confirm('Delete all threads, messages and statistics?')) return
+                    const ok = await useStore.getState().askConfirm({
+                      title: 'Delete every conversation?',
+                      body: 'All threads, messages and usage statistics are removed. Settings, keys and MCP servers are kept. This cannot be undone.',
+                      confirmLabel: 'Delete everything',
+                      danger: true
+                    })
+                    if (!ok) return
                     await window.deepPink.data.wipe()
                     await useStore.getState().refreshThreads()
                     await useStore.getState().selectThread(null)
@@ -811,8 +819,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="section-title">About</div>
-            <p className="dim" style={{ fontSize: 13 }}>
-              Deep Pink 0.1.0 — MIT licensed, open source.
+            <p className="dim" style={{ fontSize: 13, lineHeight: 1.6 }}>
+              Deep Pink {info?.version ?? '…'} — MIT licensed, open source.
+              {info && (
+                <>
+                  <br />
+                  <span className="mono">
+                    Electron {info.electron} · Chromium {info.chromium} · Node {info.node} ·{' '}
+                    {info.platform}-{info.arch}
+                  </span>
+                </>
+              )}
             </p>
             <button
               className="btn btn--ghost"

@@ -48,8 +48,12 @@ export function buildActions(): AppAction[] {
       id: 'thread.rename',
       label: 'Rename thread',
       group: 'Threads',
-      run: requireThread((id) => {
-        const next = window.prompt('Thread name', thread?.title ?? '')
+      run: requireThread(async (id) => {
+        const next = await store.askPrompt({
+          title: 'Rename thread',
+          defaultValue: thread?.title ?? '',
+          placeholder: 'Thread name'
+        })
         if (next !== null) void store.updateThread(id, { title: next.trim() })
       })
     },
@@ -57,8 +61,14 @@ export function buildActions(): AppAction[] {
       id: 'thread.delete',
       label: 'Delete thread',
       group: 'Threads',
-      run: requireThread((id) => {
-        if (window.confirm('Delete this thread and its messages?')) void store.deleteThread(id)
+      run: requireThread(async (id) => {
+        const ok = await store.askConfirm({
+          title: `Delete “${thread?.title || 'Untitled thread'}”?`,
+          body: 'Its messages go with it. This cannot be undone.',
+          confirmLabel: 'Delete',
+          danger: true
+        })
+        if (ok) void store.deleteThread(id)
       })
     },
     {
@@ -178,14 +188,17 @@ export function buildActions(): AppAction[] {
       label: 'Edit the last message I sent',
       group: 'Messages',
       hidden: true,
-      run: () => {
+      run: async () => {
         const last = [...store.messages].reverse().find((m) => m.role === 'user')
         if (!last) return
-        const next = window.prompt('Edit message', last.content)
+        const next = await store.askPrompt({
+          title: 'Edit message',
+          defaultValue: last.content,
+          confirmLabel: 'Save'
+        })
         if (next === null) return
-        void window.deepPink.messages
-          .update(last.id, { content: next })
-          .then(() => store.selectThread(store.activeThreadId))
+        await window.deepPink.messages.update(last.id, { content: next })
+        await store.selectThread(store.activeThreadId)
       }
     },
     {

@@ -6,6 +6,7 @@ import type {
   Message,
   ModelEndpoint,
   OpenRouterModel,
+  AppInfo,
   ImportPreview,
   ImportResult,
   SearchHit,
@@ -128,6 +129,11 @@ const api = {
       threadId: string
     ): Promise<{ thread: Thread; messages: Message[]; exportedAt: string } | null> =>
       ipcRenderer.invoke('data:exportThread', threadId)
+  },
+
+  app: {
+    /** Version and runtime versions, for the About box and bug reports. */
+    info: (): Promise<AppInfo> => ipcRenderer.invoke('app:info')
   },
 
   import: {

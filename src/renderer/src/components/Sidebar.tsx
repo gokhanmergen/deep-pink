@@ -24,6 +24,7 @@ export function Sidebar(): React.JSX.Element {
   const updateThread = useStore((s) => s.updateThread)
   const deleteThread = useStore((s) => s.deleteThread)
   const showToast = useStore((s) => s.showToast)
+  const askConfirm = useStore((s) => s.askConfirm)
   const settings = useStore((s) => s.settings)
 
   const [menu, setMenu] = useState<{ x: number; y: number; thread: Thread } | null>(null)
@@ -80,11 +81,17 @@ export function Sidebar(): React.JSX.Element {
       hint: formatBinding(settings?.keybinds['thread.delete'] ?? 'mod+shift+backspace'),
       danger: true,
       onSelect: () => {
-        const name = thread.title || 'this untitled thread'
         // Deleting takes the messages with it and cannot be undone, so ask —
         // naming the thread, since the menu may not be over the active one.
-        if (!window.confirm(`Delete “${name}” and all of its messages?`)) return
-        void deleteThread(thread.id)
+        void (async () => {
+          const ok = await askConfirm({
+            title: `Delete “${thread.title || 'Untitled thread'}”?`,
+            body: 'Its messages go with it. This cannot be undone.',
+            confirmLabel: 'Delete',
+            danger: true
+          })
+          if (ok) void deleteThread(thread.id)
+        })()
       }
     }
   ]

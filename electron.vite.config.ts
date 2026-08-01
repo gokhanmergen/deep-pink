@@ -1,9 +1,18 @@
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import pkg from './package.json'
+
+/**
+ * The app version, baked in from package.json — the single place it is
+ * declared. `app.getVersion()` was tempting, but it reports Electron's own
+ * version whenever the app path has no package.json beside it.
+ */
+const define = { __APP_VERSION__: JSON.stringify(pkg.version) }
 
 export default defineConfig({
   main: {
+    define,
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
@@ -17,6 +26,7 @@ export default defineConfig({
     }
   },
   preload: {
+    define,
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
@@ -30,6 +40,7 @@ export default defineConfig({
     }
   },
   renderer: {
+    define,
     root: resolve(__dirname, 'src/renderer'),
     build: {
       rollupOptions: {
