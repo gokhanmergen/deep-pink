@@ -71,6 +71,7 @@ export const EMPTY_THREAD_CONFIG: ThreadConfig = {
   maxTokens: null,
   webAccessEnabled: null,
   enabledMcpServers: null,
+  repoPaths: [],
   disabledPromptSegments: []
 }
 
@@ -488,7 +489,7 @@ export function recordUsage(
 export function recordToolInvocation(input: {
   threadId: string
   messageId: string
-  source: 'mcp' | 'web'
+  source: 'mcp' | 'web' | 'repo'
   serverId: string | null
   toolName: string
   isError: boolean

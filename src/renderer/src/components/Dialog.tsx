@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 
 /**
@@ -16,20 +16,19 @@ export function Dialog(): React.JSX.Element | null {
   const inputRef = useRef<HTMLInputElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
+  // Focus what the user is about to act on: the field if there is one, else the
+  // confirming button. Done at layout time rather than on an animation frame,
+  // which Chromium throttles when the window is not frontmost — the dialog would
+  // then open with nothing focused and Enter would do nothing.
+  useLayoutEffect(() => {
     if (!dialog) return
     setValue(dialog.defaultValue)
-    // Focus what the user will act on: the field if there is one, else the
-    // confirming button.
-    const frame = requestAnimationFrame(() => {
-      if (dialog.kind === 'prompt') {
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      } else {
-        confirmRef.current?.focus()
-      }
-    })
-    return () => cancelAnimationFrame(frame)
+    if (dialog.kind === 'prompt') {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    } else {
+      confirmRef.current?.focus()
+    }
   }, [dialog])
 
   useEffect(() => {

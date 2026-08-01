@@ -1,3 +1,5 @@
+import { statSync } from 'node:fs'
+import { basename } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type {
   McpServerConfig,
@@ -195,6 +197,32 @@ export function registerIpc(): void {
     platform: process.platform,
     arch: process.arch
   }))
+
+  /* ---------------- attached repositories ---------------- */
+
+  ipcMain.handle('repo:choose', async (event): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0], {
+      title: 'Attach a code repository',
+      message: 'The model can read this directory and everything under it. It cannot change anything.',
+      buttonLabel: 'Attach',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
+  // Directories get moved and deleted; the composer shows which are still there.
+  ipcMain.handle('repo:status', (_e, paths: string[]) =>
+    paths.map((path) => {
+      let available = false
+      try {
+        available = statSync(path).isDirectory()
+      } catch {
+        available = false
+      }
+      return { path, name: basename(path), available }
+    })
+  )
 
   /* ---------------- import ---------------- */
 

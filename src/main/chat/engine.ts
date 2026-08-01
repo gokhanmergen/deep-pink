@@ -20,6 +20,13 @@ import {
   type StreamResult
 } from '../providers/openrouter'
 import { runWebFetch, runWebSearch } from '../tools/web'
+import {
+  REPO_TOOL_NAMES,
+  runRepoFind,
+  runRepoRead,
+  runRepoSearch,
+  runRepoTree
+} from '../tools/repo'
 import * as attachments from '../attachments'
 import { MAX_ATTACHMENTS_PER_MESSAGE } from '../attachments'
 import { assembleContext, estimateTokens } from './prompt'
@@ -382,7 +389,8 @@ async function executeToolCall(
   assistantMessageId: string,
   call: ToolCall,
   settings: Settings,
-  emit: Emit
+  emit: Emit,
+  repoPaths: string[] = []
 ): Promise<ToolResult> {
   const startedAt = Date.now()
 
@@ -399,7 +407,11 @@ async function executeToolCall(
     }
   }
 
-  const fail = (message: string, source: 'web' | 'mcp', serverId: string | null): ToolResult => {
+  const fail = (
+    message: string,
+    source: 'web' | 'mcp' | 'repo',
+    serverId: string | null
+  ): ToolResult => {
     repo.recordToolInvocation({
       threadId,
       messageId: assistantMessageId,
@@ -419,6 +431,34 @@ async function executeToolCall(
   }
 
   try {
+    if (REPO_TOOL_NAMES.has(call.name)) {
+      const content =
+        call.name === 'repo_tree'
+          ? runRepoTree(repoPaths, args)
+          : call.name === 'repo_read'
+            ? runRepoRead(repoPaths, args)
+            : call.name === 'repo_search'
+              ? runRepoSearch(repoPaths, args)
+              : runRepoFind(repoPaths, args)
+
+      repo.recordToolInvocation({
+        threadId,
+        messageId: assistantMessageId,
+        source: 'repo',
+        serverId: null,
+        toolName: call.name,
+        isError: false,
+        durationMs: Date.now() - startedAt
+      })
+      return {
+        toolCallId: call.id,
+        name: call.name,
+        content,
+        isError: false,
+        durationMs: Date.now() - startedAt
+      }
+    }
+
     if (call.name === 'web_search' || call.name === 'web_fetch') {
       const content =
         call.name === 'web_search'
@@ -471,7 +511,7 @@ async function executeToolCall(
   } catch (err) {
     return fail(
       `Tool failed: ${err instanceof Error ? err.message : String(err)}`,
-      call.name.startsWith('web_') ? 'web' : 'mcp',
+      REPO_TOOL_NAMES.has(call.name) ? 'repo' : call.name.startsWith('web_') ? 'web' : 'mcp',
       null
     )
   }
@@ -710,7 +750,14 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       for (const call of result.toolCalls) {
         if (controller.signal.aborted) return
 
-        const toolResult = await executeToolCall(thread.id, assistant.id, call, settings, emit)
+        const toolResult = await executeToolCall(
+          thread.id,
+          assistant.id,
+          call,
+          settings,
+          emit,
+          thread.config.repoPaths ?? []
+        )
         const toolMessage = repo.insertMessage({
           threadId: thread.id,
           role: 'tool',

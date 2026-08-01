@@ -7,7 +7,9 @@ import {
   stageText,
   type StagedFile
 } from './attachFiles'
+import type { AttachedRepo } from '@shared/types'
 import { useStore } from '../store'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatBinding, matchesBinding } from '../keybinds'
 
 export const COMPOSER_ID = 'composer-input'
@@ -16,6 +18,8 @@ export function Composer(): React.JSX.Element {
   const [value, setValue] = useState('')
   const [images, setImages] = useState<StagedFile[]>([])
   const [dragging, setDragging] = useState(false)
+  const [attachMenu, setAttachMenu] = useState<{ x: number; y: number } | null>(null)
+  const [repos, setRepos] = useState<AttachedRepo[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -81,8 +85,9 @@ export function Composer(): React.JSX.Element {
 
   // Opening a thread means you are about to type in it. Don't steal focus from
   // someone who is already typing somewhere else, though — a search box, a
-  // settings field, or a message they are editing.
-  useEffect(() => {
+  // settings field, or a message they are editing. At layout time, for the same
+  // reason as the dialog: animation frames stall in a background window.
+  useLayoutEffect(() => {
     if (!activeThreadId) return
     const active = document.activeElement
     const busyElsewhere =
@@ -91,8 +96,7 @@ export function Composer(): React.JSX.Element {
       (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
     if (busyElsewhere) return
 
-    const frame = requestAnimationFrame(() => textareaRef.current?.focus())
-    return () => cancelAnimationFrame(frame)
+    textareaRef.current?.focus()
   }, [activeThreadId])
 
   const add = async (files: File[]): Promise<void> => {
@@ -101,6 +105,60 @@ export function Composer(): React.JSX.Element {
     if (staged.length) setImages((current) => [...current, ...staged])
     if (rejected.length) showToast(rejected[0], 'error')
   }
+
+  // Attached directories live on the thread, not the message, so they persist
+  // across turns and follow you when you come back to the conversation.
+  const repoPaths = thread?.config.repoPaths ?? []
+
+  useEffect(() => {
+    if (!repoPaths.length) {
+      setRepos([])
+      return
+    }
+    let cancelled = false
+    void window.deepPink.repo.status(repoPaths).then((list) => {
+      if (!cancelled) setRepos(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [repoPaths.join('|')])
+
+  const attachRepo = async (): Promise<void> => {
+    const path = await window.deepPink.repo.choose()
+    if (!path || !activeThreadId) return
+    if (repoPaths.includes(path)) {
+      showToast('That directory is already attached')
+      return
+    }
+    await updateThread(activeThreadId, { config: { repoPaths: [...repoPaths, path] } })
+  }
+
+  const detachRepo = async (path: string): Promise<void> => {
+    if (!activeThreadId) return
+    await updateThread(activeThreadId, {
+      config: { repoPaths: repoPaths.filter((p) => p !== path) }
+    })
+  }
+
+  const attachOptions = (): ContextMenuItem[] => [
+    {
+      id: 'files',
+      label: 'Images or text files…',
+      onSelect: () => fileInputRef.current?.click()
+    },
+    {
+      id: 'repo',
+      label: 'Code repository…',
+      hint: 'read-only',
+      onSelect: () => void attachRepo()
+    }
+  ]
+
+  // Reading a codebase means reading text the model treats as instructions. If
+  // the same thread can also reach the network, anything hidden in that text has
+  // a way out. Worth saying plainly rather than quietly forbidding.
+  const repoAndWeb = repos.length > 0 && webOn
 
   const pasteThreshold = settings?.ui.pasteAsFileThreshold ?? 2000
 
@@ -171,6 +229,13 @@ export function Composer(): React.JSX.Element {
             <span className="kbd">{formatBinding(keybinds['model.picker'] ?? 'mod+m')}</span>.
           </div>
         )}
+        {repoAndWeb && (
+          <div className="composer__notice">
+            This thread can read <strong>{repos.map((r) => r.name).join(', ')}</strong> and reach the
+            web. A repository can contain text that reads as instructions, and web access is a way
+            for anything it says to leave. Consider turning one off.
+          </div>
+        )}
         {imagesUnsupported && (
           <div className="composer__notice">
             <strong>{modelInfo?.name ?? activeModel}</strong> does not accept images. Attach them to
@@ -195,6 +260,34 @@ export function Composer(): React.JSX.Element {
             void add(files)
           }}
         >
+          {repos.length > 0 && (
+            <div className="repos">
+              {repos.map((repo) => (
+                <div
+                  className="repochip"
+                  key={repo.path}
+                  data-missing={!repo.available}
+                  title={repo.available ? repo.path : `${repo.path} — no longer there`}
+                >
+                  <span className="repochip__icon">◗</span>
+                  <span className="repochip__name">{repo.name}</span>
+                  <span className="repochip__meta">
+                    {repo.available ? 'read-only' : 'missing'}
+                  </span>
+                  <button
+                    className="repochip__remove"
+                    onClick={() => void detachRepo(repo.path)}
+                    title="Detach"
+                    type="button"
+                    aria-label={`Detach ${repo.name}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {images.length > 0 && (
             <div className="thumbs">
               {images.map((item) => {
@@ -274,10 +367,13 @@ export function Composer(): React.JSX.Element {
             />
             <button
               className="btn"
-              onClick={() => fileInputRef.current?.click()}
-              title={`Attach images or text files (up to ${MAX_COUNT})`}
+              onClick={(event) => {
+                const r = event.currentTarget.getBoundingClientRect()
+                setAttachMenu({ x: Math.round(r.left), y: Math.round(r.top) })
+              }}
+              title="Attach images, text files, or a code repository"
               type="button"
-              disabled={images.length >= MAX_COUNT}
+              disabled={!activeThreadId}
             >
               Attach
             </button>
@@ -328,6 +424,15 @@ export function Composer(): React.JSX.Element {
           </div>
         </div>
       </div>
+
+      {attachMenu && (
+        <ContextMenu
+          x={attachMenu.x}
+          y={attachMenu.y}
+          items={attachOptions()}
+          onClose={() => setAttachMenu(null)}
+        />
+      )}
     </div>
   )
 }

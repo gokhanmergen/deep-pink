@@ -7,6 +7,7 @@ import type {
   ModelEndpoint,
   OpenRouterModel,
   AppInfo,
+  AttachedRepo,
   ImportPreview,
   ImportResult,
   LiveStream,
@@ -138,6 +139,14 @@ const api = {
   app: {
     /** Version and runtime versions, for the About box and bug reports. */
     info: (): Promise<AppInfo> => ipcRenderer.invoke('app:info')
+  },
+
+  repo: {
+    /** Opens a directory picker; returns the chosen path, or null if cancelled. */
+    choose: (): Promise<string | null> => ipcRenderer.invoke('repo:choose'),
+    /** Which of these directories still exist. */
+    status: (paths: string[]): Promise<AttachedRepo[]> =>
+      ipcRenderer.invoke('repo:status', paths)
   },
 
   import: {

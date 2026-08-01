@@ -117,6 +117,11 @@ export interface ThreadConfig {
   maxTokens: number | null
   webAccessEnabled: boolean | null
   enabledMcpServers: string[] | null
+  /**
+   * Directories attached to this thread, granting read-only access to their
+   * contents. Attached from the composer, and scoped to this thread alone.
+   */
+  repoPaths: string[]
   /** Segment ids the user has explicitly switched off for this thread. */
   disabledPromptSegments: string[]
 }
@@ -132,6 +137,7 @@ export type SystemPromptSource =
   | 'mcp-resource'
   | 'tools'
   | 'web'
+  | 'repo'
   | 'compaction'
   | 'datetime'
 
@@ -521,6 +527,14 @@ export interface LiveStream {
   messageId: string
   content: string
   reasoning: string
+}
+
+/** A directory attached to a thread, as the composer shows it. */
+export interface AttachedRepo {
+  path: string
+  name: string
+  /** False once the directory has been moved or removed. */
+  available: boolean
 }
 
 export interface SearchHit {

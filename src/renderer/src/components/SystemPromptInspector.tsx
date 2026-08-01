@@ -11,6 +11,7 @@ const SOURCE_LABEL: Record<SystemPromptSegment['source'], string> = {
   'mcp-resource': 'MCP resource',
   tools: 'Tool schemas',
   web: 'Built-in',
+  repo: 'Attached repository',
   compaction: 'Compaction',
   datetime: 'Built-in'
 }

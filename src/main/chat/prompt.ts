@@ -2,6 +2,7 @@ import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
+import { REPO_TOOLS, repoPromptSegment, treeSummary } from '../tools/repo'
 
 /**
  * Everything that enters the model's context is assembled here, as a list of
@@ -93,6 +94,21 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
     })
   }
 
+  // An attached repository: its layout goes in up front so the model starts
+  // oriented instead of spending tool calls rediscovering the directory
+  // structure, which is where the tokens go.
+  const repos = thread.config.repoPaths ?? []
+  if (repos.length) {
+    push({
+      id: 'repo',
+      source: 'repo',
+      label: `Attached repository (${repos.length})`,
+      origin: repos.join(', '),
+      text: repoPromptSegment(repos, treeSummary(repos)),
+      removable: true
+    })
+  }
+
   // MCP-provided instructions, one segment per server, each attributed.
   const activeServers = activeServerIdsFor(thread)
   for (const injected of mcp.getInjectableInstructions(activeServers)) {
@@ -111,6 +127,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
   // can be switched off here too.
   const candidateTools: ToolParam[] = [
     ...(useWeb && settings.web.engine !== 'openrouter' ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL] : []),
+    ...(repos.length ? REPO_TOOLS : []),
     ...mcp.getToolParams(activeServers)
   ]
 
