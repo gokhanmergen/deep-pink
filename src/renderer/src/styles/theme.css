@@ -1440,3 +1440,56 @@ button {
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
+
+/* ------------------------------------------------------------------ *
+ * Context menu
+ * ------------------------------------------------------------------ */
+
+.context-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
+.context-menu {
+  position: fixed;
+  min-width: 176px;
+  padding: 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.context-menu__item[data-active='true'] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.context-menu__item[data-danger='true'][data-active='true'] {
+  background: rgba(242, 85, 90, 0.12);
+  color: var(--red);
+}
+
+.context-menu__label {
+  flex: 1;
+}
+
+.context-menu__hint {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}

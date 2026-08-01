@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   MAX_COUNT,
   attachableFilesFrom,
@@ -45,20 +45,25 @@ export function Composer(): React.JSX.Element {
     modelInfo != null &&
     !modelInfo.inputModalities.includes('image')
 
-  // Publish the composer's height so overlays — toasts, for one — can stay
-  // clear of it. It changes as attachments and warnings come and go.
+  const publishHeight = (): void => {
+    const el = rootRef.current
+    if (!el) return
+    document.documentElement.style.setProperty(
+      '--composer-height',
+      `${Math.round(el.getBoundingClientRect().height)}px`
+    )
+  }
+
+  // Publish the composer's height so overlays — toasts, for one — can stay clear
+  // of it. Every render, because that is what attaching a file or showing a
+  // warning is; a ResizeObserver alone missed those and left the value stale.
+  useLayoutEffect(publishHeight)
+
+  // And once more for changes no render causes, such as the window resizing.
   useEffect(() => {
     const el = rootRef.current
     if (!el) return
-
-    const publish = (): void =>
-      document.documentElement.style.setProperty(
-        '--composer-height',
-        `${Math.round(el.getBoundingClientRect().height)}px`
-      )
-
-    publish()
-    const observer = new ResizeObserver(publish)
+    const observer = new ResizeObserver(publishHeight)
     observer.observe(el)
     return () => {
       observer.disconnect()

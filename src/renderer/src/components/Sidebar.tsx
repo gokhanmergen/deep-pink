@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { dateBucket, formatRelative } from '../format'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { formatBinding } from '../keybinds'
 import type { SearchHit, Thread } from '@shared/types'
 
 /** Renders an FTS snippet, which contains <mark> around the matched terms. */
@@ -19,6 +21,12 @@ export function Sidebar(): React.JSX.Element {
   const runSearch = useStore((s) => s.runSearch)
   const setOverlay = useStore((s) => s.setOverlay)
   const setHighlight = useStore((s) => s.setHighlight)
+  const updateThread = useStore((s) => s.updateThread)
+  const deleteThread = useStore((s) => s.deleteThread)
+  const showToast = useStore((s) => s.showToast)
+  const settings = useStore((s) => s.settings)
+
+  const [menu, setMenu] = useState<{ x: number; y: number; thread: Thread } | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -56,12 +64,41 @@ export function Sidebar(): React.JSX.Element {
     if (hit.messageId) setHighlight(hit.messageId)
   }
 
+  const menuItems = (thread: Thread): ContextMenuItem[] => [
+    {
+      id: 'pin',
+      label: thread.pinned ? 'Unpin' : 'Pin',
+      hint: formatBinding(settings?.keybinds['thread.pin'] ?? 'mod+shift+p'),
+      onSelect: () => {
+        void updateThread(thread.id, { pinned: !thread.pinned })
+        showToast(thread.pinned ? 'Unpinned' : 'Pinned to the top')
+      }
+    },
+    {
+      id: 'delete',
+      label: 'Delete',
+      hint: formatBinding(settings?.keybinds['thread.delete'] ?? 'mod+shift+backspace'),
+      danger: true,
+      onSelect: () => {
+        const name = thread.title || 'this untitled thread'
+        // Deleting takes the messages with it and cannot be undone, so ask —
+        // naming the thread, since the menu may not be over the active one.
+        if (!window.confirm(`Delete “${name}” and all of its messages?`)) return
+        void deleteThread(thread.id)
+      }
+    }
+  ]
+
   const renderThread = (thread: Thread): React.JSX.Element => (
     <button
       key={thread.id}
       className="thread-item"
       data-active={thread.id === activeThreadId}
       onClick={() => void selectThread(thread.id)}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        setMenu({ x: event.clientX, y: event.clientY, thread })
+      }}
       title={thread.title || 'Untitled thread'}
       type="button"
     >
@@ -160,6 +197,15 @@ export function Sidebar(): React.JSX.Element {
           </>
         )}
       </div>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.thread)}
+          onClose={() => setMenu(null)}
+        />
+      )}
 
       <div className="sidebar__footer">
         <button

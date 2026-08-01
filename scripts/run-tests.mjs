@@ -7,7 +7,7 @@
  * On a headless Linux machine, run this under xvfb-run.
  */
 import { spawnSync } from 'node:child_process'
-import { readdirSync, mkdirSync } from 'node:fs'
+import { readdirSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -78,6 +78,17 @@ if (storeBundle.status !== 0) {
 const files = readdirSync(testDir)
   .filter((name) => name.endsWith('.test.js'))
   .sort()
+
+// A test file that does not parse takes Electron down before it prints
+// anything, which looks like a hang rather than a syntax error. Check first.
+for (const file of files) {
+  try {
+    new Function(readFileSync(join(testDir, file), 'utf8'))
+  } catch (err) {
+    console.error(`${file} does not parse: ${err.message}`)
+    process.exit(1)
+  }
+}
 
 let failed = 0
 

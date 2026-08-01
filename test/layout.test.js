@@ -318,6 +318,106 @@ suite(
 
     check('the caret does not jump to the end', caret.caret === caret.expected, caret)
     check('the character lands where it was typed', caret.insertedInPlace === true, caret)
+
+    // Runs last: it creates and deletes threads, which changes what the
+    // transcript shows.
+    await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+    await settle(400)
+
+    section('right-clicking a thread')
+    const extra = repo.createThread('Context menu fixture')
+    repo.insertMessage({ threadId: extra.id, role: 'user', content: 'x' })
+    // The store loaded its thread list at startup and does not poll, so nudge it
+    // with an action that refreshes — which picks up the row written above too.
+    await run(`[...document.querySelectorAll('.sidebar__actions .btn')]
+      .find((b) => b.textContent.includes('New thread')).click()`)
+    await settle(1200)
+
+    const rightClick = (title) => run(`(() => {
+      const el = [...document.querySelectorAll('.thread-item')]
+        .find((t) => t.textContent.includes(${JSON.stringify(title)}))
+      if (!el) return false
+      const r = el.getBoundingClientRect()
+      el.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true, cancelable: true,
+        clientX: Math.round(r.left + 40), clientY: Math.round(r.top + 10)
+      }))
+      return true
+    })()`)
+
+    const menu = () => run(`(() => {
+      const m = document.querySelector('.context-menu')
+      if (!m) return { open: false }
+      const r = m.getBoundingClientRect()
+      return {
+        open: true,
+        items: [...m.querySelectorAll('.context-menu__label')].map((e) => e.textContent.trim()),
+        onScreen:
+          r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight
+      }
+    })()`)
+
+    const opened = await rightClick('Context menu fixture')
+    await settle(300)
+    const menuShown = await menu()
+
+    check('right-clicking opens a menu', opened && menuShown.open, menuShown)
+    check('with exactly pin and delete', JSON.stringify(menuShown.items) === '["Pin","Delete"]', menuShown.items)
+    check('positioned on screen', menuShown.onScreen === true, menuShown)
+
+    // It must act on the thread under the cursor, not whichever is open.
+    const activeBefore = await run(`document.querySelector('.topbar__title')?.textContent?.trim()`)
+    await run(
+      `[...document.querySelectorAll('.context-menu__item')].find((b) => b.textContent.includes('Pin')).click()`
+    )
+    await settle(900)
+
+    const afterPin = await run(`({
+      firstThread: document.querySelector('.thread-item__title')?.textContent?.trim(),
+      hasPinnedGroup: [...document.querySelectorAll('.sidebar__group-label')]
+        .some((e) => e.textContent.trim() === 'Pinned'),
+      active: document.querySelector('.topbar__title')?.textContent?.trim(),
+      menuClosed: !document.querySelector('.context-menu')
+    })`)
+
+    check('pinning moves it to the top', afterPin.firstThread === 'Context menu fixture', afterPin)
+    check('under a pinned heading', afterPin.hasPinnedGroup === true, afterPin)
+    check('the open thread is not switched', afterPin.active === activeBefore, afterPin)
+    check('and the menu closes', afterPin.menuClosed === true, afterPin)
+
+    await rightClick('Context menu fixture')
+    await settle(300)
+    check('reopening offers to unpin', (await menu()).items[0] === 'Unpin', await menu())
+
+    await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+    await settle(300)
+    check('escape dismisses it', (await menu()).open === false)
+
+    section('deleting from the menu asks first')
+    const threadsBefore = repo.listThreads().length
+
+    // Decline: nothing should happen.
+    await run(`(() => { window.confirm = () => false; return 'stubbed' })()`)
+    await rightClick('Context menu fixture')
+    await settle(300)
+    await run(
+      `[...document.querySelectorAll('.context-menu__item')].find((b) => b.textContent.includes('Delete')).click()`
+    )
+    await settle(700)
+    check('declining keeps the thread', repo.listThreads().length === threadsBefore, repo.listThreads().length)
+
+    // Accept: it goes, and takes its messages with it.
+    await run(`(() => { window.confirm = () => true; return 'stubbed' })()`)
+    await rightClick('Context menu fixture')
+    await settle(300)
+    await run(
+      `[...document.querySelectorAll('.context-menu__item')].find((b) => b.textContent.includes('Delete')).click()`
+    )
+    await settle(900)
+
+    check('confirming removes it', repo.listThreads().length === threadsBefore - 1, repo.listThreads().length)
+    check('its messages go too', repo.getMessages(extra.id, true).length === 0)
+
   },
   { bootApp: true }
 )
