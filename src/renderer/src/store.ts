@@ -204,11 +204,45 @@ export const useStore = create<State>((set, get) => ({
       set({ activeThreadId: null, messages: [], generating: false })
       return
     }
-    const [messages, generating] = await Promise.all([
+    const [messages, generating, live] = await Promise.all([
       api.messages.list(id),
-      api.chat.isGenerating(id)
+      api.chat.isGenerating(id),
+      api.chat.liveStreams(id)
     ])
-    set({ activeThreadId: id, messages, generating, highlightMessageId: null })
+
+    // A reply may have been arriving while this thread was not on screen. The
+    // stored row only catches up periodically, so take the text the main
+    // process has accumulated — otherwise the reply resumes mid-sentence.
+    const caughtUp = live.length
+      ? messages.map((message) => {
+          const stream = live.find((s) => s.messageId === message.id)
+          if (!stream) return message
+          return {
+            ...message,
+            content: stream.content || message.content,
+            reasoning: stream.reasoning || message.reasoning,
+            status: 'streaming' as const
+          }
+        })
+      : messages
+
+    set({ activeThreadId: id, messages: caughtUp, generating, highlightMessageId: null })
+
+    // Deltas that arrived while the above was loading were dropped, because the
+    // thread was not on screen to receive them. The buffer holds the whole text
+    // rather than increments, so one more pass is enough to close that gap and
+    // is harmless if nothing changed.
+    if (live.length) {
+      const settled = await api.chat.liveStreams(id)
+      if (get().activeThreadId !== id) return
+      set({
+        messages: get().messages.map((message) => {
+          const stream = settled.find((s) => s.messageId === message.id)
+          if (!stream || stream.content.length <= message.content.length) return message
+          return { ...message, content: stream.content, reasoning: stream.reasoning || message.reasoning }
+        })
+      })
+    }
   },
 
   async createThread() {

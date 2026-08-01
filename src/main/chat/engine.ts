@@ -26,11 +26,54 @@ import { assembleContext, estimateTokens } from './prompt'
 
 export type Emit = (event: StreamEvent) => void
 
+/**
+ * Writes a partial reply to disk at most this often. Frequent enough that a
+ * crash loses little, rare enough not to churn the full-text index — every
+ * content update re-writes that row's FTS entry.
+ */
+const PROGRESS_INTERVAL_MS = 750
+const lastPersisted = new Map<string, number>()
+
+function persistProgress(messageId: string): void {
+  const live = liveStreams.get(messageId)
+  if (!live) return
+
+  const now = Date.now()
+  const previous = lastPersisted.get(messageId) ?? 0
+  if (now - previous < PROGRESS_INTERVAL_MS) return
+
+  lastPersisted.set(messageId, now)
+  repo.updateMessage(messageId, { content: live.content, reasoning: live.reasoning || null })
+}
+
 /** Hard stop so a misbehaving tool loop cannot run forever. */
 const MAX_TOOL_ROUNDS = 12
 
 const abortControllers = new Map<string, AbortController>()
 const pendingApprovals = new Map<string, (approved: boolean) => void>()
+
+/**
+ * Text of replies still arriving, keyed by message id.
+ *
+ * A streamed reply exists only as deltas until the turn ends, so without this
+ * the accumulated text lives nowhere but the window that happened to be showing
+ * it. Leaving that thread threw it away, and coming back showed only what
+ * arrived after the return. The main process now holds it, so any view can ask
+ * for what it missed.
+ */
+interface LiveStream {
+  threadId: string
+  messageId: string
+  content: string
+  reasoning: string
+}
+
+const liveStreams = new Map<string, LiveStream>()
+
+/** Partial replies currently arriving in a thread. */
+export function liveStreamsFor(threadId: string): LiveStream[] {
+  return [...liveStreams.values()].filter((s) => s.threadId === threadId)
+}
 
 export function abortThread(threadId: string): void {
   abortControllers.get(threadId)?.abort()
@@ -568,6 +611,12 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         model,
         systemPromptSnapshot: context.segments
       })
+      liveStreams.set(assistant.id, {
+        threadId: thread.id,
+        messageId: assistant.id,
+        content: '',
+        reasoning: ''
+      })
       emit({ type: 'start', messageId: assistant.id, threadId: thread.id })
 
       let result: StreamResult
@@ -586,8 +635,17 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             signal: controller.signal
           },
           {
-            onContent: (delta) => emit({ type: 'content', messageId: assistant.id, delta }),
-            onReasoning: (delta) => emit({ type: 'reasoning', messageId: assistant.id, delta }),
+            onContent: (delta) => {
+              const live = liveStreams.get(assistant.id)
+              if (live) live.content += delta
+              persistProgress(assistant.id)
+              emit({ type: 'content', messageId: assistant.id, delta })
+            },
+            onReasoning: (delta) => {
+              const live = liveStreams.get(assistant.id)
+              if (live) live.reasoning += delta
+              emit({ type: 'reasoning', messageId: assistant.id, delta })
+            },
             onProvider: () => undefined
           }
         )
@@ -603,6 +661,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         // A turn that produced nothing leaves nothing behind. Keeping the empty
         // placeholder would show a bubble that never says anything, and on a
         // later launch it would still claim to be streaming.
+        liveStreams.delete(assistant.id)
+        lastPersisted.delete(assistant.id)
         const current = repo.getMessage(assistant.id)
         const producedNothing =
           !current?.content && !current?.reasoning && !current?.toolCalls?.length
@@ -624,6 +684,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         return
       }
 
+      liveStreams.delete(assistant.id)
+      lastPersisted.delete(assistant.id)
       const stored = repo.updateMessage(assistant.id, {
         content: result.content,
         reasoning: result.reasoning || null,

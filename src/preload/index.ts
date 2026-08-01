@@ -9,6 +9,7 @@ import type {
   AppInfo,
   ImportPreview,
   ImportResult,
+  LiveStream,
   SearchHit,
   PromptPreview,
   CompactionStatus,
@@ -71,6 +72,9 @@ const api = {
       ipcRenderer.invoke('chat:isGenerating', threadId),
     approveTool: (toolCallId: string, approved: boolean): Promise<void> =>
       ipcRenderer.invoke('chat:approveTool', toolCallId, approved),
+    /** Text of any reply still arriving in this thread. */
+    liveStreams: (threadId: string): Promise<LiveStream[]> =>
+      ipcRenderer.invoke('chat:liveStreams', threadId),
     retitle: (threadId: string): Promise<string | null> =>
       ipcRenderer.invoke('chat:retitle', threadId),
     compact: (threadId: string): Promise<{ summaryMessageId: string; freedTokens: number } | null> =>

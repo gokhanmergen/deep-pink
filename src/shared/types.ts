@@ -515,6 +515,14 @@ export interface AppInfo {
   arch: string
 }
 
+/** A reply still arriving, so a view can catch up on what it missed. */
+export interface LiveStream {
+  threadId: string
+  messageId: string
+  content: string
+  reasoning: string
+}
+
 export interface SearchHit {
   threadId: string
   threadTitle: string

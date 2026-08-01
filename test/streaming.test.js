@@ -13,6 +13,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   const chatListeners = []
   const mcpListeners = []
   let persisted = []
+  let liveStreams = []
 
   const thread = {
     id: 't1',
@@ -34,6 +35,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       models: { list: async () => [] },
       chat: {
         isGenerating: async () => false,
+        liveStreams: async () => liveStreams,
         onEvent: (fn) => {
           chatListeners.push(fn)
           return () => chatListeners.splice(chatListeners.indexOf(fn), 1)
@@ -128,6 +130,36 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   await settle(30)
   check('a different thread does not paint here', state().messages.length === before,
     state().messages.map((m) => m.id))
+
+  section('leaving a thread mid-reply and coming back')
+  // The reply so far lives in the main process, not in whichever window was
+  // showing it, so reopening the thread must show all of it — not just what
+  // arrived after the return.
+  const partial = message({ id: 'a9', threadId: 't1', role: 'assistant', content: '', status: 'streaming' })
+  persisted = [userRow, partial]
+  liveStreams = [{ threadId: 't1', messageId: 'a9', content: 'The first half', reasoning: '' }]
+
+  await state().selectThread('t1')
+  const reopened = state().messages.find((m) => m.id === 'a9')
+  check('the text streamed while away is restored', reopened.content === 'The first half', reopened.content)
+  check('and it is still shown as streaming', reopened.status === 'streaming', reopened.status)
+
+  emit({ type: 'content', messageId: 'a9', delta: ' and the second half.' })
+  check(
+    'further deltas continue from there rather than replacing it',
+    state().messages.find((m) => m.id === 'a9').content === 'The first half and the second half.',
+    state().messages.find((m) => m.id === 'a9').content
+  )
+
+  // Nothing in flight: the stored row is authoritative and must not be clobbered.
+  liveStreams = []
+  persisted = [userRow, message({ id: 'a9', threadId: 't1', role: 'assistant', content: 'The whole reply.', status: 'complete' })]
+  await state().selectThread('t1')
+  check(
+    'a finished reply loads whole from storage',
+    state().messages.find((m) => m.id === 'a9').content === 'The whole reply.',
+    state().messages.find((m) => m.id === 'a9').content
+  )
 
   section('tool rounds read as one turn')
   const { groupIntoTurns } = require(path.join(__dirname, '..', '.test-build', 'store.js'))

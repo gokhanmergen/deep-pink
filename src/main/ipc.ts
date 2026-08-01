@@ -113,6 +113,9 @@ export function registerIpc(): void {
   ipcMain.handle('chat:approveTool', (_e, toolCallId: string, approved: boolean) =>
     engine.resolveToolApproval(toolCallId, approved)
   )
+  // What a reply has streamed so far, for a window that was not watching.
+  ipcMain.handle('chat:liveStreams', (_e, threadId: string) => engine.liveStreamsFor(threadId))
+
   ipcMain.handle('chat:retitle', (_e, threadId: string) => engine.retitle(threadId, emit))
   ipcMain.handle('chat:compact', (_e, threadId: string) => engine.compactThread(threadId, emit))
   ipcMain.handle('chat:compactionStatus', async (_e, threadId: string) => {
