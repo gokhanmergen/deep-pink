@@ -139,5 +139,9 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE threads ADD COLUMN source_id TEXT;
   CREATE UNIQUE INDEX idx_threads_source ON threads (source, source_id)
     WHERE source IS NOT NULL;
+  `,
+
+  /* 6 — how much each tool call brought into the context */ `
+  ALTER TABLE tool_invocations ADD COLUMN result_chars INTEGER NOT NULL DEFAULT 0;
   `
 ]

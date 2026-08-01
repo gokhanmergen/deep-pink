@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { GlobalStats, ModelUsageRollup, ThreadStats } from '@shared/types'
+import type { GlobalStats, ModelUsageRollup, ThreadStats, ToolUsageRollup } from '@shared/types'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
 import { formatCost, formatDateTime, formatDuration, formatNumber, formatTokens, modelShortName } from '../format'
@@ -21,6 +21,55 @@ function Stat({
       <div className={`stat__value${accent ? ' stat__value--accent' : ''}`}>{value}</div>
       {sub && <div className="stat__sub">{sub}</div>}
     </div>
+  )
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  repo: 'Attached repository',
+  web: 'Web search and fetch',
+  mcp: 'MCP servers'
+}
+
+/** What tools pulled into the context, which is the part that costs money. */
+function ToolUsage({ rows }: { rows: ToolUsageRollup[] }): React.JSX.Element | null {
+  if (!rows.length) return null
+  return (
+    <>
+      <div className="section-title">What tools brought in</div>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th className="num">Calls</th>
+            <th className="num">Read</th>
+            <th className="num">Est. tokens</th>
+            <th className="num">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.source}>
+              <td>{SOURCE_LABEL[row.source] ?? row.source}</td>
+              <td className="num">{formatNumber(row.calls)}</td>
+              <td className="num">
+                {row.chars < 1024
+                  ? `${row.chars} B`
+                  : row.chars < 1024 * 1024
+                    ? `${Math.round(row.chars / 1024)} KB`
+                    : `${(row.chars / 1024 / 1024).toFixed(1)} MB`}
+              </td>
+              <td className="num">{formatTokens(row.estimatedTokens)}</td>
+              <td className="num">{formatDuration(row.totalMs)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="field__hint" style={{ marginTop: 6 }}>
+        Estimated from what was returned. These tokens are billed as part of the
+        prompt on the turn after each call, and again on every turn that follows
+        until the context is compacted.
+      </p>
+    </>
   )
 }
 
@@ -150,6 +199,7 @@ export function ThreadStatsPanel({ onClose }: { onClose: () => void }): React.JS
               />
             </div>
 
+            <ToolUsage rows={stats.toolUsage} />
             <RollupTable rows={stats.byModel} caption="By model" />
           </>
         )}
@@ -244,6 +294,7 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
               </>
             )}
 
+            <ToolUsage rows={stats.toolUsage} />
             <RollupTable rows={stats.byModel} caption="By model" />
             <RollupTable rows={stats.byProvider} caption="By provider" />
           </>

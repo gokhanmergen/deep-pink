@@ -2,7 +2,8 @@ import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
-import { REPO_TOOLS, repoPromptSegment, treeSummary } from '../tools/repo'
+import { REPO_TOOLS, repoPromptSegment } from '../tools/repo'
+import { cachedTree } from '../tools/repoService'
 
 /**
  * Everything that enters the model's context is assembled here, as a list of
@@ -104,7 +105,9 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
       source: 'repo',
       label: `Attached repository (${repos.length})`,
       origin: repos.join(', '),
-      text: repoPromptSegment(repos, treeSummary(repos)),
+      // Cached; the engine reads it on the worker before each turn. Missing
+      // only on the very first, where the model can still call repo_tree.
+      text: repoPromptSegment(repos, cachedTree(repos)),
       removable: true
     })
   }

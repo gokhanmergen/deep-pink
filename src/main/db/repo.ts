@@ -11,6 +11,7 @@ import type {
   Thread,
   ThreadConfig,
   ThreadStats,
+  ToolUsageRollup,
   Usage
 } from '@shared/types'
 import { getDb } from './index'
@@ -494,12 +495,14 @@ export function recordToolInvocation(input: {
   toolName: string
   isError: boolean
   durationMs: number
+  /** Characters returned to the model, which is what it costs in context. */
+  resultChars?: number
 }): void {
   getDb()
     .prepare(
       `INSERT INTO tool_invocations (id, thread_id, message_id, source, server_id, tool_name,
-                                     is_error, duration_ms, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                     is_error, duration_ms, created_at, result_chars)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       randomUUID(),
@@ -510,13 +513,33 @@ export function recordToolInvocation(input: {
       input.toolName,
       input.isError ? 1 : 0,
       input.durationMs,
-      Date.now()
+      Date.now(),
+      input.resultChars ?? 0
     )
 }
 
 /* ------------------------------------------------------------------ *
  * Statistics
  * ------------------------------------------------------------------ */
+
+interface ToolRollupRow {
+  source: string
+  calls: number
+  chars: number
+  ms: number
+}
+
+/** Tool cost by source. Characters are what actually entered the context, so
+ *  they convert to a token estimate the same way everything else does. */
+function toolRollup(rows: ToolRollupRow[]): ToolUsageRollup[] {
+  return rows.map((row) => ({
+    source: row.source,
+    calls: row.calls,
+    chars: row.chars,
+    estimatedTokens: Math.ceil(row.chars / 4),
+    totalMs: row.ms
+  }))
+}
 
 const ROLLUP_SELECT = `
   SELECT model,
@@ -593,6 +616,16 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
     }
   ).n
 
+  const toolUsage = toolRollup(
+    db
+      .prepare(
+        `SELECT source, COUNT(*) AS calls, COALESCE(SUM(result_chars), 0) AS chars,
+                COALESCE(SUM(duration_ms), 0) AS ms
+           FROM tool_invocations WHERE thread_id = ? GROUP BY source ORDER BY chars DESC`
+      )
+      .all(threadId) as ToolRollupRow[]
+  )
+
   // The live context is whatever the most recent request actually sent plus the
   // reply it produced — that is what will be re-sent on the next turn.
   const last = db
@@ -623,6 +656,7 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
     avgTokensPerSecond: totals.avg_tps,
     avgTimeToFirstTokenMs: totals.avg_ttft,
     toolCallCount,
+    toolUsage,
     byModel
   }
 }
@@ -663,6 +697,16 @@ export function getGlobalStats(): GlobalStats {
   const toolCallCount = (
     db.prepare('SELECT COUNT(*) AS n FROM tool_invocations').get() as { n: number }
   ).n
+
+  const toolUsage = toolRollup(
+    db
+      .prepare(
+        `SELECT source, COUNT(*) AS calls, COALESCE(SUM(result_chars), 0) AS chars,
+                COALESCE(SUM(duration_ms), 0) AS ms
+           FROM tool_invocations GROUP BY source ORDER BY chars DESC`
+      )
+      .all() as ToolRollupRow[]
+  )
 
   const byModel = (
     db.prepare(`${ROLLUP_SELECT} GROUP BY model ORDER BY cost_usd DESC`).all() as RollupRow[]
@@ -719,6 +763,7 @@ export function getGlobalStats(): GlobalStats {
     costUsd: totals.cost_usd,
     firstUsedAt: totals.first_used,
     toolCallCount,
+    toolUsage,
     byModel,
     byProvider,
     byDay

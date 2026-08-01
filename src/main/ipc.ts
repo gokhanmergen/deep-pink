@@ -16,6 +16,7 @@ import { dbPath } from './db/index'
 import * as mcp from './mcp/host'
 import * as attachments from './attachments'
 import * as importer from './import/index'
+import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
@@ -212,8 +213,11 @@ export function registerIpc(): void {
   })
 
   // Directories get moved and deleted; the composer shows which are still there.
-  ipcMain.handle('repo:status', (_e, paths: string[]) =>
-    paths.map((path) => {
+  ipcMain.handle('repo:status', (_e, paths: string[]) => {
+    // Attaching one is the moment to start reading its layout, so the first
+    // turn does not have to wait for it.
+    if (paths.length) void ensureTree(paths)
+    return paths.map((path) => {
       let available = false
       try {
         available = statSync(path).isDirectory()
@@ -222,7 +226,7 @@ export function registerIpc(): void {
       }
       return { path, name: basename(path), available }
     })
-  )
+  })
 
   /* ---------------- import ---------------- */
 

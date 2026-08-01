@@ -147,6 +147,30 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
     repo.getThreadStats(thread.id, null).costUsd
   )
 
+  section('what tools cost')
+  const toolThread = repo.createThread('Used tools')
+  const toolMsg = repo.insertMessage({ threadId: toolThread.id, role: 'assistant', content: 'ok' })
+  repo.recordToolInvocation({ threadId: toolThread.id, messageId: toolMsg.id, source: 'repo',
+    serverId: null, toolName: 'repo_read', isError: false, durationMs: 12, resultChars: 4000 })
+  repo.recordToolInvocation({ threadId: toolThread.id, messageId: toolMsg.id, source: 'repo',
+    serverId: null, toolName: 'repo_search', isError: false, durationMs: 30, resultChars: 2000 })
+  repo.recordToolInvocation({ threadId: toolThread.id, messageId: toolMsg.id, source: 'web',
+    serverId: null, toolName: 'web_fetch', isError: false, durationMs: 900, resultChars: 8000 })
+
+  const usage = repo.getThreadStats(toolThread.id, null).toolUsage
+  check('usage is grouped by source', usage.length === 2, usage.map((u) => u.source))
+  const repoRow = usage.find((u) => u.source === 'repo')
+  check('repository calls are counted', repoRow.calls === 2, repoRow)
+  check('and their characters summed', repoRow.chars === 6000, repoRow)
+  check('with a token estimate', repoRow.estimatedTokens === 1500, repoRow)
+  check('and their time summed', repoRow.totalMs === 42, repoRow)
+  check(
+    'the biggest source comes first',
+    usage[0].source === 'web' && usage[0].chars === 8000,
+    usage
+  )
+  check('it rolls up globally too', repo.getGlobalStats().toolUsage.length === 2)
+
   section('branching and deletion')
   const branch = repo.branchThread(thread.id, question.id)
   check('a branch is created as a new thread', Boolean(branch) && branch.id !== thread.id)

@@ -324,6 +324,44 @@ suite(
     await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
     await settle(400)
 
+    section('an attached repository is read on a worker')
+    const repoFixture = require('node:fs').mkdtempSync(
+      require('node:path').join(require('node:os').tmpdir(), 'dp-attach-')
+    )
+    require('node:fs').writeFileSync(
+      require('node:path').join(repoFixture, 'ATTACHED.md'), '# marker\n'
+    )
+    const repoThread = repo.createThread('Has a repo')
+    repo.insertMessage({ threadId: repoThread.id, role: 'user', content: 'hi' })
+    repo.updateThread(repoThread.id, { config: { repoPaths: [repoFixture] } })
+
+    // The composer asks for status when a repo is attached, which is what warms
+    // the layout — exercising the worker exactly as the app does.
+    const status = await run(
+      `window.deepPink.repo.status([${JSON.stringify(repoFixture)}])`
+    )
+    check('the directory reports as available', status[0]?.available === true, status)
+    check('and is named by its folder', typeof status[0]?.name === 'string' && status[0].name.length > 0)
+
+    await settle(1500)
+    const preview = await run(`window.deepPink.prompt.preview(${JSON.stringify(repoThread.id)})`)
+    const repoSegment = preview?.segments?.find((s) => s.source === 'repo')
+
+    check('the prompt gains a repository segment', Boolean(repoSegment), preview?.segments?.map((s) => s.id))
+    check('it states the access is read-only', /read-only/.test(repoSegment?.text ?? ''), repoSegment?.text?.slice(0, 80))
+    check(
+      'and carries the layout the worker read',
+      (repoSegment?.text ?? '').includes('ATTACHED.md'),
+      repoSegment?.text?.slice(0, 200)
+    )
+    check(
+      'the repository tools are offered',
+      (preview?.toolCount ?? 0) >= 4,
+      preview?.toolCount
+    )
+
+    require('node:fs').rmSync(repoFixture, { recursive: true, force: true })
+
     section('changing the default model')
     const modelBefore = await run(`window.deepPink.settings.get().then((s) => s.defaultModel)`)
     const threadModelBefore = repo.getThread(thread.id).config.model

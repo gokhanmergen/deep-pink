@@ -191,6 +191,7 @@ export interface ThreadStats {
   avgTokensPerSecond: number | null
   avgTimeToFirstTokenMs: number | null
   toolCallCount: number
+  toolUsage: ToolUsageRollup[]
   byModel: ModelUsageRollup[]
 }
 
@@ -204,6 +205,16 @@ export interface ModelUsageRollup {
   costUsd: number
 }
 
+/** What tool calls cost, split by where they came from. */
+export interface ToolUsageRollup {
+  /** 'repo', 'web' or 'mcp'. */
+  source: string
+  calls: number
+  chars: number
+  estimatedTokens: number
+  totalMs: number
+}
+
 export interface GlobalStats {
   threadCount: number
   messageCount: number
@@ -215,6 +226,7 @@ export interface GlobalStats {
   costUsd: number
   firstUsedAt: number | null
   toolCallCount: number
+  toolUsage: ToolUsageRollup[]
   byModel: ModelUsageRollup[]
   byProvider: ModelUsageRollup[]
   byDay: DailyUsage[]

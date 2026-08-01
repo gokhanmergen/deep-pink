@@ -20,13 +20,8 @@ import {
   type StreamResult
 } from '../providers/openrouter'
 import { runWebFetch, runWebSearch } from '../tools/web'
-import {
-  REPO_TOOL_NAMES,
-  runRepoFind,
-  runRepoRead,
-  runRepoSearch,
-  runRepoTree
-} from '../tools/repo'
+import { REPO_TOOL_NAMES } from '../tools/repo'
+import { ensureTree, runRepoOp } from '../tools/repoService'
 import * as attachments from '../attachments'
 import { MAX_ATTACHMENTS_PER_MESSAGE } from '../attachments'
 import { assembleContext, estimateTokens } from './prompt'
@@ -432,14 +427,13 @@ async function executeToolCall(
 
   try {
     if (REPO_TOOL_NAMES.has(call.name)) {
-      const content =
-        call.name === 'repo_tree'
-          ? runRepoTree(repoPaths, args)
-          : call.name === 'repo_read'
-            ? runRepoRead(repoPaths, args)
-            : call.name === 'repo_search'
-              ? runRepoSearch(repoPaths, args)
-              : runRepoFind(repoPaths, args)
+      // On a worker thread: a fruitless search reads every file, and doing that
+      // here would stall streaming and the window with it.
+      const content = await runRepoOp(
+        call.name.replace('repo_', '') as 'tree' | 'read' | 'search' | 'find',
+        repoPaths,
+        args
+      )
 
       repo.recordToolInvocation({
         threadId,
@@ -448,7 +442,8 @@ async function executeToolCall(
         serverId: null,
         toolName: call.name,
         isError: false,
-        durationMs: Date.now() - startedAt
+        durationMs: Date.now() - startedAt,
+        resultChars: content.length
       })
       return {
         toolCallId: call.id,
@@ -472,7 +467,8 @@ async function executeToolCall(
         serverId: null,
         toolName: call.name,
         isError: false,
-        durationMs: Date.now() - startedAt
+        durationMs: Date.now() - startedAt,
+        resultChars: content.length
       })
       return {
         toolCallId: call.id,
@@ -499,7 +495,8 @@ async function executeToolCall(
       serverId: result.serverId,
       toolName: result.toolName,
       isError: result.isError,
-      durationMs: Date.now() - startedAt
+      durationMs: Date.now() - startedAt,
+      resultChars: result.content.length
     })
     return {
       toolCallId: call.id,
@@ -623,6 +620,11 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       thread = repo.getThread(thread.id)!
       const model = resolveModel(thread, settings)
+
+      // Read the layout before assembling, so the prompt carries it. Cached
+      // between turns, so this is usually free.
+      if (thread.config.repoPaths?.length) await ensureTree(thread.config.repoPaths)
+
       const context = assembleContext(thread, settings)
       const history = repo.getMessages(thread.id)
       const allowImages = history.some((m) => m.attachments?.some((a) => a.kind === 'image'))

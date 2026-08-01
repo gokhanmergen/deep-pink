@@ -16,7 +16,11 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') }
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          // Its own bundle: repository reads run on a worker thread.
+          repoWorker: resolve(__dirname, 'src/main/tools/repoWorker.ts')
+        }
       }
     },
     resolve: {

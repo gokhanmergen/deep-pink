@@ -5,6 +5,7 @@ import { reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
 import { registerIpc } from './ipc'
 import * as attachments from './attachments'
+import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
 
 const isDev = !app.isPackaged
@@ -123,6 +124,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   await mcp.disconnectAll().catch(() => undefined)
+  await shutdownRepoWorker().catch(() => undefined)
   closeDb()
 })
 
