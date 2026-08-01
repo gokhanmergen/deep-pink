@@ -28,6 +28,10 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 - Full MCP support over stdio and streamable HTTP. Per-server tool toggles, and per-call approval prompts so nothing runs without you saying yes.
 - Context compaction: when a thread approaches the model's context window, the older part is replaced by a summary. The threshold, the prompt and the model are all yours to set; the original messages stay in the database.
 
+**Bringing your history with you**
+
+- Import a ChatGPT data export (Settings → Data controls → Export data). Drop in the `.zip` and it reconstructs each conversation from the branching tree ChatGPT stores, keeping the branch you last had on screen, along with titles, timestamps and any images you uploaded. Re-importing the same export changes nothing. Imported chats carry no cost, so your spending statistics stay true.
+
 **Transparency**
 
 - A system-prompt inspector shows every segment that will be sent — base prompt, thread prompt, tool schemas, and anything an MCP server wants to inject — with token counts, attribution and an off switch for each.

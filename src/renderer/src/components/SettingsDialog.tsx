@@ -5,6 +5,7 @@ import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS } from '@shared/defaults'
 import { modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
+import type { ImportPreview, ImportResult } from '@shared/types'
 
 type Tab = 'account' | 'models' | 'prompts' | 'web' | 'context' | 'appearance' | 'keys' | 'data'
 
@@ -31,6 +32,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [dbLocation, setDbLocation] = useState('')
   const [encryption, setEncryption] = useState(true)
   const [capturing, setCapturing] = useState<string | null>(null)
+  const [importPath, setImportPath] = useState<string | null>(null)
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [importBusy, setImportBusy] = useState(false)
 
   useEffect(() => {
     void window.deepPink.data.path().then(setDbLocation)
@@ -650,6 +655,137 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </button>
               </div>
             </div>
+
+            <div className="section-title">Import from ChatGPT</div>
+            <div className="field">
+              <span className="field__hint">
+                In ChatGPT: Settings → Data controls → Export data. They email you a link; choose
+                the <span className="mono">.zip</span> here, or{' '}
+                <span className="mono">conversations.json</span> from inside it. Nothing is
+                uploaded — the file is read on this machine.
+              </span>
+              <div className="row">
+                <button
+                  className="btn"
+                  disabled={importBusy}
+                  onClick={async () => {
+                    const path = await window.deepPink.import.choose()
+                    if (!path) return
+                    setImportPath(path)
+                    setImportResult(null)
+                    setImportPreview(null)
+                    setImportBusy(true)
+                    try {
+                      setImportPreview(await window.deepPink.import.preview(path))
+                    } catch (err) {
+                      showToast(err instanceof Error ? err.message : String(err), 'error')
+                    } finally {
+                      setImportBusy(false)
+                    }
+                  }}
+                  type="button"
+                >
+                  Choose an export…
+                </button>
+              </div>
+            </div>
+
+            {importPreview && !importResult && (
+              <div className="list-card">
+                <div className="spread" style={{ marginBottom: 8 }}>
+                  <strong className="mono">{importPreview.filename}</strong>
+                  <span className="chip">
+                    {importPreview.conversations.toLocaleString()} conversations
+                  </span>
+                </div>
+                <div className="dim" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                  {importPreview.messages.toLocaleString()} messages
+                  {importPreview.oldest && (
+                    <> · {new Date(importPreview.oldest).toLocaleDateString()} to{' '}
+                    {new Date(importPreview.newest ?? importPreview.oldest).toLocaleDateString()}</>
+                  )}
+                  {importPreview.imagesFound > 0 && <> · {importPreview.imagesFound} images</>}
+                  {importPreview.alreadyImported > 0 && (
+                    <>
+                      <br />
+                      {importPreview.alreadyImported} already imported — those will be left alone.
+                    </>
+                  )}
+                  {(importPreview.skipped.hiddenOrSystem > 0 ||
+                    importPreview.skipped.toolTraffic > 0) && (
+                    <>
+                      <br />
+                      Skipping {importPreview.skipped.hiddenOrSystem} hidden or system messages and{' '}
+                      {importPreview.skipped.toolTraffic} tool exchanges, which do not read as
+                      conversation.
+                    </>
+                  )}
+                  <br />
+                  Imported chats carry no cost, so your statistics stay accurate.
+                </div>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <button
+                    className="btn btn--primary"
+                    disabled={
+                      importBusy ||
+                      importPreview.conversations === importPreview.alreadyImported
+                    }
+                    onClick={async () => {
+                      if (!importPath) return
+                      setImportBusy(true)
+                      try {
+                        const result = await window.deepPink.import.run(importPath)
+                        setImportResult(result)
+                        await useStore.getState().refreshThreads()
+                        showToast(
+                          `Imported ${result.threadsCreated.toLocaleString()} conversations`
+                        )
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : String(err), 'error')
+                      } finally {
+                        setImportBusy(false)
+                      }
+                    }}
+                    type="button"
+                  >
+                    {importBusy ? 'Importing…' : 'Import'}
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      setImportPreview(null)
+                      setImportPath(null)
+                    }}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {importResult && (
+              <div className="list-card">
+                <strong>
+                  Imported {importResult.threadsCreated.toLocaleString()} conversations and{' '}
+                  {importResult.messagesCreated.toLocaleString()} messages.
+                </strong>
+                <div className="dim" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.6 }}>
+                  {importResult.imagesAttached > 0 && (
+                    <>{importResult.imagesAttached} images attached. </>
+                  )}
+                  {importResult.imagesMissing > 0 && (
+                    <>
+                      {importResult.imagesMissing} images were referenced but not present in the
+                      archive.{' '}
+                    </>
+                  )}
+                  {importResult.alreadyImported > 0 && (
+                    <>{importResult.alreadyImported} were already imported and left untouched.</>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="section-title">Danger zone</div>
             <div className="field">

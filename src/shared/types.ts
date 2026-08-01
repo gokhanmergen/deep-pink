@@ -474,6 +474,37 @@ export interface CompactionStatus {
   limit: number | null
 }
 
+/* ------------------------------------------------------------------ *
+ * Importing from other clients
+ * ------------------------------------------------------------------ */
+
+export interface ImportSkipped {
+  hiddenOrSystem: number
+  toolTraffic: number
+  empty: number
+  unreadableConversations: number
+}
+
+/** What an export contains, reported before anything is written. */
+export interface ImportPreview {
+  filename: string
+  conversations: number
+  messages: number
+  /** Present from an earlier import; these are left alone. */
+  alreadyImported: number
+  oldest: number | null
+  newest: number | null
+  skipped: ImportSkipped
+  imagesFound: number
+}
+
+export interface ImportResult extends ImportPreview {
+  threadsCreated: number
+  messagesCreated: number
+  imagesAttached: number
+  imagesMissing: number
+}
+
 export interface SearchHit {
   threadId: string
   threadTitle: string

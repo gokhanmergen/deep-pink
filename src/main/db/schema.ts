@@ -132,5 +132,12 @@ export const MIGRATIONS: string[] = [
 
   /* 4 — attachments may be text as well as images */ `
   ALTER TABLE attachments ADD COLUMN preview TEXT;
+  `,
+
+  /* 5 — where a thread came from, so a re-import does not duplicate it */ `
+  ALTER TABLE threads ADD COLUMN source TEXT;
+  ALTER TABLE threads ADD COLUMN source_id TEXT;
+  CREATE UNIQUE INDEX idx_threads_source ON threads (source, source_id)
+    WHERE source IS NOT NULL;
   `
 ]

@@ -6,6 +6,8 @@ import type {
   Message,
   ModelEndpoint,
   OpenRouterModel,
+  ImportPreview,
+  ImportResult,
   SearchHit,
   PromptPreview,
   CompactionStatus,
@@ -126,6 +128,14 @@ const api = {
       threadId: string
     ): Promise<{ thread: Thread; messages: Message[]; exportedAt: string } | null> =>
       ipcRenderer.invoke('data:exportThread', threadId)
+  },
+
+  import: {
+    /** Opens a file picker; returns the chosen path, or null if cancelled. */
+    choose: (): Promise<string | null> => ipcRenderer.invoke('import:choose'),
+    /** Reads the export and reports what would happen, changing nothing. */
+    preview: (path: string): Promise<ImportPreview> => ipcRenderer.invoke('import:preview', path),
+    run: (path: string): Promise<ImportResult> => ipcRenderer.invoke('import:run', path)
   },
 
   attachments: {

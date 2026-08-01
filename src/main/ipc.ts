@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type {
   McpServerConfig,
   Message,
@@ -13,6 +13,7 @@ import * as repo from './db/repo'
 import { dbPath } from './db/index'
 import * as mcp from './mcp/host'
 import * as attachments from './attachments'
+import * as importer from './import/index'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
@@ -178,6 +179,25 @@ export function registerIpc(): void {
       exportedAt: new Date().toISOString()
     }
   })
+
+  /* ---------------- import ---------------- */
+
+  ipcMain.handle('import:choose', async (event): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0], {
+      title: 'Choose a ChatGPT export',
+      message: 'Select the .zip you downloaded, or conversations.json from inside it',
+      properties: ['openFile'],
+      filters: [
+        { name: 'ChatGPT export', extensions: ['zip', 'json'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
+  ipcMain.handle('import:preview', (_e, path: string) => importer.preview(path))
+  ipcMain.handle('import:run', (_e, path: string) => importer.importFile(path))
 
   /* ---------------- window ---------------- */
 
