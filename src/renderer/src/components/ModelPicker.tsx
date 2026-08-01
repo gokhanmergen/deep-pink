@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
-import { formatTokens } from '../format'
+import { formatTokens, modelShortName } from '../format'
 
 interface Props {
-  /** 'chat' sets the thread's model; 'title' sets the thread-naming model. */
-  mode: 'chat' | 'title'
+  /**
+   * 'chat' sets the model for the open thread, 'default' sets the one new
+   * threads start with, and 'title' sets the model that names threads.
+   */
+  mode: 'chat' | 'title' | 'default'
   onClose: () => void
 }
 
@@ -31,7 +34,11 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   const current =
-    mode === 'title' ? settings?.titleModel : thread?.config.model ?? settings?.defaultModel
+    mode === 'title'
+      ? settings?.titleModel
+      : mode === 'default'
+        ? settings?.defaultModel
+        : thread?.config.model ?? settings?.defaultModel
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -55,7 +62,13 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const choose = async (modelId: string): Promise<void> => {
     if (mode === 'title') {
       await saveSettings({ titleModel: modelId })
-      showToast(`Thread names will use ${modelId}`)
+      showToast(`Thread names will use ${modelShortName(modelId)}`)
+    } else if (mode === 'default') {
+      // Deliberately does not touch the open thread: this is the model new
+      // threads start with, which is a different question from what this one
+      // is using.
+      await saveSettings({ defaultModel: modelId })
+      showToast(`New threads will use ${modelShortName(modelId)}`)
     } else if (thread) {
       await updateThread(thread.id, { config: { model: modelId } })
     } else {
@@ -86,7 +99,11 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
           <input
             className="panel__search"
             placeholder={
-              mode === 'title' ? 'Model for generating thread names…' : 'Search models…'
+              mode === 'title'
+                ? 'Model for generating thread names…'
+                : mode === 'default'
+                  ? 'Model that new threads start with…'
+                  : 'Search models…'
             }
             value={query}
             autoFocus

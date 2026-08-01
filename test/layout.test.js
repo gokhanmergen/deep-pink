@@ -324,6 +324,63 @@ suite(
     await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
     await settle(400)
 
+    section('changing the default model')
+    const modelBefore = await run(`window.deepPink.settings.get().then((s) => s.defaultModel)`)
+    const threadModelBefore = repo.getThread(thread.id).config.model
+
+    await run(`[...document.querySelectorAll('.sidebar__footer .btn')]
+      .find((b) => b.textContent.trim() === 'Settings').click()`)
+    await settle(500)
+    await run(`[...document.querySelectorAll('.tab')].find((t) => t.textContent.trim() === 'Models').click()`)
+    await settle(500)
+
+    // The first button under "Default model" opens the picker.
+    await run(`(() => {
+      const heading = [...document.querySelectorAll('.section-title')]
+        .find((e) => e.textContent.trim() === 'Default model')
+      heading.nextElementSibling.querySelector('.btn').click()
+    })()`)
+    await settle(700)
+
+    const picker = await run(`({
+      open: !!document.querySelector('.panel__search'),
+      placeholder: document.querySelector('.panel__search')?.placeholder,
+      options: document.querySelectorAll('.cmdlist .cmditem').length
+    })`)
+    check('the picker opens', picker.open === true, picker)
+    check('and says it is for new threads', /new threads/.test(picker.placeholder ?? ''), picker.placeholder)
+
+    if (picker.options > 0) {
+      const chosen = await run(`(() => {
+        const item = [...document.querySelectorAll('.cmdlist .cmditem')]
+          .find((el) => el.querySelector('.cmditem__sub')?.textContent?.trim() !== ${JSON.stringify(modelBefore)})
+        const id = item?.querySelector('.cmditem__sub')?.textContent?.trim()
+        item?.click()
+        return id
+      })()`)
+      await settle(900)
+
+      const after = await run(`window.deepPink.settings.get().then((s) => s.defaultModel)`)
+      check('picking a model changes the default', after === chosen && after !== modelBefore,
+        { before: modelBefore, chosen, after })
+      check(
+        'and leaves the open thread on its own model',
+        repo.getThread(thread.id).config.model === threadModelBefore,
+        { was: threadModelBefore, now: repo.getThread(thread.id).config.model }
+      )
+      check(
+        'closing returns to Settings rather than the transcript',
+        await run(`!!document.querySelector('.tabs')`)
+      )
+    } else {
+      check('model catalogue unavailable offline — picker behaviour not exercised', true)
+    }
+
+    await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+    await settle(300)
+    await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+    await settle(300)
+
     section('right-clicking a thread')
     const extra = repo.createThread('Context menu fixture')
     repo.insertMessage({ threadId: extra.id, role: 'user', content: 'x' })

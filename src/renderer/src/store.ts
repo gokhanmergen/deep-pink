@@ -19,6 +19,7 @@ export type Overlay =
   | 'search'
   | 'settings'
   | 'models'
+  | 'defaultModel'
   | 'titleModel'
   | 'providers'
   | 'prompt'
@@ -83,6 +84,8 @@ interface State {
   compacting: boolean
   mcpStatuses: McpServerStatus[]
   overlay: Overlay
+  /** Where to go when the current overlay closes, e.g. back to Settings. */
+  overlayReturnTo: Overlay
   sidebarVisible: boolean
   sidebarFilter: string
   searchHits: SearchHit[]
@@ -111,7 +114,9 @@ interface State {
   saveSettings: (patch: SettingsPatch) => Promise<void>
   refreshModels: (force?: boolean) => Promise<void>
   runSearch: (query: string) => Promise<void>
-  setOverlay: (overlay: Overlay) => void
+  setOverlay: (overlay: Overlay, returnTo?: Overlay) => void
+  /** Closes the overlay, returning to whatever opened it. */
+  closeOverlay: () => void
   setSidebarFilter: (value: string) => void
   toggleSidebar: () => void
   showToast: (message: string, tone?: Toast['tone']) => void
@@ -155,6 +160,7 @@ export const useStore = create<State>((set, get) => ({
   compacting: false,
   mcpStatuses: [],
   overlay: null,
+  overlayReturnTo: null,
   sidebarVisible: true,
   sidebarFilter: '',
   searchHits: [],
@@ -363,8 +369,13 @@ export const useStore = create<State>((set, get) => ({
     set({ searchHits: await api.search.query(query) })
   },
 
-  setOverlay(overlay) {
-    set({ overlay })
+  setOverlay(overlay, returnTo = null) {
+    set({ overlay, overlayReturnTo: returnTo })
+  },
+
+  closeOverlay() {
+    const back = get().overlayReturnTo
+    set({ overlay: back, overlayReturnTo: null })
   },
 
   setSidebarFilter(value) {

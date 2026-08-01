@@ -36,6 +36,7 @@ export function App(): React.JSX.Element {
   const sidebarVisible = useStore((s) => s.sidebarVisible)
   const toast = useStore((s) => s.toast)
   const setOverlay = useStore((s) => s.setOverlay)
+  const closeOverlay = useStore((s) => s.closeOverlay)
   const init = useStore((s) => s.init)
 
   useEffect(() => {
@@ -118,7 +119,7 @@ export function App(): React.JSX.Element {
     )
   }
 
-  const close = (): void => setOverlay(null)
+  const close = (): void => closeOverlay()
 
   return (
     <>
@@ -145,6 +146,7 @@ export function App(): React.JSX.Element {
       {overlay === 'search' && <SearchOverlay onClose={close} />}
       {overlay === 'settings' && <SettingsDialog onClose={close} />}
       {overlay === 'models' && <ModelPicker mode="chat" onClose={close} />}
+      {overlay === 'defaultModel' && <ModelPicker mode="default" onClose={close} />}
       {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}
       {overlay === 'providers' && <ProviderPicker onClose={close} />}
       {overlay === 'prompt' && <SystemPromptInspector onClose={close} />}

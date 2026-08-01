@@ -186,10 +186,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <div className="section-title">Default model</div>
             <div className="field">
               <div className="row">
-                <button className="btn" onClick={() => setOverlay('models')} type="button">
+                <button
+                  className="btn"
+                  onClick={() => setOverlay('defaultModel', 'settings')}
+                  type="button"
+                >
                   {modelShortName(settings.defaultModel)}
                 </button>
-                <span className="field__hint">Used by new threads.</span>
+                <span className="field__hint">
+                  What new threads start with. Changing it leaves open threads alone — use{' '}
+                  <span className="kbd">{formatBinding(settings.keybinds['model.picker'])}</span> for
+                  the thread you are in.
+                </span>
               </div>
             </div>
 
@@ -213,7 +221,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <div className="field">
               <span className="field__label">Model used to generate thread names</span>
               <div className="row">
-                <button className="btn" onClick={() => setOverlay('titleModel')} type="button">
+                <button
+                  className="btn"
+                  onClick={() => setOverlay('titleModel', 'settings')}
+                  type="button"
+                >
                   {modelShortName(settings.titleModel)}
                 </button>
                 <span className="field__hint">A small, cheap model is usually the right call.</span>
