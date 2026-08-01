@@ -18,6 +18,7 @@ export function Composer(): React.JSX.Element {
   const [dragging, setDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   const settings = useStore((s) => s.settings)
   const showToast = useStore((s) => s.showToast)
@@ -43,6 +44,27 @@ export function Composer(): React.JSX.Element {
     images.some((i) => i.kind === 'image') &&
     modelInfo != null &&
     !modelInfo.inputModalities.includes('image')
+
+  // Publish the composer's height so overlays — toasts, for one — can stay
+  // clear of it. It changes as attachments and warnings come and go.
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+
+    const publish = (): void =>
+      document.documentElement.style.setProperty(
+        '--composer-height',
+        `${Math.round(el.getBoundingClientRect().height)}px`
+      )
+
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--composer-height')
+    }
+  }, [])
 
   // Grow with the content, up to the CSS max-height.
   useEffect(() => {
@@ -87,7 +109,8 @@ export function Composer(): React.JSX.Element {
 
     const index = images.filter((i) => i.kind === 'text').length + 1
     setImages((current) => [...current, stageText(text, `pasted-text-${index}.txt`)])
-    showToast(`Attached ${text.length.toLocaleString()} characters as a file`)
+    // No toast: the chip appears in the composer with the filename, line count
+    // and token estimate, which says more and says it where you are looking.
     return true
   }
 
@@ -134,7 +157,7 @@ export function Composer(): React.JSX.Element {
   }
 
   return (
-    <div className="composer">
+    <div className="composer" ref={rootRef}>
       <div className="composer__inner">
         {toolsUnsupported && (
           <div className="composer__notice">

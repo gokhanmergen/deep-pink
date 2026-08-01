@@ -1242,7 +1242,10 @@ button {
 
 .toast {
   position: fixed;
-  bottom: 18px;
+  /* Clear of the composer, which grows with attachments and warnings. Its
+     height is published by the composer itself, so a toast can never land on
+     the Send button. */
+  bottom: calc(var(--composer-height, 96px) + 14px);
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-elevated);

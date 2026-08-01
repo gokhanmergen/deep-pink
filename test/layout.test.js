@@ -213,6 +213,64 @@ suite(
       { src: images.src, id: storedImage.id }
     )
 
+    section('attaching, and where notifications land')
+    // A long paste becomes a chip rather than filling the box, and says so by
+    // appearing — not by a toast sitting on top of the Send button.
+    await run(`(() => {
+      const el = document.getElementById('composer-input')
+      const dt = new DataTransfer()
+      dt.setData('text/plain', 'x'.repeat(6000))
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })()`)
+    await settle(700)
+
+    const afterPaste = await run(`({
+      chips: document.querySelectorAll('.textchip').length,
+      toasts: document.querySelectorAll('.toast[data-tone]').length,
+      composerHeight: Math.round(document.querySelector('.composer').getBoundingClientRect().height),
+      published: getComputedStyle(document.documentElement).getPropertyValue('--composer-height').trim()
+    })`)
+
+    check('a long paste becomes one attachment chip', afterPaste.chips === 1, afterPaste)
+    check('and raises no toast, because the chip already says it', afterPaste.toasts === 0, afterPaste)
+    check(
+      'the composer publishes its height for overlays to avoid',
+      afterPaste.published === `${afterPaste.composerHeight}px`,
+      afterPaste
+    )
+
+    // Something that genuinely must be reported: an oversized file.
+    await run(`(() => {
+      const el = document.getElementById('composer-input')
+      const dt = new DataTransfer()
+      dt.items.add(new File([new Uint8Array(3 * 1024 * 1024)], 'huge.txt', { type: 'text/plain' }))
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+    })()`)
+    await settle(800)
+
+    const toast = await run(`(() => {
+      const el = document.querySelector('.toast[data-tone]')
+      if (!el) return { shown: false }
+      const t = el.getBoundingClientRect()
+      const c = document.querySelector('.composer').getBoundingClientRect()
+      const overlapping = [...document.querySelectorAll('.composer__bar .btn')]
+        .filter((b) => {
+          const r = b.getBoundingClientRect()
+          return !(t.right < r.left || t.left > r.right || t.bottom < r.top || t.top > r.bottom)
+        })
+        .map((b) => b.textContent.trim())
+      return {
+        shown: true,
+        text: el.textContent.trim(),
+        clearsComposer: t.bottom <= c.top,
+        overlapping
+      }
+    })()`)
+
+    check('a rejected attachment is reported', toast.shown && /3\.0 MB/.test(toast.text), toast)
+    check('the toast sits clear of the composer', toast.clearsComposer === true, toast)
+    check('and covers none of its buttons', (toast.overlapping ?? []).length === 0, toast)
+
     section('drag regions are confined to the macOS title bar')
     const drag = await run(`document.documentElement.dataset.windowDrag`)
     check(
