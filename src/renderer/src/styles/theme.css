@@ -1413,3 +1413,24 @@ button {
 .textfile {
   margin: 0 0 6px;
 }
+
+/* Context-window gauge, shown once a thread has enough in it to be worth a
+   number. The label is what makes the bar legible as a measurement. */
+.context-gauge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 24px 0;
+}
+
+.context-gauge .meter {
+  flex: 1;
+  margin-top: 0;
+}
+
+.context-gauge__label {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}

@@ -156,15 +156,24 @@ export function ChatView(): React.JSX.Element {
         )}
       </div>
 
-      {context?.limit ? (
-        <div style={{ padding: '0 24px' }}>
-          <div className="meter" title={`${context.used.toLocaleString()} of ${context.limit.toLocaleString()} context tokens`}>
+      {/* A gauge of how full the context window is. Hidden while a thread is
+          nearly empty, where a full-width track with an invisible fill reads as
+          a stray line rather than information. */}
+      {context?.limit && usedRatio >= 0.01 ? (
+        <div
+          className="context-gauge"
+          title={`${context.used.toLocaleString()} of ${context.limit.toLocaleString()} context tokens`}
+        >
+          <div className="meter">
             <div
               className="meter__fill"
               data-warn={usedRatio > settings.compaction.triggerRatio}
-              style={{ width: `${usedRatio * 100}%` }}
+              style={{ width: `${Math.max(usedRatio * 100, 1)}%` }}
             />
           </div>
+          <span className="context-gauge__label">
+            {Math.round(usedRatio * 100)}% of context
+          </span>
         </div>
       ) : null}
 
