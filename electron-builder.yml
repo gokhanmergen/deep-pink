@@ -22,6 +22,9 @@ npmRebuild: true
 publish: null
 
 linux:
+  # A full-bleed tile: Linux desktops draw the icon as-is, with no rounding of
+  # their own, so the padded macOS variant would look undersized here.
+  icon: build/icon.png
   # Debian and RPM packages require a maintainer with a real address. This is
   # the GitHub no-reply address for the account, so no personal mailbox ends up
   # in published package metadata.
@@ -63,6 +66,8 @@ rpm:
 
 mac:
   category: public.app-category.productivity
+  # Padded to Apple's 824-in-1024 grid so it lines up with other Dock icons.
+  icon: build/icon.icns
   # Ad-hoc signature. Apple Silicon refuses to launch an unsigned binary, and
   # this project has no Developer ID — so sign locally with '-' and let anyone
   # building for distribution override it.
@@ -75,5 +80,6 @@ mac:
     - zip
 
 win:
+  icon: build/icon.ico
   target:
     - nsis

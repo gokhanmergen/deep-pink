@@ -18,6 +18,9 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0b0b0f',
     autoHideMenuBar: true,
+    // Packaged builds get their icon from the bundle or the .desktop entry;
+    // this is what gives the window one while developing on Linux.
+    ...(process.platform === 'linux' ? { icon: join(__dirname, '../../build/icon.png') } : {}),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
