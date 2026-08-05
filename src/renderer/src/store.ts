@@ -4,12 +4,14 @@ import type {
   Message,
   OpenRouterModel,
   SearchHit,
+  TagSummary,
   PendingAttachment,
   Settings,
   SettingsPatch,
   StreamEvent,
   Thread,
   ThreadConfig,
+  ThreadSort,
   ToolCall
 } from '@shared/types'
 
@@ -21,6 +23,7 @@ export type Overlay =
   | 'models'
   | 'defaultModel'
   | 'titleModel'
+  | 'tagModel'
   | 'providers'
   | 'prompt'
   | 'threadStats'
@@ -89,6 +92,16 @@ interface State {
   sidebarVisible: boolean
   sidebarFilter: string
   searchHits: SearchHit[]
+  /** Every tag in the library, for suggestions and the Settings list. */
+  allTags: TagSummary[]
+  /** Query the search overlay opens with, when something opened it for you. */
+  searchSeed: string
+  /** The thread a one-off re-tag is running on, for the little progress popup. */
+  taggingThreadId: string | null
+  /** How far the "tag every untagged thread" pass has got, while it runs. */
+  tagBatch: { done: number; total: number } | null
+  /** Tag folders currently open in the tag view. */
+  expandedTags: string[]
   pendingApproval: PendingApproval | null
   toast: Toast | null
   dialog: DialogRequest | null
@@ -112,9 +125,24 @@ interface State {
   abort: () => Promise<void>
   compact: () => Promise<void>
   saveSettings: (patch: SettingsPatch) => Promise<void>
+  /** Switches the sidebar's view. Applied on the spot, saved behind it. */
+  setThreadSort: (sort: ThreadSort) => void
   refreshModels: (force?: boolean) => Promise<void>
+  refreshTags: () => Promise<void>
+  /** Asks the tagging model to look at one thread now. */
+  retagThread: (threadId: string) => Promise<void>
+  /** Tags every thread that has no tags yet. */
+  tagAllUntagged: () => Promise<void>
+  /** Marks a tag manual-only, or pins its folder. */
+  setTagFlags: (name: string, flags: { manualOnly?: boolean; pinned?: boolean }) => Promise<void>
+  toggleTagFolder: (name: string) => void
+  /** Adds a tag to a thread by hand. Silently ignores an empty name. */
+  addTag: (threadId: string, name: string) => Promise<void>
+  removeTag: (threadId: string, name: string) => Promise<void>
   runSearch: (query: string) => Promise<void>
   setOverlay: (overlay: Overlay, returnTo?: Overlay) => void
+  /** Opens the search overlay, optionally with a query already in it. */
+  openSearch: (query?: string) => void
   /** Closes the overlay, returning to whatever opened it. */
   closeOverlay: () => void
   setSidebarFilter: (value: string) => void
@@ -164,6 +192,11 @@ export const useStore = create<State>((set, get) => ({
   sidebarVisible: true,
   sidebarFilter: '',
   searchHits: [],
+  allTags: [],
+  searchSeed: '',
+  taggingThreadId: null,
+  tagBatch: null,
+  expandedTags: [],
   pendingApproval: null,
   toast: null,
   dialog: null,
@@ -173,13 +206,14 @@ export const useStore = create<State>((set, get) => ({
     if (initialised) return
     initialised = true
 
-    const [settings, threads, mcpStatuses] = await Promise.all([
+    const [settings, threads, mcpStatuses, allTags] = await Promise.all([
       api.settings.get(),
       api.threads.list(),
-      api.mcp.statuses()
+      api.mcp.statuses(),
+      api.tags.list()
     ])
 
-    set({ settings, threads, mcpStatuses, ready: true })
+    set({ settings, threads, mcpStatuses, allTags, ready: true })
 
     if (threads.length) {
       await get().selectThread(threads[0].id)
@@ -187,6 +221,12 @@ export const useStore = create<State>((set, get) => ({
 
     unsubscribers.push(api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses })))
     unsubscribers.push(api.chat.onEvent((event) => handleStreamEvent(event, set, get)))
+
+    // A run started before this window existed — or before it was reloaded —
+    // is still going in the main process, so show its bar rather than nothing.
+    void api.tags.backfillRunning().then((running) => {
+      if (running && !get().tagBatch) set({ tagBatch: { done: 0, total: 0 } })
+    })
 
     // The catalogue is cached on disk; refreshing in the background keeps the
     // first paint instant.
@@ -353,12 +393,97 @@ export const useStore = create<State>((set, get) => ({
     set({ settings: await api.settings.save(patch) })
   },
 
+  setThreadSort(sort) {
+    const current = get().settings
+    if (!current || current.ui.threadSort === sort) return
+
+    // Switching views is a glance, not a decision: waiting on a round trip to
+    // the database — which re-reads the keyring on the way back — makes a free
+    // action feel expensive. Paint it now and persist behind it; nothing else
+    // reads this setting, so there is nothing to disagree with in the meantime.
+    set({ settings: { ...current, ui: { ...current.ui, threadSort: sort } } })
+    void api.settings.save({ ui: { threadSort: sort } })
+  },
+
   async refreshModels(force = false) {
     try {
       set({ models: await api.models.list(force) })
     } catch {
       /* offline or no key yet — the cached catalogue is enough */
     }
+  },
+
+  async refreshTags() {
+    set({ allTags: await api.tags.list() })
+  },
+
+  async retagThread(threadId) {
+    // One thread is one request, so there is nothing to count — the popup says
+    // which thread is being looked at and goes away when it is done.
+    set({ taggingThreadId: threadId })
+    try {
+      const tags = await api.tags.retag(threadId)
+      await get().refreshThreads()
+      await get().refreshTags()
+      get().showToast(
+        tags === null
+          ? 'The tagging model could not be reached'
+          : tags.length
+            ? `Tagged ${tags.join(', ')}`
+            : 'No tags fit this thread'
+      )
+    } catch (err) {
+      get().showToast(err instanceof Error ? err.message : String(err), 'error')
+    } finally {
+      set({ taggingThreadId: null })
+    }
+  },
+
+  async tagAllUntagged() {
+    if (get().tagBatch) return
+    // Painted before the first event arrives, so the bar appears on the click
+    // rather than after the first thread has been through the model.
+    set({ tagBatch: { done: 0, total: 0 } })
+    try {
+      const result = await api.tags.tagAllUntagged()
+      await get().refreshThreads()
+      await get().refreshTags()
+      get().showToast(
+        result.total
+          ? `Tagged ${result.tagged} of ${result.total} untagged threads`
+          : 'Every thread already has tags'
+      )
+    } catch (err) {
+      get().showToast(err instanceof Error ? err.message : String(err), 'error')
+    } finally {
+      set({ tagBatch: null })
+    }
+  },
+
+  async setTagFlags(name, flags) {
+    await api.tags.setFlags(name, flags)
+    await get().refreshTags()
+  },
+
+  toggleTagFolder(name) {
+    const open = get().expandedTags
+    set({
+      expandedTags: open.includes(name) ? open.filter((t) => t !== name) : [...open, name]
+    })
+  },
+
+  async addTag(threadId, name) {
+    const updated = await api.tags.add(threadId, name)
+    if (!updated) return
+    set({ threads: get().threads.map((t) => (t.id === threadId ? updated : t)) })
+    await get().refreshTags()
+  },
+
+  async removeTag(threadId, name) {
+    const updated = await api.tags.remove(threadId, name)
+    if (!updated) return
+    set({ threads: get().threads.map((t) => (t.id === threadId ? updated : t)) })
+    await get().refreshTags()
   },
 
   async runSearch(query) {
@@ -370,7 +495,13 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setOverlay(overlay, returnTo = null) {
-    set({ overlay, overlayReturnTo: returnTo })
+    // Opening search any other way starts empty, rather than with whatever a
+    // tag click left behind.
+    set({ overlay, overlayReturnTo: returnTo, ...(overlay === 'search' ? { searchSeed: '' } : {}) })
+  },
+
+  openSearch(query = '') {
+    set({ overlay: 'search', overlayReturnTo: null, searchSeed: query })
   },
 
   closeOverlay() {
@@ -488,6 +619,29 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
 
   if (event.type === 'title') {
     void get().refreshThreads()
+    return
+  }
+
+  // Tags belong to the thread rather than to any message, so they land
+  // whether or not the thread they changed is the one on screen. During a
+  // library-wide pass this fires once per thread, which is far more reloading
+  // than anyone can read — there, the progress handler paces it instead.
+  if (event.type === 'tags') {
+    if (!get().tagBatch) {
+      void get().refreshThreads()
+      void get().refreshTags()
+    }
+    return
+  }
+
+  if (event.type === 'tag-progress') {
+    set({ tagBatch: event.finished ? null : { done: event.done, total: event.total } })
+    // Often enough that the list visibly fills in, rarely enough that a run
+    // over a thousand threads is not a thousand round trips.
+    if (!event.finished && event.done > 0 && event.done % 10 === 0) {
+      void get().refreshThreads()
+      void get().refreshTags()
+    }
     return
   }
 

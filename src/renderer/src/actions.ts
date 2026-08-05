@@ -239,6 +239,12 @@ export function buildActions(): AppAction[] {
       run: () => store.setOverlay('titleModel')
     },
     {
+      id: 'tagModel.picker',
+      label: 'Choose the tagging model',
+      group: 'Model',
+      run: () => store.setOverlay('tagModel')
+    },
+    {
       id: 'thread.retitle',
       label: 'Regenerate this thread’s name',
       group: 'Model',
@@ -247,6 +253,42 @@ export function buildActions(): AppAction[] {
         await store.refreshThreads()
         store.showToast(title ? `Renamed to “${title}”` : 'Could not generate a name')
       })
+    },
+
+    // Tags
+    {
+      id: 'tags.add',
+      label: 'Add a tag to this thread',
+      group: 'Tags',
+      run: requireThread(async (id) => {
+        const name = await store.askPrompt({
+          title: 'Add a tag',
+          body: 'Tags are shared between threads and searchable from anywhere.',
+          placeholder: 'Tag name',
+          confirmLabel: 'Add tag'
+        })
+        if (name?.trim()) await store.addTag(id, name)
+      })
+    },
+    {
+      id: 'tags.retag',
+      // Works whether or not automatic tagging is on: that switch governs
+      // whether it happens by itself, not whether it can be asked for.
+      label: 'Re-tag this thread now',
+      group: 'Tags',
+      run: requireThread((id) => void store.retagThread(id))
+    },
+    {
+      id: 'tags.tagAll',
+      label: 'Tag every untagged thread',
+      group: 'Tags',
+      run: () => void store.tagAllUntagged()
+    },
+    {
+      id: 'tags.search',
+      label: 'Search by tag',
+      group: 'Tags',
+      run: () => store.openSearch('tag:')
     },
 
     // Capabilities
@@ -298,6 +340,24 @@ export function buildActions(): AppAction[] {
     },
 
     // View
+    {
+      id: 'view.sortEdited',
+      label: 'Order threads by when they were last edited',
+      group: 'View',
+      run: () => store.setThreadSort('edited')
+    },
+    {
+      id: 'view.sortCreated',
+      label: 'Order threads by when they were created',
+      group: 'View',
+      run: () => store.setThreadSort('created')
+    },
+    {
+      id: 'view.sortTags',
+      label: 'Show threads as tag folders',
+      group: 'View',
+      run: () => store.setThreadSort('tags')
+    },
     { id: 'view.zoomIn', label: 'Zoom in', group: 'View', hidden: true, run: () => zoom('in') },
     { id: 'view.zoomOut', label: 'Zoom out', group: 'View', hidden: true, run: () => zoom('out') },
     { id: 'view.zoomReset', label: 'Reset zoom', group: 'View', hidden: true, run: () => zoom('reset') }

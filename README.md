@@ -14,6 +14,7 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 - Pick any model from the full OpenRouter catalogue.
 - Choose the *specific upstream provider* for a model — pin one outright, set an order of preference, sort by price/throughput/latency, or refuse providers that train on your data. Scope the choice to one thread or to every use of that model.
 - Choose which model writes your thread names, and edit the prompt it uses.
+- Choose which model keeps your thread tags, and edit that prompt too.
 
 **The conversation**
 
@@ -21,6 +22,11 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 - Streaming replies, with reasoning traces when the model produces them.
 - Edit any message, regenerate any reply, branch a thread from any point.
 - Instant search across every message, backed by a local FTS5 index. Results appear as you type because nothing leaves your machine.
+- Tag your threads. Add them by hand, or let a model keep them current — it is asked after every message, not once per thread, so the tags follow a conversation as it drifts rather than describing where it started. Tags you add yourself are never removed by the model, and it can be held to the tags you already have instead of inventing its own. Off by default; the cost of each pass is included in your statistics.
+- Already have a library of untagged conversations? Settings › Tags will tag every one of them in a single pass, telling you first how many threads that is and what it will cost, measured from the requests it would actually send. It shows progress as it goes and can be stopped part-way. Any single thread can be re-tagged on demand from its tag bar, the command palette, `Ctrl/⌘ Alt K`, or a right-click in the thread list.
+- The thread list has three views, switched from above the search box or with `Alt 1` / `Alt 2` / `Alt 3`: by when a thread was last edited, by when it was created, or as a folder per tag — open one to see what is in it, most recently edited first, with a folder for whatever has no tags yet. Folders pin separately from threads: pinning a folder says which subjects matter, pinning a thread says which conversations do, and neither reorders the other's view.
+- Any tag can be marked *manual only*, in Settings › Tags or by right-clicking its folder. The model will then neither apply nor withdraw it, and it is not even offered in the vocabulary — a tag like `reviewed` means exactly what you meant by it.
+- Tags are searchable wherever search is: type a tag name, or `tag:rust` (or `#rust`) to see only threads carrying it, optionally with more words to search inside them.
 
 **Capabilities**
 

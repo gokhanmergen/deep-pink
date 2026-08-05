@@ -171,6 +171,182 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   )
   check('it rolls up globally too', repo.getGlobalStats().toolUsage.length === 2)
 
+  section('tags')
+  const tagged = repo.createThread('Tag fixture')
+  repo.insertMessage({
+    threadId: tagged.id,
+    role: 'user',
+    content: 'lifetimes and ownership, explained slowly'
+  })
+
+  const firstTag = repo.addThreadTag(tagged.id, '  #Rust Lang  ')
+  check('a tag is cleaned up on the way in', firstTag === 'rust lang', firstTag)
+  repo.addThreadTag(tagged.id, 'RUST LANG')
+  check(
+    'the same tag in another case is the same tag',
+    repo.getThreadTags(tagged.id).length === 1,
+    repo.getThreadTags(tagged.id)
+  )
+  check('a tag with nothing in it is refused', repo.addThreadTag(tagged.id, '  ##  ') === null)
+
+  repo.addThreadTag(tagged.id, 'borrow checker', 'model')
+  check(
+    'the thread carries what was put on it',
+    repo.getThread(tagged.id).tags.join(',') === 'borrow checker,rust lang',
+    repo.getThread(tagged.id).tags
+  )
+  check(
+    'where each tag came from is remembered',
+    repo.getThreadTagSources(tagged.id)['borrow checker'] === 'model' &&
+      repo.getThreadTagSources(tagged.id)['rust lang'] === 'user',
+    repo.getThreadTagSources(tagged.id)
+  )
+  repo.addThreadTag(tagged.id, 'borrow checker', 'user')
+  check(
+    'adopting a model tag by hand makes it the user’s',
+    repo.getThreadTagSources(tagged.id)['borrow checker'] === 'user'
+  )
+  check(
+    'the library counts the threads using each tag',
+    repo.listTags().find((t) => t.name === 'rust lang').threads === 1,
+    repo.listTags()
+  )
+
+  section('tags are searchable')
+  const byTag = repo.search('rust lang')
+  check('a tag match is found', byTag.some((hit) => hit.kind === 'tag'), byTag)
+  check(
+    'the match is highlighted',
+    byTag.find((hit) => hit.kind === 'tag').snippet.includes('<mark>'),
+    byTag.find((hit) => hit.kind === 'tag')
+  )
+  check(
+    'every hit carries its thread’s tags',
+    byTag.every((hit) => Array.isArray(hit.tags)) &&
+      byTag.find((hit) => hit.threadId === tagged.id).tags.includes('rust lang'),
+    byTag
+  )
+
+  const filtered = repo.search('tag:rust')
+  check('a tag: term matches on a prefix', filtered.length === 1, filtered)
+  check('and returns the whole thread', filtered[0].threadId === tagged.id, filtered[0])
+  check('a hash means the same thing', repo.search('#rust').length === 1)
+
+  const scoped = repo.search('tag:rust lifetimes')
+  check(
+    'free text inside a tag filter searches only that thread',
+    scoped.length === 1 && scoped[0].messageId !== null && scoped[0].threadId === tagged.id,
+    scoped
+  )
+  check(
+    'text that matches elsewhere is excluded by the filter',
+    repo.search('tag:rust borrow').every((hit) => hit.threadId === tagged.id),
+    repo.search('tag:rust borrow')
+  )
+  check('an unused tag filter matches nothing', repo.search('tag:absent').length === 0)
+
+  section('the tag library')
+  const other = repo.createThread('Second Rust thread')
+  repo.addThreadTag(other.id, 'rustlang')
+  check(
+    'renaming merges onto a tag that already exists',
+    repo.renameTag('rustlang', 'rust lang') === 'rust lang' &&
+      repo.getThreadTags(other.id).join(',') === 'rust lang' &&
+      repo.listTags().filter((t) => t.name === 'rustlang').length === 0,
+    repo.listTags()
+  )
+  check('and both threads now wear it', repo.search('tag:rust').length === 2)
+
+  const branchOfTagged = repo.branchThread(tagged.id, repo.getMessages(tagged.id)[0].id)
+  check(
+    'a branch inherits the tags of what it came from',
+    branchOfTagged.tags.join(',') === 'borrow checker,rust lang',
+    branchOfTagged.tags
+  )
+
+  const capped = repo.createThread('Too many tags')
+  for (const name of ['one', 'two', 'three']) repo.addThreadTag(capped.id, name, 'model')
+  repo.addThreadTag(capped.id, 'mine', 'user')
+  repo.enforceTagLimit(capped.id, 2)
+  const remaining = repo.getThreadTags(capped.id)
+  check('the limit is enforced', remaining.length === 2, remaining)
+  check('and the user’s own tag survives it', remaining.includes('mine'), remaining)
+
+  repo.deleteTag('rust lang')
+  check(
+    'deleting a tag takes it off every thread',
+    repo.getThreadTags(tagged.id).join(',') === 'borrow checker' &&
+      repo.getThreadTags(other.id).length === 0,
+    repo.getThreadTags(tagged.id)
+  )
+
+  section('tags the model may not touch')
+  const curated = repo.createThread('Curated')
+  repo.addThreadTag(curated.id, 'reviewed')
+  repo.setTagFlags('reviewed', { manualOnly: true })
+
+  const reviewed = repo.listTags().find((t) => t.name === 'reviewed')
+  check('a tag can be marked manual-only', reviewed.manualOnly === true, reviewed)
+  check('and is not pinned by that', reviewed.pinned === false, reviewed)
+
+  repo.setTagFlags('reviewed', { pinned: true })
+  check(
+    'pinning a tag is a separate flag',
+    repo.listTags().find((t) => t.name === 'reviewed').pinned === true &&
+      repo.listTags().find((t) => t.name === 'reviewed').manualOnly === true
+  )
+  check(
+    'pinning a folder leaves thread pinning alone',
+    repo.getThread(curated.id).pinned === false
+  )
+
+  repo.setTagFlags('reviewed', { manualOnly: false })
+  check(
+    'and it can be handed back to the model',
+    repo.listTags().find((t) => t.name === 'reviewed').manualOnly === false
+  )
+  repo.deleteThread(curated.id)
+
+  section('finding what still needs tagging')
+  const untidy = repo.createThread('Never tagged')
+  repo.insertMessage({ threadId: untidy.id, role: 'user', content: 'x'.repeat(2000) })
+  repo.insertMessage({ threadId: untidy.id, role: 'assistant', content: 'short answer' })
+  const emptyThread = repo.createThread('Nothing said here')
+
+  const untaggedIds = repo.listUntaggedThreadIds()
+  check('a thread with no tags is listed', untaggedIds.includes(untidy.id), untaggedIds.length)
+  check('a thread with tags is not', !untaggedIds.includes(tagged.id))
+  check('an empty thread has nothing to tag', !untaggedIds.includes(emptyThread.id))
+
+  const sizes = repo.untaggedThreadSizes(10, 900)
+  const untidySize = sizes.find((row) => row.id === untidy.id)
+  check('its transcript is measured', Boolean(untidySize), sizes)
+  check(
+    'a long message is measured as the request would truncate it',
+    untidySize.chars < 1100,
+    untidySize
+  )
+  check(
+    'and the short one is measured in full',
+    untidySize.chars > 900 + 'short answer'.length,
+    untidySize
+  )
+  check(
+    'the empty thread is left out of the measurement',
+    !sizes.some((row) => row.id === emptyThread.id),
+    sizes.map((r) => r.title)
+  )
+
+  repo.deleteThread(untidy.id)
+  repo.deleteThread(emptyThread.id)
+
+  repo.deleteThread(tagged.id)
+  check(
+    'deleting a thread lets go of its tags',
+    repo.listTags().find((t) => t.name === 'borrow checker').threads === 1,
+    repo.listTags()
+  )
+
   section('branching and deletion')
   const branch = repo.branchThread(thread.id, question.id)
   check('a branch is created as a new thread', Boolean(branch) && branch.id !== thread.id)

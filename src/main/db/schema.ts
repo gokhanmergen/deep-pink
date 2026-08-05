@@ -143,5 +143,32 @@ export const MIGRATIONS: string[] = [
 
   /* 6 — how much each tool call brought into the context */ `
   ALTER TABLE tool_invocations ADD COLUMN result_chars INTEGER NOT NULL DEFAULT 0;
+  `,
+
+  /* 7 — tags, shared across threads and searchable */ `
+  CREATE TABLE tags (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  -- One row per tag however it is capitalised, so "Rust" and "rust" are one tag.
+  CREATE UNIQUE INDEX idx_tags_name ON tags (name COLLATE NOCASE);
+
+  CREATE TABLE thread_tags (
+    thread_id  TEXT    NOT NULL REFERENCES threads (id) ON DELETE CASCADE,
+    tag_id     TEXT    NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
+    -- 'user' or 'model'. A tag the user put on is never taken off by a model.
+    source     TEXT    NOT NULL DEFAULT 'user',
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (thread_id, tag_id)
+  );
+  CREATE INDEX idx_thread_tags_tag ON thread_tags (tag_id);
+  `,
+
+  /* 8 — per-tag flags: kept out of the model's reach, and pinned as a folder */ `
+  ALTER TABLE tags ADD COLUMN manual_only INTEGER NOT NULL DEFAULT 0;
+  -- A pinned tag is a pinned folder in the tag view. Deliberately unrelated to
+  -- a pinned thread: the two views are pinned independently.
+  ALTER TABLE tags ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
   `
 ]

@@ -1,18 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS } from '@shared/defaults'
 import { modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
-import type { AppInfo, ImportPreview, ImportResult } from '@shared/types'
+import type {
+  AppInfo,
+  ImportPreview,
+  ImportResult,
+  OpenRouterModel,
+  TagBackfillEstimate
+} from '@shared/types'
 
-type Tab = 'account' | 'models' | 'prompts' | 'web' | 'context' | 'appearance' | 'keys' | 'data'
+type Tab =
+  | 'account'
+  | 'models'
+  | 'prompts'
+  | 'tags'
+  | 'web'
+  | 'context'
+  | 'appearance'
+  | 'keys'
+  | 'data'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'account', label: 'Account' },
   { id: 'models', label: 'Models' },
   { id: 'prompts', label: 'Prompts' },
+  { id: 'tags', label: 'Tags' },
   { id: 'web', label: 'Web access' },
   { id: 'context', label: 'Context' },
   { id: 'appearance', label: 'Appearance' },
@@ -20,12 +36,54 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'data', label: 'Data' }
 ]
 
+/**
+ * What the backfill would cost, in words.
+ *
+ * The token counts are measured from the requests that would actually be sent,
+ * so the only guess left is the price, which comes from the model catalogue.
+ * Without a catalogue entry the count is still worth stating — quoting a
+ * confident number we cannot support would be worse than saying so.
+ */
+function describeBackfill(
+  estimate: TagBackfillEstimate | null,
+  model: OpenRouterModel | undefined
+): string {
+  if (!estimate) return 'Counting…'
+  if (!estimate.threads) return 'Every thread with a conversation in it already has tags.'
+
+  const threads = `${estimate.threads.toLocaleString()} thread${estimate.threads === 1 ? '' : 's'}`
+  const tokens = `${(estimate.promptTokens + estimate.completionTokens).toLocaleString()} tokens`
+
+  if (!model) {
+    return `${threads} to tag, about ${tokens} in ${threads.split(' ')[0]} requests. Refresh the model catalogue to price it.`
+  }
+
+  const cost =
+    estimate.promptTokens * model.pricing.prompt +
+    estimate.completionTokens * model.pricing.completion
+
+  const price =
+    cost === 0
+      ? 'free on this model'
+      : cost < 0.01
+        ? `about ${(cost * 100).toFixed(2)}¢`
+        : `about $${cost.toFixed(2)}`
+
+  return `${threads} to tag — one request each, roughly ${tokens} in total, ${price} with ${model.name}.`
+}
+
 export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const settings = useStore((s) => s.settings)
   const saveSettings = useStore((s) => s.saveSettings)
   const refreshSettings = useStore((s) => s.refreshSettings)
   const setOverlay = useStore((s) => s.setOverlay)
   const showToast = useStore((s) => s.showToast)
+  const allTags = useStore((s) => s.allTags)
+  const refreshTags = useStore((s) => s.refreshTags)
+  const tagBatch = useStore((s) => s.tagBatch)
+  const tagAllUntagged = useStore((s) => s.tagAllUntagged)
+  const setTagFlags = useStore((s) => s.setTagFlags)
+  const models = useStore((s) => s.models)
 
   const [tab, setTab] = useState<Tab>(settings?.hasApiKey ? 'models' : 'account')
   const [apiKey, setApiKey] = useState('')
@@ -37,6 +95,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importBusy, setImportBusy] = useState(false)
+  const [estimate, setEstimate] = useState<TagBackfillEstimate | null>(null)
+
+  // Re-read when the tab opens, when the model changes, and each time a run
+  // finishes — the number of untagged threads is what the run just changed.
+  useEffect(() => {
+    if (tab !== 'tags' || tagBatch) return
+    void window.deepPink.tags.backfillEstimate().then(setEstimate)
+  }, [tab, tagBatch, settings?.tagging.model, settings?.tagging.prompt, allTags])
 
   useEffect(() => {
     void window.deepPink.data.path().then(setDbLocation)
@@ -77,6 +143,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   }, [capturing, saveSettings])
 
   if (!settings) return <Overlay title="Settings" onClose={onClose}><div className="panel__body" /></Overlay>
+
+  // Manual-only tags lead: they are the ones being curated by hand, so they are
+  // what someone opening this list came to check. Sorting is stable, so within
+  // each group the library's own order — most used first — is left alone.
+  const tagRows = useMemo(
+    () => [...allTags].sort((a, b) => Number(b.manualOnly) - Number(a.manualOnly)),
+    [allTags]
+  )
+
+  // Priced from the catalogue entry for whichever model does the tagging.
+  const tagPricing = models.find((m) => m.id === settings.tagging.model)
 
   const saveKey = async (): Promise<void> => {
     await window.deepPink.settings.setApiKey(apiKey)
@@ -309,6 +386,201 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </span>
               </span>
             </label>
+          </>
+        )}
+
+        {tab === 'tags' && (
+          <>
+            <div className="section-title">Automatic tagging</div>
+            <label className="switch" style={{ marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={settings.tagging.enabled}
+                onChange={(event) => void saveSettings({ tagging: { enabled: event.target.checked } })}
+              />
+              <span>
+                Let a model keep these tags up to date
+                <span className="field__hint">
+                  Runs after every message, not once per thread, so the tags follow a conversation
+                  as it drifts. That is one small request per turn, and its cost is included in your
+                  statistics. Off by default. Tags you add by hand are never removed by the model.
+                </span>
+              </span>
+            </label>
+
+            <div className="field">
+              <span className="field__label">Model used to tag threads</span>
+              <div className="row">
+                <button className="btn" onClick={() => setOverlay('tagModel', 'settings')} type="button">
+                  {modelShortName(settings.tagging.model)}
+                </button>
+                <span className="field__hint">A small, cheap model is usually the right call.</span>
+              </div>
+            </div>
+
+            <label className="switch" style={{ marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={settings.tagging.allowNewTags}
+                onChange={(event) =>
+                  void saveSettings({ tagging: { allowNewTags: event.target.checked } })
+                }
+              />
+              <span>
+                The model may invent new tags
+                <span className="field__hint">
+                  With this off it may only pick from tags that already exist, so the library stays
+                  the one you built rather than growing a synonym per thread. You can always add a
+                  new tag yourself.
+                </span>
+              </span>
+            </label>
+
+            <div className="field">
+              <span className="field__label">Most tags on one thread</span>
+              <DebouncedInput
+                className="input"
+                type="number"
+                min={1}
+                max={20}
+                value={String(settings.tagging.maxTagsPerThread)}
+                onCommit={(next) =>
+                  void saveSettings({
+                    tagging: { maxTagsPerThread: Math.min(Math.max(Number(next) || 1, 1), 20) }
+                  })
+                }
+              />
+              <span className="field__hint">
+                Over this, the model's own oldest tags are dropped. Yours are kept.
+              </span>
+            </div>
+
+            <div className="field">
+              <span className="field__label">Tagging prompt</span>
+              <DebouncedTextarea
+                className="textarea"
+                rows={12}
+                value={settings.tagging.prompt}
+                onCommit={(next) => void saveSettings({ tagging: { prompt: next } })}
+              />
+              <span className="field__hint">
+                The reply is read as JSON: <span className="mono">{'{"add": [], "remove": []}'}</span>.
+                Anything unreadable is taken to mean no change.
+              </span>
+            </div>
+
+            <div className="section-title">Threads with no tags</div>
+            <div className="field">
+              <div className="row">
+                <button
+                  className="btn"
+                  disabled={!!tagBatch || !estimate || estimate.threads === 0}
+                  onClick={() => void tagAllUntagged()}
+                  type="button"
+                >
+                  {tagBatch ? 'Tagging…' : 'Tag every untagged thread'}
+                </button>
+                {tagBatch && (
+                  <button
+                    className="btn btn--ghost"
+                    onClick={() => void window.deepPink.tags.stopBackfill()}
+                    type="button"
+                  >
+                    Stop
+                  </button>
+                )}
+              </div>
+
+              <span className="field__hint">{describeBackfill(estimate, tagPricing)}</span>
+
+              {tagBatch && (
+                <div className="tagbatch">
+                  <div className="meter">
+                    <div
+                      className="meter__fill"
+                      style={{
+                        width: `${tagBatch.total ? Math.round((tagBatch.done / tagBatch.total) * 100) : 0}%`
+                      }}
+                    />
+                  </div>
+                  <div className="tagbatch__row">
+                    <span>
+                      {tagBatch.done} of {tagBatch.total} threads
+                    </span>
+                    <div style={{ flex: 1 }} />
+                    <span>Stopping leaves what has been tagged in place.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="section-title">Your tags</div>
+            {allTags.length === 0 ? (
+              <p className="field__hint">
+                No tags yet. Add one from the bar above a conversation, or let the model start.
+              </p>
+            ) : (
+              <div className="taglist">
+                {tagRows.map((tag) => (
+                  <div className="spread taglist__row" key={tag.name}>
+                    <span className="tagchip tagchip--static">#{tag.name}</span>
+                    <span className="dim" style={{ fontSize: 12 }}>
+                      {tag.threads} thread{tag.threads === 1 ? '' : 's'}
+                    </span>
+                    <div style={{ flex: 1 }} />
+                    <label
+                      className="switch switch--inline"
+                      title="The model will neither add nor remove this tag"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={tag.manualOnly}
+                        onChange={(event) =>
+                          void setTagFlags(tag.name, { manualOnly: event.target.checked })
+                        }
+                      />
+                      <span>Manual only</span>
+                    </label>
+                    <button
+                      className="btn btn--ghost"
+                      onClick={async () => {
+                        const next = await useStore.getState().askPrompt({
+                          title: `Rename “${tag.name}”`,
+                          body: 'Every thread carrying it follows. Renaming onto a tag that already exists merges the two.',
+                          defaultValue: tag.name,
+                          confirmLabel: 'Rename'
+                        })
+                        if (!next?.trim()) return
+                        await window.deepPink.tags.rename(tag.name, next)
+                        await refreshTags()
+                        await useStore.getState().refreshThreads()
+                      }}
+                      type="button"
+                    >
+                      Rename
+                    </button>
+                    <button
+                      className="btn btn--ghost"
+                      onClick={async () => {
+                        const ok = await useStore.getState().askConfirm({
+                          title: `Delete the tag “${tag.name}”?`,
+                          body: `It comes off ${tag.threads} thread${tag.threads === 1 ? '' : 's'}. The conversations themselves are untouched.`,
+                          confirmLabel: 'Delete tag',
+                          danger: true
+                        })
+                        if (!ok) return
+                        await window.deepPink.tags.deleteEverywhere(tag.name)
+                        await refreshTags()
+                        await useStore.getState().refreshThreads()
+                      }}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -569,6 +841,23 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 ))}
               </select>
             </div>
+
+            <label className="switch" style={{ marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={settings.ui.showTagsInSidebar}
+                onChange={(event) =>
+                  void saveSettings({ ui: { showTagsInSidebar: event.target.checked } })
+                }
+              />
+              <span>
+                Show tags in the sidebar
+                <span className="field__hint">
+                  Tag chips under each thread in the list. Turning them off keeps the list dense;
+                  the tag view and the bar above a conversation are unaffected.
+                </span>
+              </span>
+            </label>
 
             <label className="switch" style={{ marginBottom: 12 }}>
               <input

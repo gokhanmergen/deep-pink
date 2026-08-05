@@ -105,8 +105,44 @@ export interface Thread {
   updatedAt: number
   pinned: boolean
   archived: boolean
+  /** Tag names attached to this thread, alphabetically. */
+  tags: string[]
   /** Per-thread overrides; anything unset falls back to global settings. */
   config: ThreadConfig
+}
+
+/* ------------------------------------------------------------------ *
+ * Tags
+ * ------------------------------------------------------------------ */
+
+/** Who put a tag on a thread. The user's choices are never undone by a model. */
+export type TagSource = 'user' | 'model'
+
+/** One tag in the library, with how many threads currently carry it. */
+export interface TagSummary {
+  name: string
+  threads: number
+  /** The model may neither add nor remove this tag — it is yours to place. */
+  manualOnly: boolean
+  /** Pinned as a folder in the tag view. Nothing to do with a pinned thread. */
+  pinned: boolean
+}
+
+/** How the sidebar orders threads. Remembered between sessions. */
+export type ThreadSort = 'edited' | 'created' | 'tags'
+
+/**
+ * What tagging every untagged thread would involve.
+ *
+ * The token counts come from assembling the very requests that would be sent,
+ * so the price the UI shows is arithmetic on real numbers rather than a guess
+ * at an average thread.
+ */
+export interface TagBackfillEstimate {
+  model: string
+  threads: number
+  promptTokens: number
+  completionTokens: number
 }
 
 export interface ThreadConfig {
@@ -385,6 +421,26 @@ export interface CompactionSettings {
 }
 
 /* ------------------------------------------------------------------ *
+ * Automatic tagging
+ * ------------------------------------------------------------------ */
+
+export interface TaggingSettings {
+  /** When off, no tagging request is ever made; manual tags still work. */
+  enabled: boolean
+  /** Model asked to keep the tags up to date. */
+  model: string
+  /** The instructions it is given. Fully user-editable. */
+  prompt: string
+  /**
+   * When false the model may only pick from tags that already exist, so the
+   * library stays the one you built rather than growing a synonym per thread.
+   */
+  allowNewTags: boolean
+  /** Upper bound on how many tags one thread may carry. */
+  maxTagsPerThread: number
+}
+
+/* ------------------------------------------------------------------ *
  * Settings
  * ------------------------------------------------------------------ */
 
@@ -406,6 +462,7 @@ export interface Settings {
   streamReasoning: boolean
   web: WebSearchSettings
   compaction: CompactionSettings
+  tagging: TaggingSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. Off by default. */
   sendAppAttribution: boolean
   keybinds: Record<string, string>
@@ -418,16 +475,21 @@ export interface Settings {
  */
 export type SettingsPatch = Omit<
   Partial<Settings>,
-  'web' | 'compaction' | 'ui' | 'defaultProviderRouting'
+  'web' | 'compaction' | 'tagging' | 'ui' | 'defaultProviderRouting'
 > & {
   web?: Partial<WebSearchSettings>
   compaction?: Partial<CompactionSettings>
+  tagging?: Partial<TaggingSettings>
   ui?: Partial<UiSettings>
   defaultProviderRouting?: Partial<ProviderRouting>
 }
 
 export interface UiSettings {
   accent: string
+  /** Which of the sidebar's three views is showing. */
+  threadSort: ThreadSort
+  /** Tag chips under each thread in the sidebar. The tag view is unaffected. */
+  showTagsInSidebar: boolean
   fontSize: number
   /**
    * Chromium zoom level, where 0 is 100% and each step scales by 1.2. Scales the
@@ -464,6 +526,17 @@ export type StreamEvent =
   | { type: 'compaction-start'; threadId: string }
   | { type: 'compaction-done'; threadId: string; summaryMessageId: string; freedTokens: number }
   | { type: 'title'; threadId: string; title: string }
+  /** The tagging pass changed which tags a thread carries. */
+  | { type: 'tags'; threadId: string; tags: string[] }
+  /** How far the "tag every untagged thread" pass has got. */
+  | {
+      type: 'tag-progress'
+      done: number
+      total: number
+      /** The thread being tagged right now, or null once it is over. */
+      threadId: string | null
+      finished: boolean
+    }
 
 export interface SendMessageRequest {
   threadId: string
@@ -558,4 +631,8 @@ export interface SearchHit {
   snippet: string
   createdAt: number
   score: number
+  /** What matched: the thread's name, one of its tags, or a message body. */
+  kind: 'title' | 'tag' | 'message'
+  /** Every tag on the hit's thread, so results carry them wherever they show. */
+  tags: string[]
 }

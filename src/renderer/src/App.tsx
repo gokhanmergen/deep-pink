@@ -14,6 +14,7 @@ import { GlobalStatsPanel, ThreadStatsPanel } from './components/StatsPanels'
 import { McpPanel } from './components/McpPanel'
 import { KeybindCheatsheet } from './components/KeybindCheatsheet'
 import { ToolApprovalDialog } from './components/ToolApprovalDialog'
+import { TagProgress } from './components/TagProgress'
 import { Dialog } from './components/Dialog'
 
 /** Bindings the composer owns; the global handler must not steal them. */
@@ -148,6 +149,7 @@ export function App(): React.JSX.Element {
       {overlay === 'models' && <ModelPicker mode="chat" onClose={close} />}
       {overlay === 'defaultModel' && <ModelPicker mode="default" onClose={close} />}
       {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}
+      {overlay === 'tagModel' && <ModelPicker mode="tag" onClose={close} />}
       {overlay === 'providers' && <ProviderPicker onClose={close} />}
       {overlay === 'prompt' && <SystemPromptInspector onClose={close} />}
       {overlay === 'threadStats' && <ThreadStatsPanel onClose={close} />}
@@ -156,6 +158,7 @@ export function App(): React.JSX.Element {
       {overlay === 'keybinds' && <KeybindCheatsheet onClose={close} />}
 
       <ToolApprovalDialog />
+      <TagProgress />
       <Dialog />
 
       {toast && (

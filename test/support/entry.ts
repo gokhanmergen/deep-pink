@@ -5,7 +5,7 @@
 export { getDb } from '@/db/index'
 export * as repo from '@/db/repo'
 export { streamChat, OpenRouterError } from '@/providers/openrouter'
-export { toChatParams } from '@/chat/engine'
+export { toChatParams, parseTagEdit } from '@/chat/engine'
 export { assembleContext, estimateTokens } from '@/chat/prompt'
 export { htmlToText, runWebFetch, runWebSearch } from '@/tools/web'
 export * as attachments from '@/attachments'

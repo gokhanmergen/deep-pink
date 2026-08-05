@@ -11,8 +11,10 @@ import { formatRelative } from '../format'
 export function SearchOverlay({ onClose }: { onClose: () => void }): React.JSX.Element {
   const selectThread = useStore((s) => s.selectThread)
   const setHighlight = useStore((s) => s.setHighlight)
+  // Clicking a tag elsewhere opens this overlay with `tag:…` already typed.
+  const seed = useStore((s) => s.searchSeed)
 
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(seed)
   const [hits, setHits] = useState<SearchHit[]>([])
   const [cursor, setCursor] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -52,7 +54,7 @@ export function SearchOverlay({ onClose }: { onClose: () => void }): React.JSX.E
         <div className="panel__head" style={{ padding: 0 }}>
           <input
             className="panel__search"
-            placeholder="Search every message…"
+            placeholder="Search messages, names and tags…"
             value={query}
             autoFocus
             onChange={(event) => setQuery(event.target.value)}
@@ -74,7 +76,9 @@ export function SearchOverlay({ onClose }: { onClose: () => void }): React.JSX.E
       footer={
         <>
           <span>
-            {query.trim() ? `${hits.length} result${hits.length === 1 ? '' : 's'}` : 'Searches titles and message bodies'}
+            {query.trim()
+              ? `${hits.length} result${hits.length === 1 ? '' : 's'}`
+              : 'Searches names, tags and message bodies — try tag:rust'}
           </span>
           <div style={{ flex: 1 }} />
           <span className="kbd">↑↓</span>
@@ -104,10 +108,25 @@ export function SearchOverlay({ onClose }: { onClose: () => void }): React.JSX.E
                   </span>
                 )}
               </span>
-              <span
-                className="cmditem__sub"
-                dangerouslySetInnerHTML={{ __html: hit.snippet }}
-              />
+              {hit.kind === 'tag' ? (
+                <span className="cmditem__sub">
+                  tagged <span dangerouslySetInnerHTML={{ __html: hit.snippet }} />
+                </span>
+              ) : (
+                <span
+                  className="cmditem__sub"
+                  dangerouslySetInnerHTML={{ __html: hit.snippet }}
+                />
+              )}
+              {hit.tags.length > 0 && (
+                <span className="tagline">
+                  {hit.tags.map((tag) => (
+                    <span className="tagchip tagchip--static" key={tag}>
+                      #{tag}
+                    </span>
+                  ))}
+                </span>
+              )}
             </span>
             <span className="cmditem__sub nowrap">{formatRelative(hit.createdAt)}</span>
           </button>

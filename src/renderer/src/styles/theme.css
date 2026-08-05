@@ -192,6 +192,90 @@ button {
   padding: 0 10px 10px;
 }
 
+/* How the thread list is ordered — three views, one of which is folders. */
+
+.viewswitch {
+  display: flex;
+  gap: 1px;
+  margin: 0 10px 7px;
+  padding: 1px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.viewswitch__option {
+  flex: 1;
+  padding: 2px 0;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+
+.viewswitch__option:hover {
+  color: var(--text);
+}
+
+.viewswitch__option[data-active='true'] {
+  background: var(--bg-active);
+  color: var(--accent);
+}
+
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  margin-top: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.folder:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.folder__icon {
+  flex: none;
+  opacity: 0.8;
+}
+
+.folder[data-open='true'] .folder__name,
+.folder[data-open='true'] .folder__icon {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.folder__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.folder__count {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Indented, and hung off a line, so a thread reads as being inside its tag. */
+.folder__contents {
+  margin-left: 12px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
 .sidebar__list {
   flex: 1;
   min-height: 0;
@@ -258,6 +342,18 @@ button {
   font-size: 11px;
   color: var(--text-dim);
   flex: none;
+  white-space: nowrap;
+}
+
+.thread-item__meta-alt {
+  color: var(--text-dim);
+  opacity: 0.62;
+}
+
+.thread-item__meta-alt::before {
+  content: '·';
+  margin: 0 3px;
+  opacity: 0.7;
 }
 
 /* ------------------------------------------------------------------ *
@@ -482,6 +578,29 @@ button {
 .switch input:checked::after {
   transform: translateX(15px);
   background: var(--accent);
+}
+
+/* One row of a list rather than a paragraph of settings: smaller, and the
+   label sits tight against its toggle. */
+.switch--inline {
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.switch--inline input {
+  width: 26px;
+  height: 15px;
+}
+
+.switch--inline input::after {
+  width: 9px;
+  height: 9px;
+}
+
+.switch--inline input:checked::after {
+  transform: translateX(11px);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1422,6 +1541,170 @@ button {
 
 /* Context-window gauge, shown once a thread has enough in it to be worth a
    number. The label is what makes the bar legible as a measurement. */
+/* Tags — a property of the conversation, shown with its name */
+
+.tagbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 24px 0;
+}
+
+.tagchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-dim);
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 220px;
+}
+
+/* Nowhere to click: the row underneath is already a button. */
+.tagchip--static {
+  padding: 2px 8px;
+  color: var(--text-dim);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tagchip__name {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tagchip__name:hover {
+  color: var(--accent);
+}
+
+.tagchip__remove {
+  color: var(--text-dim);
+  font-size: 9px;
+  flex: none;
+  padding: 0 3px;
+}
+
+.tagchip__remove:hover {
+  color: var(--red);
+}
+
+.tagbar__add,
+.tagbar__input {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-strong);
+  background: none;
+  color: var(--text-dim);
+}
+
+.tagbar__add:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.tagbar__input {
+  border-style: solid;
+  background: var(--bg-elevated);
+  color: var(--text);
+  width: 150px;
+}
+
+.tagbar__input:focus {
+  outline: none;
+  border-color: var(--accent-line);
+}
+
+/* Tags under a search result or a thread in the list */
+
+.tagline,
+.thread-item__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+  overflow: hidden;
+}
+
+.thread-item__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-item__tags {
+  flex-wrap: nowrap;
+}
+
+.taglist__row {
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* One thread being re-tagged. Corner-anchored: nothing is blocked while it
+   runs, so taking the window over would overstate what is happening. */
+
+.tagpopup {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--composer-height, 96px) + 14px);
+  width: 260px;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--accent);
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+
+.tagpopup__label {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A single request has no measurable progress, so the bar paces rather than
+   claims a percentage. */
+.meter--indeterminate .meter__fill {
+  width: 40%;
+  transition: none;
+  animation: meter-pace 1.1s ease-in-out infinite;
+}
+
+@keyframes meter-pace {
+  0% {
+    margin-left: -40%;
+  }
+  100% {
+    margin-left: 100%;
+  }
+}
+
+.tagbatch {
+  margin-top: 10px;
+}
+
+.tagbatch__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .context-gauge {
   display: flex;
   align-items: center;
@@ -1476,6 +1759,11 @@ button {
 .context-menu__item[data-active='true'] {
   background: var(--bg-active);
   color: var(--text);
+}
+
+.context-menu__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .context-menu__item[data-danger='true'][data-active='true'] {

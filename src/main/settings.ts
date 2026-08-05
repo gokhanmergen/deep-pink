@@ -20,6 +20,7 @@ export function loadSettings(): Settings {
     modelProviderRouting: stored.modelProviderRouting ?? {},
     web: { ...DEFAULT_SETTINGS.web, ...stored.web },
     compaction: { ...DEFAULT_SETTINGS.compaction, ...stored.compaction },
+    tagging: { ...DEFAULT_SETTINGS.tagging, ...stored.tagging },
     ui: { ...DEFAULT_SETTINGS.ui, ...stored.ui },
     keybinds: { ...DEFAULT_KEYBINDS, ...stored.keybinds }
   }
@@ -34,6 +35,7 @@ export function saveSettings(patch: SettingsPatch): Settings {
     modelProviderRouting: patch.modelProviderRouting ?? current.modelProviderRouting,
     web: { ...current.web, ...patch.web },
     compaction: { ...current.compaction, ...patch.compaction },
+    tagging: { ...current.tagging, ...patch.tagging },
     ui: { ...current.ui, ...patch.ui },
     keybinds: { ...current.keybinds, ...patch.keybinds }
   }

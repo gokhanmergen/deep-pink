@@ -141,6 +141,39 @@ export function registerIpc(): void {
     }
   })
 
+  /* ---------------- tags ---------------- */
+
+  ipcMain.handle('tags:list', () => repo.listTags())
+  ipcMain.handle('tags:forThread', (_e, threadId: string) => repo.getThreadTags(threadId))
+
+  ipcMain.handle('tags:add', (_e, threadId: string, name: string) => {
+    repo.addThreadTag(threadId, name, 'user')
+    repo.touchThread(threadId)
+    return repo.getThread(threadId)
+  })
+
+  ipcMain.handle('tags:remove', (_e, threadId: string, name: string) => {
+    repo.removeThreadTag(threadId, name)
+    repo.touchThread(threadId)
+    return repo.getThread(threadId)
+  })
+
+  ipcMain.handle('tags:rename', (_e, from: string, to: string) => repo.renameTag(from, to))
+  ipcMain.handle('tags:delete', (_e, name: string) => repo.deleteTag(name))
+  ipcMain.handle(
+    'tags:setFlags',
+    (_e, name: string, flags: { manualOnly?: boolean; pinned?: boolean }) =>
+      repo.setTagFlags(name, flags)
+  )
+  ipcMain.handle('tags:retag', (_e, threadId: string) => engine.retag(threadId, emit))
+
+  // What tagging every untagged thread would send. The renderer prices it,
+  // because the model catalogue lives there.
+  ipcMain.handle('tags:backfillEstimate', () => engine.estimateTagBackfill())
+  ipcMain.handle('tags:tagAllUntagged', () => engine.tagAllUntagged(emit))
+  ipcMain.handle('tags:stopBackfill', () => engine.stopTagBackfill())
+  ipcMain.handle('tags:backfillRunning', () => engine.isTagBackfillRunning())
+
   /* ---------------- search ---------------- */
 
   ipcMain.handle('search:query', (_e, query: string, limit = 50) => repo.search(query, limit))

@@ -5,6 +5,7 @@ import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
+import { TagBar } from './TagBar'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, modelShortName } from '../format'
 
@@ -155,6 +156,8 @@ export function ChatView(): React.JSX.Element {
           </>
         )}
       </div>
+
+      <TagBar />
 
       {/* A gauge of how full the context window is. Hidden while a thread is
           nearly empty, where a full-width track with an invisible fill reads as

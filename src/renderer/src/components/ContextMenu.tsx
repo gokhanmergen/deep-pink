@@ -14,6 +14,8 @@ export interface ContextMenuItem {
   /** Shown right-aligned, e.g. the keyboard shortcut for the same action. */
   hint?: string
   danger?: boolean
+  /** Kept visible but unselectable — an action that is already running. */
+  disabled?: boolean
   onSelect: () => void
 }
 
@@ -63,6 +65,7 @@ export function ContextMenu({ x, y, items, onClose }: Props): React.JSX.Element 
       } else if (event.key === 'Enter') {
         event.preventDefault()
         const item = items[cursor]
+        if (item?.disabled) return
         onClose()
         item?.onSelect()
       }
@@ -107,6 +110,7 @@ export function ContextMenu({ x, y, items, onClose }: Props): React.JSX.Element 
             data-danger={item.danger ?? false}
             role="menuitem"
             type="button"
+            disabled={item.disabled ?? false}
             onMouseEnter={() => setCursor(index)}
             onClick={() => {
               onClose()

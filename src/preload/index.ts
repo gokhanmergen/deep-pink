@@ -12,6 +12,8 @@ import type {
   ImportResult,
   LiveStream,
   SearchHit,
+  TagBackfillEstimate,
+  TagSummary,
   PromptPreview,
   CompactionStatus,
   SendMessageRequest,
@@ -94,6 +96,39 @@ const api = {
   prompt: {
     preview: (threadId: string): Promise<PromptPreview | null> =>
       ipcRenderer.invoke('prompt:preview', threadId)
+  },
+
+  tags: {
+    /** Every tag in the library, with how many threads carry it. */
+    list: (): Promise<TagSummary[]> => ipcRenderer.invoke('tags:list'),
+    forThread: (threadId: string): Promise<string[]> =>
+      ipcRenderer.invoke('tags:forThread', threadId),
+    add: (threadId: string, name: string): Promise<Thread | null> =>
+      ipcRenderer.invoke('tags:add', threadId, name),
+    remove: (threadId: string, name: string): Promise<Thread | null> =>
+      ipcRenderer.invoke('tags:remove', threadId, name),
+    /** Renames everywhere; renaming onto an existing tag merges the two. */
+    rename: (from: string, to: string): Promise<string | null> =>
+      ipcRenderer.invoke('tags:rename', from, to),
+    /** Removes a tag from every thread and from the library. */
+    deleteEverywhere: (name: string): Promise<void> => ipcRenderer.invoke('tags:delete', name),
+    /** `manualOnly` puts a tag out of the model's reach; `pinned` is folder order. */
+    setFlags: (
+      name: string,
+      flags: { manualOnly?: boolean; pinned?: boolean }
+    ): Promise<void> => ipcRenderer.invoke('tags:setFlags', name, flags),
+    /** Asks the tagging model to revisit this thread now. */
+    retag: (threadId: string): Promise<string[] | null> =>
+      ipcRenderer.invoke('tags:retag', threadId),
+    /** Token counts for tagging every untagged thread, for pricing up front. */
+    backfillEstimate: (): Promise<TagBackfillEstimate> =>
+      ipcRenderer.invoke('tags:backfillEstimate'),
+    /** Tags every untagged thread, reporting progress as a chat event. */
+    tagAllUntagged: (): Promise<{ tagged: number; total: number }> =>
+      ipcRenderer.invoke('tags:tagAllUntagged'),
+    /** Stops that pass after the thread it is on. */
+    stopBackfill: (): Promise<void> => ipcRenderer.invoke('tags:stopBackfill'),
+    backfillRunning: (): Promise<boolean> => ipcRenderer.invoke('tags:backfillRunning')
   },
 
   search: {

@@ -33,6 +33,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       threads: { list: async () => [thread] },
       messages: { list: async () => persisted },
       models: { list: async () => [] },
+      tags: { list: async () => [], backfillRunning: async () => false },
       chat: {
         isGenerating: async () => false,
         liveStreams: async () => liveStreams,
@@ -236,5 +237,13 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   )
 
   disposeStore()
+  check('alt+1 switches view', matchesBinding(press('1', { alt: true }), 'alt+1'))
+  check(
+    'and still does where the option key rewrote the character',
+    matchesBinding({ ...press('\u00a1', { alt: true }), code: 'Digit1' }, 'alt+1'),
+    'macOS Option+1'
+  )
+  check('a bare 1 does not switch view', !matchesBinding(press('1'), 'alt+1'))
+
   check('disposing removes the listeners', chatListeners.length === 0)
 })

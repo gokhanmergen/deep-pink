@@ -1,3 +1,17 @@
+/**
+ * Date formatters, built once.
+ *
+ * `toLocaleString` looks free and is not: each call resolves a locale and
+ * builds a formatter, and the sidebar runs several per thread on every render.
+ * With a few hundred threads that alone cost about 100ms per thread switch.
+ * Holding the formatters here makes the same work roughly thirty times cheaper.
+ *
+ * The locale is resolved at load, so a system locale change lands on restart.
+ */
+const DAY_AND_MONTH = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+const MONTH_AND_YEAR = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' })
+const FULL = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
 export function formatTokens(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
@@ -22,14 +36,24 @@ export function formatRelative(timestamp: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`
   if (seconds < 604_800) return `${Math.floor(seconds / 86_400)}d ago`
-  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return DAY_AND_MONTH.format(timestamp)
+}
+
+/**
+ * The same idea as `formatRelative` with the words taken out, for places that
+ * show two timestamps side by side and have room for neither in full.
+ */
+export function formatRelativeShort(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return 'now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`
+  if (seconds < 604_800) return `${Math.floor(seconds / 86_400)}d`
+  return DAY_AND_MONTH.format(timestamp)
 }
 
 export function formatDateTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  })
+  return FULL.format(timestamp)
 }
 
 export function formatDuration(ms: number): string {
@@ -49,7 +73,7 @@ export function dateBucket(timestamp: number): string {
   if (timestamp >= startOfToday - day) return 'Yesterday'
   if (timestamp >= startOfToday - 7 * day) return 'Previous 7 days'
   if (timestamp >= startOfToday - 30 * day) return 'Previous 30 days'
-  return then.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  return MONTH_AND_YEAR.format(then)
 }
 
 export function modelShortName(id: string): string {

@@ -65,7 +65,12 @@ export function matchesBinding(event: KeyboardEvent, binding: string): boolean {
   if (!isMac && !parsed.mod && parsed.ctrl !== event.ctrlKey) return false
   if (isMac && parsed.ctrl !== event.ctrlKey) return false
 
-  return normalizeKey(event.key) === parsed.key
+  if (normalizeKey(event.key) === parsed.key) return true
+
+  // Option on macOS rewrites the character a key produces, so Alt+1 arrives as
+  // '¡' and a digit binding would never match. The physical key is unambiguous
+  // where a digit is concerned, so fall back to it.
+  return /^\d$/.test(parsed.key) && event.code === `Digit${parsed.key}`
 }
 
 const SYMBOLS: Record<string, string> = {
@@ -141,7 +146,15 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     actions: [
       { id: 'model.picker', label: 'Change model' },
       { id: 'provider.picker', label: 'Choose provider' },
-      { id: 'titleModel.picker', label: 'Choose thread-naming model' }
+      { id: 'titleModel.picker', label: 'Choose thread-naming model' },
+      { id: 'tagModel.picker', label: 'Choose tagging model' }
+    ]
+  },
+  {
+    title: 'Tags',
+    actions: [
+      { id: 'tags.add', label: 'Add a tag to this thread' },
+      { id: 'tags.retag', label: 'Re-tag this thread now' }
     ]
   },
   {
@@ -164,6 +177,9 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
   {
     title: 'View',
     actions: [
+      { id: 'view.sortEdited', label: 'Order by last edited' },
+      { id: 'view.sortCreated', label: 'Order by created' },
+      { id: 'view.sortTags', label: 'Show tag folders' },
       { id: 'view.zoomIn', label: 'Zoom in' },
       { id: 'view.zoomOut', label: 'Zoom out' },
       { id: 'view.zoomReset', label: 'Reset zoom' }
