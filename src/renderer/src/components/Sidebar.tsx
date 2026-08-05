@@ -28,8 +28,8 @@ function FolderIcon({ open }: { open: boolean }): React.JSX.Element {
     <svg
       className="folder__icon"
       viewBox="0 0 16 16"
-      width="17"
-      height="17"
+      width="19"
+      height="19"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.25"
@@ -45,6 +45,22 @@ function FolderIcon({ open }: { open: boolean }): React.JSX.Element {
       ) : (
         <path d="M2.2 11.9V4.9c0-.7.6-1.3 1.3-1.3h2.6c.4 0 .8.2 1 .5l.8 1h4.4c.7 0 1.3.6 1.3 1.3v5.5c0 .7-.6 1.3-1.3 1.3H3.5c-.7 0-1.3-.6-1.3-1.3Z" />
       )}
+    </svg>
+  )
+}
+
+/** A pin, for a row that has been pinned. Colour is not the signal here. */
+function PinIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="thread-item__pin"
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M9.6 1.4a1 1 0 0 1 1.4 0l3.6 3.6a1 1 0 0 1 0 1.4l-.5.5a2.4 2.4 0 0 1-2.5.5l-2 2 .3 2.5a1 1 0 0 1-.3.8l-.6.6a1 1 0 0 1-1.4 0L5 11l-3 3.4a.6.6 0 0 1-.9-.8L4.5 10 2 7.5a1 1 0 0 1 0-1.4l.6-.6a1 1 0 0 1 .8-.3l2.5.3 2-2a2.4 2.4 0 0 1 .5-2.5l.5-.5Z" />
     </svg>
   )
 }
@@ -86,30 +102,38 @@ const ThreadRow = memo(function ThreadRow({
       title={thread.title || 'Untitled thread'}
       type="button"
     >
-      {showPin && thread.pinned && <span className="thread-item__pin">●</span>}
-      <span className="thread-item__body">
+      <span className="thread-item__head">
+        {showPin && thread.pinned && <PinIcon />}
         <span className="thread-item__title">{thread.title || 'Untitled thread'}</span>
-        {showTags && thread.tags.length > 0 && (
-          <span className="thread-item__tags">
-            {thread.tags.map((tag) => (
-              <span className="tagchip tagchip--static" key={tag}>
-                #{tag}
-              </span>
-            ))}
-          </span>
-        )}
+        {/* The time the list is ordered by, where the eye already is. */}
+        <span
+          className="thread-item__time"
+          title={`Edited ${formatDateTime(thread.updatedAt)}\nCreated ${formatDateTime(thread.createdAt)}`}
+        >
+          {formatRelativeShort(createdFirst ? thread.createdAt : thread.updatedAt)}
+        </span>
       </span>
-      {/* Both times, with whichever one the list is ordered by leading — so the
-          numbers read down the column in the order the rows are in, and the
-          other is there without a second trip. */}
-      <span
-        className="thread-item__meta"
-        title={`Edited ${formatDateTime(thread.updatedAt)}\nCreated ${formatDateTime(thread.createdAt)}`}
-      >
-        {formatRelativeShort(createdFirst ? thread.createdAt : thread.updatedAt)}
-        <span className="thread-item__meta-alt">
+
+      {/* The second line is what the extra height bought: how long the
+          conversation is, the other timestamp — labelled, now that there is
+          room for a word — and the tags. */}
+      <span className="thread-item__sub">
+        <span className="nowrap">
+          {thread.messageCount === 0
+            ? 'empty'
+            : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
+        </span>
+        <span className="thread-item__sep">·</span>
+        <span className="nowrap">
+          {createdFirst ? 'edited ' : 'created '}
           {formatRelativeShort(createdFirst ? thread.updatedAt : thread.createdAt)}
         </span>
+        {showTags &&
+          thread.tags.map((tag) => (
+            <span className="tagchip tagchip--static" key={tag}>
+              #{tag}
+            </span>
+          ))}
       </span>
     </button>
   )
@@ -145,6 +169,7 @@ export function Sidebar(): React.JSX.Element {
   const toggleTagFolder = useStore((s) => s.toggleTagFolder)
   const setTagFlags = useStore((s) => s.setTagFlags)
   const setThreadSort = useStore((s) => s.setThreadSort)
+  const setVisibleThreads = useStore((s) => s.setVisibleThreads)
 
   const [menu, setMenu] = useState<{ x: number; y: number; thread: Thread } | null>(null)
   const [tagMenu, setTagMenu] = useState<{ x: number; y: number; name: string } | null>(null)
@@ -235,6 +260,43 @@ export function Sidebar(): React.JSX.Element {
     event.preventDefault()
     setMenu({ x: event.clientX, y: event.clientY, thread })
   }, [])
+
+  /**
+   * The threads on screen, in the order they are on screen.
+   *
+   * Alt+Up and Alt+Down walk this rather than the underlying list, so they
+   * follow the view you are actually looking at — the created order, or the
+   * open folders of the tag view, or the search results — instead of the order
+   * the database happened to return.
+   */
+  const visibleThreadIds = useMemo(() => {
+    if (filter.trim()) return hitsByThread.map((hit) => hit.threadId)
+
+    if (view === 'tags') {
+      const ids: string[] = []
+      const seen = new Set<string>()
+      const push = (thread: Thread): void => {
+        // A thread in two open folders is one destination, not two.
+        if (seen.has(thread.id)) return
+        seen.add(thread.id)
+        ids.push(thread.id)
+      }
+      for (const folder of folders.named) {
+        if (expandedTags.includes(folder.name)) folder.threads.forEach(push)
+      }
+      if (expandedTags.includes(UNTAGGED)) folders.untagged.forEach(push)
+      return ids
+    }
+
+    return [...grouped.pinned, ...[...grouped.buckets.values()].flat()].map((t) => t.id)
+  }, [filter, hitsByThread, view, folders, expandedTags, grouped])
+
+  useEffect(() => {
+    setVisibleThreads(visibleThreadIds)
+  }, [visibleThreadIds, setVisibleThreads])
+
+  // Hidden sidebar, no visible order — the keys fall back to the thread list.
+  useEffect(() => () => setVisibleThreads([]), [setVisibleThreads])
 
   const openHit = async (hit: SearchHit): Promise<void> => {
     await selectThread(hit.threadId)

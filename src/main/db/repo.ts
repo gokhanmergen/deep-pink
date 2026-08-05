@@ -91,7 +91,7 @@ function parseJson<T>(raw: string | null, fallback: T): T {
   }
 }
 
-function toThread(row: ThreadRow, tags?: string[]): Thread {
+function toThread(row: ThreadRow, tags?: string[], messageCount?: number): Thread {
   return {
     id: row.id,
     title: row.title,
@@ -100,6 +100,7 @@ function toThread(row: ThreadRow, tags?: string[]): Thread {
     pinned: row.pinned === 1,
     archived: row.archived === 1,
     tags: tags ?? getThreadTags(row.id),
+    messageCount: messageCount ?? countMessages(row.id),
     config: { ...EMPTY_THREAD_CONFIG, ...parseJson<Partial<ThreadConfig>>(row.config, {}) }
   }
 }
@@ -337,6 +338,15 @@ export function deleteTag(name: string): void {
 }
 
 /**
+ * Empties the tag library: every tag, off every thread. The threads and their
+ * messages are untouched — `thread_tags` goes with the tags by cascade.
+ * Returns how many tags were removed, so the UI can say what it did.
+ */
+export function deleteAllTags(): number {
+  return getDb().prepare('DELETE FROM tags').run().changes
+}
+
+/**
  * Renames a tag everywhere it is used. Renaming onto a name that already
  * exists merges the two, which is the only sensible reading of the request.
  */
@@ -463,6 +473,40 @@ export function enforceTagLimit(threadId: string, max: number): void {
  * Threads
  * ------------------------------------------------------------------ */
 
+/**
+ * What the sidebar means by "how long is this conversation": exactly what
+ * `getMessages` would hand the transcript. A compacted-away message has been
+ * replaced by its summary and is no longer there to read, and the naming and
+ * tagging markers were never messages at all — both carry a `compacted_into`,
+ * which is what this one condition covers.
+ *
+ * Deliberately not the same question as the statistics panel's message count,
+ * which is about everything the thread has ever contained.
+ */
+const VISIBLE_MESSAGES = 'compacted_into IS NULL'
+
+function countMessages(threadId: string): number {
+  return (
+    getDb()
+      .prepare(
+        `SELECT COUNT(*) AS n FROM messages WHERE thread_id = ? AND (${VISIBLE_MESSAGES})`
+      )
+      .get(threadId) as { n: number }
+  ).n
+}
+
+/** The same count for every thread at once, for the list. */
+function countMessagesByThread(): Map<string, number> {
+  const rows = getDb()
+    .prepare(
+      `SELECT thread_id AS id, COUNT(*) AS n FROM messages
+        WHERE ${VISIBLE_MESSAGES}
+        GROUP BY thread_id`
+    )
+    .all() as { id: string; n: number }[]
+  return new Map(rows.map((row) => [row.id, row.n]))
+}
+
 export function createThread(title = '', config: Partial<ThreadConfig> = {}): Thread {
   const now = Date.now()
   const id = randomUUID()
@@ -490,7 +534,8 @@ export function listThreads(includeArchived = false): Thread[] {
     .all(includeArchived ? 1 : 0) as ThreadRow[]
 
   const tags = tagsForThreads(rows.map((row) => row.id))
-  return rows.map((row) => toThread(row, tags.get(row.id) ?? []))
+  const counts = countMessagesByThread()
+  return rows.map((row) => toThread(row, tags.get(row.id) ?? [], counts.get(row.id) ?? 0))
 }
 
 export function updateThread(

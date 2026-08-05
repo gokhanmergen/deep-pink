@@ -137,6 +137,20 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   })
   check('the marker stays out of the transcript', repo.getMessages(thread.id).length === 2)
   check(
+    'nor does it count towards the thread’s length',
+    repo.getThread(thread.id).messageCount === 2,
+    repo.getThread(thread.id).messageCount
+  )
+  check(
+    'and the list agrees with the thread',
+    repo.listThreads().find((t) => t.id === thread.id).messageCount === 2
+  )
+  check(
+    'a compacted-away message is not counted either',
+    repo.getThread(long.id).messageCount === 3,
+    repo.getThread(long.id).messageCount
+  )
+  check(
     'the marker is not counted as a message',
     repo.getThreadStats(thread.id, null).messageCount === 2,
     repo.getThreadStats(thread.id, null).messageCount
@@ -339,6 +353,24 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
 
   repo.deleteThread(untidy.id)
   repo.deleteThread(emptyThread.id)
+
+  const beforeWipe = repo.listTags().length
+  const wiped = repo.deleteAllTags()
+  check('emptying the library reports what it removed', wiped === beforeWipe, {
+    wiped,
+    beforeWipe
+  })
+  check('no tags are left', repo.listTags().length === 0, repo.listTags())
+  check('and no thread still carries one', repo.getThread(tagged.id).tags.length === 0)
+  check(
+    'while the threads themselves are untouched',
+    repo.getMessages(tagged.id).length > 0 && repo.getThread(tagged.id) !== null
+  )
+
+  // Put the thread's tag back on both the thread and its branch, so the checks
+  // below still have the two-thread tag they were written against.
+  repo.addThreadTag(tagged.id, 'borrow checker', 'model')
+  repo.addThreadTag(branchOfTagged.id, 'borrow checker', 'model')
 
   repo.deleteThread(tagged.id)
   check(

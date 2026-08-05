@@ -118,27 +118,21 @@ export function buildActions(): AppAction[] {
         store.showToast('Thread exported')
       })
     },
+    // Both walk the list as the sidebar is showing it, so they agree with what
+    // is on screen in every view.
     {
       id: 'thread.next',
       label: 'Next thread',
       group: 'Threads',
       hidden: true,
-      run: () => {
-        const index = threads.findIndex((t) => t.id === activeThreadId)
-        const next = threads[Math.min(index + 1, threads.length - 1)]
-        if (next) void store.selectThread(next.id)
-      }
+      run: () => store.stepThread(1)
     },
     {
       id: 'thread.prev',
       label: 'Previous thread',
       group: 'Threads',
       hidden: true,
-      run: () => {
-        const index = threads.findIndex((t) => t.id === activeThreadId)
-        const prev = threads[Math.max(index - 1, 0)]
-        if (prev) void store.selectThread(prev.id)
-      }
+      run: () => store.stepThread(-1)
     },
 
     // Navigation

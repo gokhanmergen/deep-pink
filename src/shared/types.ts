@@ -107,6 +107,8 @@ export interface Thread {
   archived: boolean
   /** Tag names attached to this thread, alphabetically. */
   tags: string[]
+  /** Messages a reader would see — cost markers and compacted text excluded. */
+  messageCount: number
   /** Per-thread overrides; anything unset falls back to global settings. */
   config: ThreadConfig
 }

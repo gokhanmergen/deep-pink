@@ -160,6 +160,7 @@ export function registerIpc(): void {
 
   ipcMain.handle('tags:rename', (_e, from: string, to: string) => repo.renameTag(from, to))
   ipcMain.handle('tags:delete', (_e, name: string) => repo.deleteTag(name))
+  ipcMain.handle('tags:deleteAll', () => repo.deleteAllTags())
   ipcMain.handle(
     'tags:setFlags',
     (_e, name: string, flags: { manualOnly?: boolean; pinned?: boolean }) =>

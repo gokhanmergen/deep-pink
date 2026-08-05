@@ -581,6 +581,37 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 ))}
               </div>
             )}
+
+            {allTags.length > 0 && (
+              <div className="row" style={{ marginTop: 14 }}>
+                <button
+                  className="btn btn--danger"
+                  onClick={async () => {
+                    const manual = allTags.filter((tag) => tag.manualOnly).length
+                    const ok = await useStore.getState().askConfirm({
+                      title: `Remove all ${allTags.length} tags?`,
+                      body: `Every thread loses the tags it carries${
+                        manual ? `, including the ${manual} you marked manual-only` : ''
+                      }. The conversations themselves are untouched. This cannot be undone.`,
+                      confirmLabel: 'Remove all tags',
+                      danger: true
+                    })
+                    if (!ok) return
+                    const removed = await window.deepPink.tags.deleteAll()
+                    await refreshTags()
+                    await useStore.getState().refreshThreads()
+                    showToast(`Removed ${removed} tag${removed === 1 ? '' : 's'}`)
+                  }}
+                  type="button"
+                >
+                  Remove all tags
+                </button>
+                <span className="field__hint">
+                  Empties the library. Your conversations keep every message; they simply stop
+                  being tagged.
+                </span>
+              </div>
+            )}
           </>
         )}
 

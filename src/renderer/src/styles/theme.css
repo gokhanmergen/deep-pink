@@ -12,7 +12,9 @@
   --bg-elevated: #16161d;
   --bg-input: #1a1a22;
   --bg-hover: rgba(255, 255, 255, 0.04);
-  --bg-active: rgba(255, 20, 147, 0.1);
+  /* Selection lifts a row onto a lighter surface instead of tinting it, so the
+     accent stays a mark of things you act on rather than of where you are. */
+  --bg-active: var(--bg-elevated);
 
   --border: #23232c;
   --border-strong: #32323e;
@@ -220,20 +222,20 @@ button {
 }
 
 .viewswitch__option[data-active='true'] {
-  background: var(--bg-active);
-  color: var(--accent);
+  background: var(--bg-input);
+  color: var(--text);
 }
 
 .folder {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 7px 10px;
   margin-top: 2px;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
   min-width: 0;
 }
 
@@ -249,7 +251,7 @@ button {
 
 .folder[data-open='true'] .folder__name,
 .folder[data-open='true'] .folder__icon {
-  color: var(--accent);
+  color: var(--text);
   opacity: 1;
 }
 
@@ -263,7 +265,7 @@ button {
 }
 
 .folder__count {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
   flex: none;
   font-variant-numeric: tabular-nums;
@@ -279,8 +281,26 @@ button {
 .sidebar__list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  /* `scroll`, not `auto`: the bar is there whether or not the list overflows
+     today, so nothing shifts sideways the moment it does, and a list you scroll
+     constantly never leaves you guessing where you are in it. */
+  overflow-y: scroll;
   padding: 0 6px 12px;
+}
+
+.sidebar__list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+}
+
+.sidebar__list::-webkit-scrollbar-thumb {
+  background: #34343f;
+  background-clip: content-box;
+}
+
+.sidebar__list::-webkit-scrollbar-thumb:hover {
+  background: #454553;
+  background-clip: content-box;
 }
 
 .sidebar__group-label {
@@ -301,13 +321,21 @@ button {
   justify-content: space-between;
 }
 
+/* Selection is shown by lifting a row out of the panel — a lighter surface and
+   a defined edge — rather than by tinting it. The accent is kept for things you
+   act on (the brand, primary buttons, focus) so that where it does appear it
+   still means something. */
+
 .thread-item {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 3px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-sm);
+  /* Transparent rather than absent, so gaining a border on selection does not
+     move the row by a pixel. */
+  border: 1px solid transparent;
   text-align: left;
   color: var(--text-muted);
   min-width: 0;
@@ -319,9 +347,29 @@ button {
 }
 
 .thread-item[data-active='true'] {
-  background: var(--bg-active);
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
   color: var(--text);
-  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.thread-item[data-active='true'] .thread-item__title {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.thread-item[data-active='true'] .thread-item__sub,
+.thread-item[data-active='true'] .thread-item__time {
+  color: var(--text-muted);
+}
+
+.thread-item__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  /* The body's 1.55 is for prose; a single-line title only needs its own box. */
+  line-height: 1.3;
 }
 
 .thread-item__title {
@@ -330,30 +378,40 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .thread-item__pin {
-  color: var(--accent);
-  flex: none;
-  font-size: 11px;
-}
-
-.thread-item__meta {
-  font-size: 11px;
   color: var(--text-dim);
   flex: none;
+}
+
+.thread-item[data-active='true'] .thread-item__pin {
+  color: var(--text-muted);
+}
+
+.thread-item__time {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Everything the taller row made room for, on one quiet line. */
+.thread-item__sub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
-.thread-item__meta-alt {
-  color: var(--text-dim);
-  opacity: 0.62;
-}
-
-.thread-item__meta-alt::before {
-  content: '·';
-  margin: 0 3px;
-  opacity: 0.7;
+.thread-item__sep {
+  opacity: 0.5;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1091,8 +1149,13 @@ button {
   color: var(--text-muted);
 }
 
+.cmditem {
+  border: 1px solid transparent;
+}
+
 .cmditem[data-active='true'] {
-  background: var(--bg-active);
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
   color: var(--text);
 }
 
@@ -1564,11 +1627,16 @@ button {
   max-width: 220px;
 }
 
-/* Nowhere to click: the row underneath is already a button. */
+/* Nowhere to click: the row underneath is already a button. Outlined rather
+   than tinted — a list is mostly tags, and tinting every one of them turns the
+   sidebar into wallpaper. */
 .tagchip--static {
-  padding: 2px 8px;
+  padding: 1px 6px;
+  border-color: var(--border);
+  background: none;
   color: var(--text-dim);
-  max-width: 160px;
+  font-size: 10px;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1623,26 +1691,14 @@ button {
   border-color: var(--accent-line);
 }
 
-/* Tags under a search result or a thread in the list */
+/* Tags under a search result */
 
-.tagline,
-.thread-item__tags {
+.tagline {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 3px;
   overflow: hidden;
-}
-
-.thread-item__body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-}
-
-.thread-item__tags {
-  flex-wrap: nowrap;
 }
 
 .taglist__row {
@@ -1757,7 +1813,9 @@ button {
 }
 
 .context-menu__item[data-active='true'] {
-  background: var(--bg-active);
+  /* The menu is already an elevated surface, so its cursor goes a step further
+     rather than picking up a tint. */
+  background: var(--bg-input);
   color: var(--text);
 }
 

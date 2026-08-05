@@ -112,6 +112,8 @@ const api = {
       ipcRenderer.invoke('tags:rename', from, to),
     /** Removes a tag from every thread and from the library. */
     deleteEverywhere: (name: string): Promise<void> => ipcRenderer.invoke('tags:delete', name),
+    /** Empties the library. Returns how many tags went. */
+    deleteAll: (): Promise<number> => ipcRenderer.invoke('tags:deleteAll'),
     /** `manualOnly` puts a tag out of the model's reach; `pinned` is folder order. */
     setFlags: (
       name: string,

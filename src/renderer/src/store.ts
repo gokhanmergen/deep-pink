@@ -102,6 +102,13 @@ interface State {
   tagBatch: { done: number; total: number } | null
   /** Tag folders currently open in the tag view. */
   expandedTags: string[]
+  /**
+   * Threads the sidebar is showing, in the order it is showing them. Published
+   * by the sidebar because it is the only thing that knows: the order depends
+   * on the view, on which folders are open, and on whether a search is running.
+   * Empty when the sidebar is not on screen.
+   */
+  visibleThreadIds: string[]
   pendingApproval: PendingApproval | null
   toast: Toast | null
   dialog: DialogRequest | null
@@ -136,6 +143,9 @@ interface State {
   /** Marks a tag manual-only, or pins its folder. */
   setTagFlags: (name: string, flags: { manualOnly?: boolean; pinned?: boolean }) => Promise<void>
   toggleTagFolder: (name: string) => void
+  setVisibleThreads: (ids: string[]) => void
+  /** Moves to the thread `delta` places away in the list, as displayed. */
+  stepThread: (delta: number) => void
   /** Adds a tag to a thread by hand. Silently ignores an empty name. */
   addTag: (threadId: string, name: string) => Promise<void>
   removeTag: (threadId: string, name: string) => Promise<void>
@@ -197,6 +207,7 @@ export const useStore = create<State>((set, get) => ({
   taggingThreadId: null,
   tagBatch: null,
   expandedTags: [],
+  visibleThreadIds: [],
   pendingApproval: null,
   toast: null,
   dialog: null,
@@ -250,11 +261,26 @@ export const useStore = create<State>((set, get) => ({
       set({ activeThreadId: null, messages: [], generating: false })
       return
     }
+
+    // Set before the transcript is read, not after.
+    //
+    // Waiting meant two things: the sidebar highlight lagged the keypress, and
+    // — because the next keypress computed its move from `activeThreadId` —
+    // holding Alt+Down moved one thread rather than several, every press after
+    // the first stepping from the same stale place. The old messages stay on
+    // screen for the few milliseconds the read takes; blanking them flashes the
+    // empty state instead, which is worse.
+    const switching = get().activeThreadId !== id
+    if (switching) set({ activeThreadId: id, highlightMessageId: null })
+
     const [messages, generating, live] = await Promise.all([
       api.messages.list(id),
       api.chat.isGenerating(id),
       api.chat.liveStreams(id)
     ])
+
+    // Something else was selected while this was loading; that one wins.
+    if (get().activeThreadId !== id) return
 
     // A reply may have been arriving while this thread was not on screen. The
     // stored row only catches up periodically, so take the text the main
@@ -272,7 +298,7 @@ export const useStore = create<State>((set, get) => ({
         })
       : messages
 
-    set({ activeThreadId: id, messages: caughtUp, generating, highlightMessageId: null })
+    set({ activeThreadId: id, messages: caughtUp, generating })
 
     // Deltas that arrived while the above was loading were dropped, because the
     // thread was not on screen to receive them. The buffer holds the whole text
@@ -463,6 +489,31 @@ export const useStore = create<State>((set, get) => ({
   async setTagFlags(name, flags) {
     await api.tags.setFlags(name, flags)
     await get().refreshTags()
+  },
+
+  setVisibleThreads(ids) {
+    const current = get().visibleThreadIds
+    if (current.length === ids.length && current.every((id, i) => id === ids[i])) return
+    set({ visibleThreadIds: ids })
+  },
+
+  stepThread(delta) {
+    // What the sidebar is showing, or — when it is hidden or every folder is
+    // shut — the underlying list, so the keys still do something sensible.
+    const visible = get().visibleThreadIds
+    const order = visible.length ? visible : get().threads.map((t) => t.id)
+    if (!order.length) return
+
+    const index = order.indexOf(get().activeThreadId ?? '')
+    if (index < 0) {
+      void get().selectThread(delta > 0 ? order[0] : order[order.length - 1])
+      return
+    }
+
+    // Stop at the ends rather than re-selecting where you already are, which
+    // would reload the thread for nothing.
+    const next = order[index + delta]
+    if (next) void get().selectThread(next)
   },
 
   toggleTagFolder(name) {
