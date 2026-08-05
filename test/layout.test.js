@@ -457,7 +457,11 @@ suite(
     const menuShown = await menu()
 
     check('right-clicking opens a menu', opened && menuShown.open, menuShown)
-    check('with exactly pin and delete', JSON.stringify(menuShown.items) === '["Pin","Delete"]', menuShown.items)
+    check(
+      'with pin, the tag actions and delete',
+      JSON.stringify(menuShown.items) === '["Pin","Add a tag…","Re-tag with the model","Delete"]',
+      menuShown.items
+    )
     check('positioned on screen', menuShown.onScreen === true, menuShown)
 
     // It must act on the thread under the cursor, not whichever is open.
