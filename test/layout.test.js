@@ -139,14 +139,20 @@ suite(
         viewport: window.innerWidth
       }
     })()`)
-    const toggle = () => run(
-      `[...document.querySelectorAll('.topbar .btn')].find((b) => b.textContent.trim() === '\u2630').click()`
-    )
+    // Found by its label rather than by the character it used to draw: the
+    // button wears an icon now, and matching on a glyph made the whole suite
+    // throw `Script failed to execute` the moment that changed. Returning
+    // whether it was there turns the same breakage into a named failure.
+    const toggle = () => run(`(() => {
+      const button = document.querySelector('.topbar .btn[aria-label="Toggle sidebar"]')
+      button?.click()
+      return Boolean(button)
+    })()`)
 
     const shown = await measure()
     check('the main column leaves room for the sidebar', shown.mainWidth < shown.viewport, shown)
 
-    await toggle()
+    check('the sidebar toggle is in the top bar', await toggle())
     await settle(400)
     const hidden = await measure()
 
