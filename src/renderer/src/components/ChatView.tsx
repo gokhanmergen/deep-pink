@@ -5,7 +5,8 @@ import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
-import { TagBar } from './TagBar'
+import { BarChart3, Cpu, FileText, PanelLeft, Plus, Route } from 'lucide-react'
+import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, modelShortName } from '../format'
 
@@ -84,8 +85,9 @@ export function ChatView(): React.JSX.Element {
           onClick={toggleSidebar}
           title={`Toggle sidebar — ${formatBinding(keybinds['sidebar.toggle'])}`}
           type="button"
+          aria-label="Toggle sidebar"
         >
-          ☰
+          <PanelLeft {...ICON} />
         </button>
 
         {renaming && thread ? (
@@ -125,7 +127,8 @@ export function ChatView(): React.JSX.Element {
               title={`Model — ${formatBinding(keybinds['model.picker'])}`}
               type="button"
             >
-              {modelShortName(model)}
+              <Cpu {...ICON} />
+              <span className="btn__label">{modelShortName(model)}</span>
             </button>
             <button
               className="btn"
@@ -133,9 +136,12 @@ export function ChatView(): React.JSX.Element {
               title={`Provider routing — ${formatBinding(keybinds['provider.picker'])}`}
               type="button"
             >
-              {thread.config.providerRouting?.order[0] ??
-                settings.modelProviderRouting[model]?.order[0] ??
-                'auto provider'}
+              <Route {...ICON} />
+              <span className="btn__label">
+                {thread.config.providerRouting?.order[0] ??
+                  settings.modelProviderRouting[model]?.order[0] ??
+                  'auto provider'}
+              </span>
             </button>
             <button
               className="btn"
@@ -143,6 +149,7 @@ export function ChatView(): React.JSX.Element {
               title={`Inspect the system prompt — ${formatBinding(keybinds['prompt.inspect'])}`}
               type="button"
             >
+              <FileText {...ICON} />
               Prompt
             </button>
             <button
@@ -151,13 +158,12 @@ export function ChatView(): React.JSX.Element {
               title={`Thread statistics — ${formatBinding(keybinds['stats.thread'])}`}
               type="button"
             >
+              <BarChart3 {...ICON} />
               {formatTokens(totalTokens)} · {formatCost(totalCost)}
             </button>
           </>
         )}
       </div>
-
-      <TagBar />
 
       {/* A gauge of how full the context window is. Hidden while a thread is
           nearly empty, where a full-width track with an invisible fill reads as
@@ -187,6 +193,7 @@ export function ChatView(): React.JSX.Element {
               <div className="empty__title">Nothing open</div>
               <p>Start a thread to begin.</p>
               <button className="btn btn--primary" onClick={() => void createThread()} type="button">
+                <Plus {...ICON} />
                 New thread
               </button>
             </div>

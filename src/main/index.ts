@@ -1,9 +1,9 @@
 import { join } from 'node:path'
 import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
-import { reconcileInterruptedMessages } from './db/repo'
+import { deleteEmptyThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
-import { registerIpc } from './ipc'
+import { nameUnnamedThreads, registerIpc } from './ipc'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
@@ -17,7 +17,7 @@ function createWindow(): BrowserWindow {
     minWidth: 720,
     minHeight: 520,
     show: false,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: '#0a0a0a',
     autoHideMenuBar: true,
     // Packaged builds get their icon from the bundle or the .desktop entry;
     // this is what gives the window one while developing on Linux.
@@ -102,6 +102,12 @@ app.whenReady().then(async () => {
     )
   }
 
+  // Before the window, not after: the renderer reads the thread list as it
+  // starts, and a thread swept away underneath it would sit in the sidebar
+  // until something else refreshed. One statement, so nothing is waiting on it.
+  const emptied = deleteEmptyThreads()
+  if (emptied) console.log(`Removed ${emptied} empty thread(s) left open.`)
+
   attachments.registerProtocolHandler()
   const orphans = attachments.collectOrphans()
   if (orphans) console.log(`Removed ${orphans} orphaned attachment file(s).`)
@@ -112,6 +118,10 @@ app.whenReady().then(async () => {
   // Connecting MCP servers spawns processes; do it after the window is up so
   // a slow or broken server never delays first paint.
   mcp.connectAll().catch(() => undefined)
+
+  // Naming is one request per thread, so it happens behind the first paint and
+  // the renderer picks each one up through the event it emits.
+  void nameUnnamedThreads()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

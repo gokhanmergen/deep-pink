@@ -119,7 +119,7 @@ export function buildActions(): AppAction[] {
       })
     },
     // Both walk the list as the sidebar is showing it, so they agree with what
-    // is on screen in every view.
+    // is on screen, search results included.
     {
       id: 'thread.next',
       label: 'Next thread',
@@ -133,6 +133,65 @@ export function buildActions(): AppAction[] {
       group: 'Threads',
       hidden: true,
       run: () => store.stepThread(-1)
+    },
+
+    // Folders
+    {
+      id: 'folder.new',
+      label: 'New folder',
+      group: 'Folders',
+      run: async () => {
+        const name = await store.askPrompt({
+          title: 'New folder',
+          body: 'Drag threads into it, or file the open one with the shortcut.',
+          placeholder: 'Folder name',
+          confirmLabel: 'Create folder'
+        })
+        if (!name?.trim()) return
+        const folder = await store.createFolder(name)
+        store.showToast(folder ? `Created “${folder.name}”` : 'That name is empty')
+      }
+    },
+    {
+      id: 'folder.fileThread',
+      label: 'File this thread in a folder',
+      group: 'Folders',
+      run: requireThread(async (id) => {
+        // Named rather than picked from a list: typing is the whole of the
+        // keyboard path, and a name that does not exist yet is a new folder —
+        // which is what someone filing something usually wants.
+        const current = store.folders.find((f) => f.id === thread?.folderId) ?? null
+        const answer = await store.askPrompt({
+          title: 'File this thread',
+          body: 'A folder that does not exist yet is created. Leave it empty to take the thread out of its folder.',
+          defaultValue: current?.name ?? '',
+          placeholder: 'Folder name',
+          confirmLabel: 'File'
+        })
+        if (answer === null) return
+
+        const wanted = answer.trim()
+        if (!wanted) {
+          if (!thread?.folderId) return
+          await store.moveThreadToFolder(id, null)
+          store.showToast(`Taken out of “${current?.name ?? 'its folder'}”`)
+          return
+        }
+
+        const existing = store.folders.find(
+          (f) => f.name.toLowerCase() === wanted.toLowerCase()
+        )
+        const folder = existing ?? (await store.createFolder(wanted))
+        if (!folder) return
+        await store.moveThreadToFolder(id, folder.id)
+        store.showToast(`Filed in “${folder.name}”`)
+      })
+    },
+    {
+      id: 'folder.collapseAll',
+      label: 'Close every open folder',
+      group: 'Folders',
+      run: () => store.closeAllFolders()
     },
 
     // Navigation
@@ -233,56 +292,10 @@ export function buildActions(): AppAction[] {
       run: () => store.setOverlay('titleModel')
     },
     {
-      id: 'tagModel.picker',
-      label: 'Choose the tagging model',
-      group: 'Model',
-      run: () => store.setOverlay('tagModel')
-    },
-    {
       id: 'thread.retitle',
       label: 'Regenerate this thread’s name',
-      group: 'Model',
-      run: requireThread(async (id) => {
-        const title = await window.deepPink.chat.retitle(id)
-        await store.refreshThreads()
-        store.showToast(title ? `Renamed to “${title}”` : 'Could not generate a name')
-      })
-    },
-
-    // Tags
-    {
-      id: 'tags.add',
-      label: 'Add a tag to this thread',
-      group: 'Tags',
-      run: requireThread(async (id) => {
-        const name = await store.askPrompt({
-          title: 'Add a tag',
-          body: 'Tags are shared between threads and searchable from anywhere.',
-          placeholder: 'Tag name',
-          confirmLabel: 'Add tag'
-        })
-        if (name?.trim()) await store.addTag(id, name)
-      })
-    },
-    {
-      id: 'tags.retag',
-      // Works whether or not automatic tagging is on: that switch governs
-      // whether it happens by itself, not whether it can be asked for.
-      label: 'Re-tag this thread now',
-      group: 'Tags',
-      run: requireThread((id) => void store.retagThread(id))
-    },
-    {
-      id: 'tags.tagAll',
-      label: 'Tag every untagged thread',
-      group: 'Tags',
-      run: () => void store.tagAllUntagged()
-    },
-    {
-      id: 'tags.search',
-      label: 'Search by tag',
-      group: 'Tags',
-      run: () => store.openSearch('tag:')
+      group: 'Threads',
+      run: requireThread((id) => store.retitleThread(id))
     },
 
     // Capabilities
@@ -334,24 +347,6 @@ export function buildActions(): AppAction[] {
     },
 
     // View
-    {
-      id: 'view.sortEdited',
-      label: 'Order threads by when they were last edited',
-      group: 'View',
-      run: () => store.setThreadSort('edited')
-    },
-    {
-      id: 'view.sortCreated',
-      label: 'Order threads by when they were created',
-      group: 'View',
-      run: () => store.setThreadSort('created')
-    },
-    {
-      id: 'view.sortTags',
-      label: 'Show threads as tag folders',
-      group: 'View',
-      run: () => store.setThreadSort('tags')
-    },
     { id: 'view.zoomIn', label: 'Zoom in', group: 'View', hidden: true, run: () => zoom('in') },
     { id: 'view.zoomOut', label: 'Zoom out', group: 'View', hidden: true, run: () => zoom('out') },
     { id: 'view.zoomReset', label: 'Reset zoom', group: 'View', hidden: true, run: () => zoom('reset') }

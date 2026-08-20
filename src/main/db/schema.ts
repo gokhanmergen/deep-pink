@@ -145,7 +145,9 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE tool_invocations ADD COLUMN result_chars INTEGER NOT NULL DEFAULT 0;
   `,
 
-  /* 7 — tags, shared across threads and searchable */ `
+  /* 7 — tags, shared across threads and searchable. Dropped again by 9; kept
+     here because a database records how far through this list it has got, and
+     removing an entry would renumber every migration after it. */ `
   CREATE TABLE tags (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
@@ -170,5 +172,71 @@ export const MIGRATIONS: string[] = [
   -- A pinned tag is a pinned folder in the tag view. Deliberately unrelated to
   -- a pinned thread: the two views are pinned independently.
   ALTER TABLE tags ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+  `,
+
+  /* 9 — tags removed; the library, its threads' links and its leavings all go */ `
+  DROP TABLE IF EXISTS thread_tags;
+  DROP TABLE IF EXISTS tags;
+
+  -- Tagging requests were recorded as hidden marker messages carrying their
+  -- cost. Nothing reads them now, and leaving them behind would leave the
+  -- statistics filtering for a feature that no longer exists. Their usage rows
+  -- go with them by cascade.
+  DELETE FROM messages WHERE compacted_into = 'tags';
+
+  -- Settings were stored whole, so an upgraded install would otherwise keep a
+  -- tagging block and its view preferences in its saved JSON forever.
+  UPDATE settings
+     SET value = json_remove(
+           value,
+           '$.tagging',
+           '$.ui.threadSort',
+           '$.ui.showTagsInSidebar',
+           '$.keybinds."tagModel.picker"',
+           '$.keybinds."tags.add"',
+           '$.keybinds."tags.retag"',
+           '$.keybinds."view.sortEdited"',
+           '$.keybinds."view.sortCreated"',
+           '$.keybinds."view.sortTags"'
+         )
+   WHERE key = 'settings' AND json_valid(value);
+  `,
+
+  /* 10 — folders: a thread lives in at most one, or in none */ `
+  CREATE TABLE folders (
+    id         TEXT    PRIMARY KEY,
+    name       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    -- Pinned exactly as a thread is: to the top of the list, above the dates.
+    pinned     INTEGER NOT NULL DEFAULT 0
+  );
+
+  -- Deleting a folder empties it rather than taking the conversations with it:
+  -- a folder is where something was filed, never what it is made of.
+  ALTER TABLE threads ADD COLUMN folder_id TEXT REFERENCES folders (id) ON DELETE SET NULL;
+  CREATE INDEX idx_threads_folder ON threads (folder_id);
+  `,
+
+  /* 11 — the accent was briefly re-defaulted, then put back. Kept because a
+     database records how far through this list it has got; clearing a stored
+     accent that equals the default is a no-op now that the default is that
+     colour again, and an accent someone chose was never touched. */ `
+  UPDATE settings
+     SET value = json_remove(value, '$.ui.accent')
+   WHERE key = 'settings'
+     AND json_valid(value)
+     AND lower(json_extract(value, '$.ui.accent')) = '#ff1493';
+  `,
+
+  /* 12 — attribution is on by default now */ `
+  -- Settings are stored whole, so an install from before the change carries the
+  -- old default forever. This clears the stored value only when it still equals
+  -- that old default, so the new one applies; anyone who switched it on already
+  -- has 'true' stored and is left alone.
+  UPDATE settings
+     SET value = json_remove(value, '$.sendAppAttribution')
+   WHERE key = 'settings'
+     AND json_valid(value)
+     AND json_extract(value, '$.sendAppAttribution') = 0;
   `
 ]

@@ -14,19 +14,17 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 - Pick any model from the full OpenRouter catalogue.
 - Choose the *specific upstream provider* for a model — pin one outright, set an order of preference, sort by price/throughput/latency, or refuse providers that train on your data. Scope the choice to one thread or to every use of that model.
 - Choose which model writes your thread names, and edit the prompt it uses.
-- Choose which model keeps your thread tags, and edit that prompt too.
 
 **The conversation**
 
 - Markdown, GitHub-flavoured tables, LaTeX (`$…$` and `$$…$$`) via KaTeX, and syntax-highlighted code blocks with copy buttons — all rendered locally.
 - Streaming replies, with reasoning traces when the model produces them.
 - Edit any message, regenerate any reply, branch a thread from any point.
+- Threads name themselves from the first exchange, and keep trying until one sticks: stopping a reply, a failed request or closing the app mid-turn used to leave a thread called "Untitled" for good. Anything still unnamed is named on the next reply, or at the next start. Ask for a fresh name at any time with `⇧ F2`, from the command palette, or by right-clicking the thread.
+- Open a thread, say nothing, go elsewhere and it is gone — an unnamed thread with no messages in it is not worth a row in the list. Pin it, file it in a folder or say something and it stays.
 - Instant search across every message, backed by a local FTS5 index. Results appear as you type because nothing leaves your machine.
-- Tag your threads. Add them by hand, or let a model keep them current — it is asked after every message, not once per thread, so the tags follow a conversation as it drifts rather than describing where it started. Tags you add yourself are never removed by the model, and it can be held to the tags you already have instead of inventing its own. Off by default; the cost of each pass is included in your statistics.
-- Already have a library of untagged conversations? Settings › Tags will tag every one of them in a single pass, telling you first how many threads that is and what it will cost, measured from the requests it would actually send. It shows progress as it goes and can be stopped part-way. Any single thread can be re-tagged on demand from its tag bar, the command palette, `Ctrl/⌘ Alt K`, or a right-click in the thread list.
-- The thread list has three views, switched from above the search box or with `Alt 1` / `Alt 2` / `Alt 3`: by when a thread was last edited, by when it was created, or as a folder per tag — open one to see what is in it, most recently edited first, with a folder for whatever has no tags yet. Folders pin separately from threads: pinning a folder says which subjects matter, pinning a thread says which conversations do, and neither reorders the other's view.
-- Any tag can be marked *manual only*, in Settings › Tags or by right-clicking its folder. The model will then neither apply nor withdraw it, and it is not even offered in the vocabulary — a tag like `reviewed` means exactly what you meant by it.
-- Tags are searchable wherever search is: type a tag name, or `tag:rust` (or `#rust`) to see only threads carrying it, optionally with more words to search inside them.
+- Folders, for when the list gets long. Make one with `Ctrl/⌘ ⇧ N` or the small “New folder” button under the search box, then drag threads in and out of it — dropping a thread anywhere that is not a folder takes it back out. A folder sits in the list at the time its most recently edited thread was edited, so the ones you are working out of stay near the top, and it can be pinned exactly as a thread can.
+- Opening a folder opens it in place: nothing is hidden, the rest of the list stays where it was, and everything outside the folder simply dims so what is inside reads at a glance. A dimmed thread is an ordinary row — click it and it opens. `Ctrl/⌘ ⇧ F` files the open thread by name, creating the folder if there is not one by that name yet, and clearing the name takes it out again.
 
 **Capabilities**
 
@@ -36,6 +34,7 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 
 **Bringing your history with you**
 
+- Chat width is yours to set: Settings › Appearance has a slider from a narrow prose measure up to nearly the full window, and the transcript and composer follow it together.
 - Import a ChatGPT data export (Settings → Data controls → Export data). Drop in the `.zip` and it reconstructs each conversation from the branching tree ChatGPT stores, keeping the branch you last had on screen, along with titles, timestamps and any images you uploaded. Re-importing the same export changes nothing. Imported chats carry no cost, so your spending statistics stay true.
 
 **Transparency**
@@ -43,7 +42,8 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 - A system-prompt inspector shows every segment that will be sent — base prompt, thread prompt, tool schemas, and anything an MCP server wants to inject — with token counts, attribution and an off switch for each.
 - MCP server instructions are **never** added to the system prompt until you read them and opt in.
 - Per-message token counts, cost, cache hits, tokens/second and time-to-first-token.
-- Per-thread and global statistics: spend by day, by model and by provider.
+- Per-thread and global statistics, charted: a daily cost or token curve over the last 7 / 30 / 90 days with a crosshair readout, and a per-turn curve for the open thread — the one long reply that was half the cost shows up as a spike rather than hiding in an average. Every figure a chart shows is also in the table beneath it.
+- Switch the daily chart to *by model* and each model gets its own line, in a colour palette checked for colour-vision deficiency against this exact background. Click a name in the legend to take that line out; the ones left keep their colours, and the axis rescales to what is actually on screen. Past five models the tail folds into one "Other" line rather than inventing hues nobody could tell apart.
 
 **Everything is keyboard-reachable**
 
@@ -155,7 +155,7 @@ The app contacts exactly three kinds of host, all of them at your instruction:
 2. **MCP servers** you configure — local processes or URLs you supply.
 3. **The web**, only when web access is on and only for the searches and fetches the model makes. Loopback, link-local and private addresses are always refused.
 
-There is no telemetry, no crash reporting and no update check. App attribution to OpenRouter — the header that puts a client on their public leaderboards — is off unless you turn it on.
+There is no telemetry, no crash reporting and no update check. The one thing that does identify anything is app attribution to OpenRouter — the header that puts a client on their public leaderboards. It names the app and its repository, never you, and it is on by default; Settings › Account turns it off and requests go out anonymously from then on.
 
 ---
 
@@ -168,6 +168,9 @@ There is no telemetry, no crash reporting and no update check. App attribution t
 | `mod K` | Command palette |
 | `mod P` | Search all threads |
 | `mod N` | New thread |
+| `F2` / `⇧ F2` | Rename thread / regenerate its name |
+| `mod ⇧ N` | New folder |
+| `mod ⇧ F` | File this thread in a folder |
 | `mod M` | Change model |
 | `mod ⇧ M` | Choose provider |
 | `mod ⇧ T` | Choose thread-naming model |

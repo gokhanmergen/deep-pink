@@ -1,69 +1,32 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { dateBucket, formatDateTime, formatRelativeShort } from '../format'
+import {
+  BarChart3,
+  Blocks,
+  ChevronsDownUp,
+  Command,
+  Folder as FolderIcon,
+  FolderOpen as FolderOpenIcon,
+  FolderPlus,
+  FolderMinus,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings as SettingsIcon,
+  Trash2
+} from 'lucide-react'
+import { ICON, ICON_LG } from '../icons'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { buildActions } from '../actions'
 import { formatBinding } from '../keybinds'
-import type { SearchHit, Thread, ThreadSort } from '@shared/types'
+import type { Folder, SearchHit, Thread } from '@shared/types'
 
-/** The three ways the list can be ordered, in the order they are shown. */
-const VIEWS: { id: ThreadSort; label: string; action: string; hint: string }[] = [
-  { id: 'edited', label: 'Edited', action: 'view.sortEdited', hint: 'Most recently edited first' },
-  { id: 'created', label: 'Created', action: 'view.sortCreated', hint: 'Newest thread first' },
-  { id: 'tags', label: 'Tags', action: 'view.sortTags', hint: 'A folder per tag' }
-]
-
-/** Stands for the folder of threads that have no tags; no tag can be empty. */
-const UNTAGGED = ''
-
-/**
- * A folder, for the tag view.
- *
- * It opens and closes rather than sitting beside a caret, so the icon is the
- * whole of the state and the tag name can start at the left edge of the row.
- * Drawn as an outline, and coloured by inheritance, so hover and the open
- * state carry it along with the rest of the row.
- */
-function FolderIcon({ open }: { open: boolean }): React.JSX.Element {
-  return (
-    <svg
-      className="folder__icon"
-      viewBox="0 0 16 16"
-      width="19"
-      height="19"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.25"
-      strokeLinejoin="round"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      {open ? (
-        <>
-          <path d="M2.1 12.4V4.8c0-.7.6-1.3 1.3-1.3H6c.4 0 .8.2 1 .5l.8 1h4.4c.7 0 1.3.6 1.3 1.3v1.1" />
-          <path d="M2.5 13.3l1.7-4.5c.2-.5.6-.8 1.1-.8h8.3c.5 0 .8.4.6.9l-1.5 3.9c-.2.4-.6.7-1.1.7H2.5Z" />
-        </>
-      ) : (
-        <path d="M2.2 11.9V4.9c0-.7.6-1.3 1.3-1.3h2.6c.4 0 .8.2 1 .5l.8 1h4.4c.7 0 1.3.6 1.3 1.3v5.5c0 .7-.6 1.3-1.3 1.3H3.5c-.7 0-1.3-.6-1.3-1.3Z" />
-      )}
-    </svg>
-  )
-}
-
-/** A pin, for a row that has been pinned. Colour is not the signal here. */
-function PinIcon(): React.JSX.Element {
-  return (
-    <svg
-      className="thread-item__pin"
-      viewBox="0 0 16 16"
-      width="11"
-      height="11"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M9.6 1.4a1 1 0 0 1 1.4 0l3.6 3.6a1 1 0 0 1 0 1.4l-.5.5a2.4 2.4 0 0 1-2.5.5l-2 2 .3 2.5a1 1 0 0 1-.3.8l-.6.6a1 1 0 0 1-1.4 0L5 11l-3 3.4a.6.6 0 0 1-.9-.8L4.5 10 2 7.5a1 1 0 0 1 0-1.4l.6-.6a1 1 0 0 1 .8-.3l2.5.3 2-2a2.4 2.4 0 0 1 .5-2.5l.5-.5Z" />
-    </svg>
-  )
-}
+/** What a thread being dragged is carried as. */
+const THREAD_MIME = 'application/x-deep-pink-thread'
 
 /**
  * One thread in the list.
@@ -71,52 +34,60 @@ function PinIcon(): React.JSX.Element {
  * Memoised deliberately: selecting a thread changes `activeThreadId`, which
  * re-renders the sidebar, and without this every row in the list would be
  * rebuilt to change the highlight on two of them. With a few hundred threads —
- * each now carrying tag chips and two timestamps — that was the whole of the
- * delay in switching threads.
+ * each carrying two timestamps — that was the whole of the delay in switching
+ * threads.
  */
 const ThreadRow = memo(function ThreadRow({
   thread,
   active,
-  showTags,
-  showPin,
-  createdFirst,
+  inFolder,
   onSelect,
-  onMenu
+  onMenu,
+  onDragState
 }: {
   thread: Thread
   active: boolean
-  showTags: boolean
-  /** Thread pins order two of the views; the tag view has its own pins. */
-  showPin: boolean
-  /** Lead with the timestamp the list is ordered by. */
-  createdFirst: boolean
+  /** Indented, because it is inside an open folder. */
+  inFolder: boolean
   onSelect: (id: string) => void
   onMenu: (event: React.MouseEvent, thread: Thread) => void
+  onDragState: (threadId: string | null) => void
 }): React.JSX.Element {
   return (
     <button
       className="thread-item"
       data-active={active}
+      data-in-folder={inFolder}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData(THREAD_MIME, thread.id)
+        // Plain text as well, because some platforms drop the custom type when
+        // the drag leaves and re-enters the window.
+        event.dataTransfer.setData('text/plain', thread.id)
+        event.dataTransfer.effectAllowed = 'move'
+        onDragState(thread.id)
+      }}
+      onDragEnd={() => onDragState(null)}
       onClick={() => onSelect(thread.id)}
       onContextMenu={(event) => onMenu(event, thread)}
       title={thread.title || 'Untitled thread'}
       type="button"
     >
       <span className="thread-item__head">
-        {showPin && thread.pinned && <PinIcon />}
+        {thread.pinned && <Pin className="thread-item__pin" size={11} strokeWidth={2} />}
         <span className="thread-item__title">{thread.title || 'Untitled thread'}</span>
         {/* The time the list is ordered by, where the eye already is. */}
         <span
           className="thread-item__time"
           title={`Edited ${formatDateTime(thread.updatedAt)}\nCreated ${formatDateTime(thread.createdAt)}`}
         >
-          {formatRelativeShort(createdFirst ? thread.createdAt : thread.updatedAt)}
+          {formatRelativeShort(thread.updatedAt)}
         </span>
       </span>
 
       {/* The second line is what the extra height bought: how long the
-          conversation is, the other timestamp — labelled, now that there is
-          room for a word — and the tags. */}
+          conversation is, and the other timestamp — labelled, now that there
+          is room for a word. */}
       <span className="thread-item__sub">
         <span className="nowrap">
           {thread.messageCount === 0
@@ -124,16 +95,7 @@ const ThreadRow = memo(function ThreadRow({
             : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
         </span>
         <span className="thread-item__sep">·</span>
-        <span className="nowrap">
-          {createdFirst ? 'edited ' : 'created '}
-          {formatRelativeShort(createdFirst ? thread.updatedAt : thread.createdAt)}
-        </span>
-        {showTags &&
-          thread.tags.map((tag) => (
-            <span className="tagchip tagchip--static" key={tag}>
-              #{tag}
-            </span>
-          ))}
+        <span className="nowrap">created {formatRelativeShort(thread.createdAt)}</span>
       </span>
     </button>
   )
@@ -144,8 +106,31 @@ function Snippet({ html }: { html: string }): React.JSX.Element {
   return <span className="cmditem__sub" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
+/** A folder and the threads it holds, as one row in the list. */
+interface FolderEntry {
+  kind: 'folder'
+  folder: Folder
+  threads: Thread[]
+  /** When anything inside was last edited; the folder's own age when empty. */
+  stamp: number
+}
+
+interface ThreadEntry {
+  kind: 'thread'
+  thread: Thread
+  stamp: number
+}
+
+type Entry = FolderEntry | ThreadEntry
+
+const isPinned = (entry: Entry): boolean =>
+  entry.kind === 'folder' ? entry.folder.pinned : entry.thread.pinned
+
 export function Sidebar(): React.JSX.Element {
   const threads = useStore((s) => s.threads)
+  const folders = useStore((s) => s.folders)
+  const openFolderIds = useStore((s) => s.openFolderIds)
+  const draggingThreadId = useStore((s) => s.draggingThreadId)
   const activeThreadId = useStore((s) => s.activeThreadId)
   const filter = useStore((s) => s.sidebarFilter)
   const hits = useStore((s) => s.searchHits)
@@ -160,19 +145,22 @@ export function Sidebar(): React.JSX.Element {
   const showToast = useStore((s) => s.showToast)
   const askConfirm = useStore((s) => s.askConfirm)
   const askPrompt = useStore((s) => s.askPrompt)
-  const addTag = useStore((s) => s.addTag)
-  const retagThread = useStore((s) => s.retagThread)
-  const taggingThreadId = useStore((s) => s.taggingThreadId)
+  const retitleThread = useStore((s) => s.retitleThread)
   const settings = useStore((s) => s.settings)
-  const allTags = useStore((s) => s.allTags)
-  const expandedTags = useStore((s) => s.expandedTags)
-  const toggleTagFolder = useStore((s) => s.toggleTagFolder)
-  const setTagFlags = useStore((s) => s.setTagFlags)
-  const setThreadSort = useStore((s) => s.setThreadSort)
   const setVisibleThreads = useStore((s) => s.setVisibleThreads)
+  const toggleFolder = useStore((s) => s.toggleFolder)
+  const renameFolder = useStore((s) => s.renameFolder)
+  const deleteFolder = useStore((s) => s.deleteFolder)
+  const setFolderPinned = useStore((s) => s.setFolderPinned)
+  const moveThreadToFolder = useStore((s) => s.moveThreadToFolder)
+  const setDraggingThread = useStore((s) => s.setDraggingThread)
 
   const [menu, setMenu] = useState<{ x: number; y: number; thread: Thread } | null>(null)
-  const [tagMenu, setTagMenu] = useState<{ x: number; y: number; name: string } | null>(null)
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: Folder } | null>(
+    null
+  )
+  /** The folder the pointer is over mid-drag, or '' for the list itself. */
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -184,66 +172,57 @@ export function Sidebar(): React.JSX.Element {
     return () => clearTimeout(timer)
   }, [filter, runSearch])
 
-  const view = settings?.ui.threadSort ?? 'edited'
-  const showTags = settings?.ui.showTagsInSidebar ?? true
+  /**
+   * The list, as folders and loose threads together.
+   *
+   * A folder takes the time of the newest thing inside it, so it rises through
+   * the list as its contents are worked on and sinks as they are left alone —
+   * which is the same rule the threads themselves follow, and the reason a
+   * folder can sit under "Today" without anything special being said about it.
+   */
+  const entries = useMemo<Entry[]>(() => {
+    const known = new Map(folders.map((folder) => [folder.id, folder]))
+    const contents = new Map<string, Thread[]>()
+    const loose: Thread[] = []
 
-  // Date grouping reads whichever timestamp the view is about, so the "Today"
-  // heading means today's edits in one view and today's new threads in the other.
-  const grouped = useMemo(() => {
-    const stamp = (thread: Thread): number =>
-      view === 'created' ? thread.createdAt : thread.updatedAt
-
-    const ordered = [...threads].sort((a, b) => stamp(b) - stamp(a))
-    const pinned = ordered.filter((t) => t.pinned)
-    const rest = ordered.filter((t) => !t.pinned)
-
-    const buckets = new Map<string, Thread[]>()
-    for (const thread of rest) {
-      const key = dateBucket(stamp(thread))
-      const list = buckets.get(key) ?? []
+    for (const thread of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
+      // A thread whose folder has gone is loose, not lost.
+      if (!thread.folderId || !known.has(thread.folderId)) {
+        loose.push(thread)
+        continue
+      }
+      const list = contents.get(thread.folderId) ?? []
       list.push(thread)
+      contents.set(thread.folderId, list)
+    }
+
+    const all: Entry[] = folders.map((folder) => {
+      const inside = contents.get(folder.id) ?? []
+      return {
+        kind: 'folder',
+        folder,
+        threads: inside,
+        stamp: inside.length ? inside[0].updatedAt : folder.createdAt
+      }
+    })
+
+    for (const thread of loose) all.push({ kind: 'thread', thread, stamp: thread.updatedAt })
+
+    return all.sort((a, b) => b.stamp - a.stamp)
+  }, [threads, folders])
+
+  const grouped = useMemo(() => {
+    const pinned = entries.filter(isPinned)
+    const buckets = new Map<string, Entry[]>()
+
+    for (const entry of entries.filter((e) => !isPinned(e))) {
+      const key = dateBucket(entry.stamp)
+      const list = buckets.get(key) ?? []
+      list.push(entry)
       buckets.set(key, list)
     }
     return { pinned, buckets }
-  }, [threads, view])
-
-  /**
-   * The tag view: one folder per tag, plus a home for threads that have none.
-   *
-   * A thread with three tags appears in three folders — that is what tags are
-   * for, and pretending otherwise would hide conversations from folders they
-   * genuinely belong in. Folders are ordered by how much is in them, so the
-   * subjects you actually work on lead, with names breaking ties. A pinned
-   * *folder* comes first regardless, and is unrelated to a pinned thread: the
-   * two views have separate ideas of what matters, so they keep separate pins.
-   */
-  const folders = useMemo(() => {
-    const byTag = new Map<string, Thread[]>()
-    const untagged: Thread[] = []
-    const byEdited = [...threads].sort((a, b) => b.updatedAt - a.updatedAt)
-
-    for (const thread of byEdited) {
-      if (!thread.tags.length) {
-        untagged.push(thread)
-        continue
-      }
-      for (const tag of thread.tags) {
-        const list = byTag.get(tag) ?? []
-        list.push(thread)
-        byTag.set(tag, list)
-      }
-    }
-
-    const pinnedTags = new Set(allTags.filter((t) => t.pinned).map((t) => t.name))
-    const named = [...byTag.entries()]
-      .map(([name, list]) => ({ name, threads: list, pinned: pinnedTags.has(name) }))
-      .sort((a, b) => {
-        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-        return b.threads.length - a.threads.length || a.name.localeCompare(b.name)
-      })
-
-    return { named, untagged }
-  }, [threads, allTags])
+  }, [entries])
 
   const hitsByThread = useMemo(() => {
     const map = new Map<string, SearchHit>()
@@ -260,36 +239,38 @@ export function Sidebar(): React.JSX.Element {
     event.preventDefault()
     setMenu({ x: event.clientX, y: event.clientY, thread })
   }, [])
+  const onDragState = useCallback(
+    (threadId: string | null) => {
+      setDraggingThread(threadId)
+      if (!threadId) setDropTarget(null)
+    },
+    [setDraggingThread]
+  )
 
   /**
    * The threads on screen, in the order they are on screen.
    *
    * Alt+Up and Alt+Down walk this rather than the underlying list, so they
-   * follow the view you are actually looking at — the created order, or the
-   * open folders of the tag view, or the search results — instead of the order
-   * the database happened to return.
+   * follow what you are actually looking at — the open folders, and the search
+   * results — instead of the order the database happened to return.
    */
   const visibleThreadIds = useMemo(() => {
     if (filter.trim()) return hitsByThread.map((hit) => hit.threadId)
 
-    if (view === 'tags') {
-      const ids: string[] = []
-      const seen = new Set<string>()
-      const push = (thread: Thread): void => {
-        // A thread in two open folders is one destination, not two.
-        if (seen.has(thread.id)) return
-        seen.add(thread.id)
-        ids.push(thread.id)
+    const ids: string[] = []
+    const walk = (entry: Entry): void => {
+      if (entry.kind === 'thread') {
+        ids.push(entry.thread.id)
+        return
       }
-      for (const folder of folders.named) {
-        if (expandedTags.includes(folder.name)) folder.threads.forEach(push)
+      if (openFolderIds.includes(entry.folder.id)) {
+        for (const thread of entry.threads) ids.push(thread.id)
       }
-      if (expandedTags.includes(UNTAGGED)) folders.untagged.forEach(push)
-      return ids
     }
-
-    return [...grouped.pinned, ...[...grouped.buckets.values()].flat()].map((t) => t.id)
-  }, [filter, hitsByThread, view, folders, expandedTags, grouped])
+    grouped.pinned.forEach(walk)
+    for (const list of grouped.buckets.values()) list.forEach(walk)
+    return ids
+  }, [filter, hitsByThread, grouped, openFolderIds])
 
   useEffect(() => {
     setVisibleThreads(visibleThreadIds)
@@ -303,103 +284,208 @@ export function Sidebar(): React.JSX.Element {
     if (hit.messageId) setHighlight(hit.messageId)
   }
 
-  const menuItems = (thread: Thread): ContextMenuItem[] => [
+  /** Reads the dragged thread out of a drop, whichever type survived. */
+  const draggedThreadId = (event: React.DragEvent): string | null =>
+    event.dataTransfer.getData(THREAD_MIME) ||
+    event.dataTransfer.getData('text/plain') ||
+    draggingThreadId
+
+  // The button and the shortcut are the same action, so the two cannot drift.
+  const runAction = (id: string): void => {
+    void buildActions().find((action) => action.id === id)?.run()
+  }
+
+  const menuItems = (thread: Thread): ContextMenuItem[] => {
+    const folder = folders.find((f) => f.id === thread.folderId) ?? null
+    return [
+      {
+        id: 'pin',
+        label: thread.pinned ? 'Unpin' : 'Pin',
+        icon: thread.pinned ? <PinOff {...ICON} /> : <Pin {...ICON} />,
+        hint: formatBinding(settings?.keybinds['thread.pin'] ?? 'mod+shift+p'),
+        onSelect: () => {
+          void updateThread(thread.id, { pinned: !thread.pinned })
+          showToast(thread.pinned ? 'Unpinned' : 'Pinned to the top')
+        }
+      },
+      {
+        id: 'retitle',
+        label: 'Regenerate name',
+        icon: <RefreshCw {...ICON} />,
+        hint: formatBinding(settings?.keybinds['thread.retitle'] ?? 'shift+f2'),
+        onSelect: () => void retitleThread(thread.id)
+      },
+      ...(folder
+        ? [
+            {
+              id: 'unfile',
+              label: `Take out of “${folder.name}”`,
+              icon: <FolderMinus {...ICON} />,
+              onSelect: () => {
+                void moveThreadToFolder(thread.id, null)
+                showToast(`Taken out of “${folder.name}”`)
+              }
+            }
+          ]
+        : []),
+      {
+        id: 'delete',
+        label: 'Delete',
+        icon: <Trash2 {...ICON} />,
+        hint: formatBinding(settings?.keybinds['thread.delete'] ?? 'mod+shift+backspace'),
+        danger: true,
+        onSelect: () => {
+          // Deleting takes the messages with it and cannot be undone, so ask —
+          // naming the thread, since the menu may not be over the active one.
+          void (async () => {
+            const ok = await askConfirm({
+              title: `Delete “${thread.title || 'Untitled thread'}”?`,
+              body: 'Its messages go with it. This cannot be undone.',
+              confirmLabel: 'Delete',
+              danger: true
+            })
+            if (ok) void deleteThread(thread.id)
+          })()
+        }
+      }
+    ]
+  }
+
+  const folderMenuItems = (folder: Folder): ContextMenuItem[] => [
     {
       id: 'pin',
-      label: thread.pinned ? 'Unpin' : 'Pin',
-      hint: formatBinding(settings?.keybinds['thread.pin'] ?? 'mod+shift+p'),
+      label: folder.pinned ? 'Unpin folder' : 'Pin folder',
+      icon: folder.pinned ? <PinOff {...ICON} /> : <Pin {...ICON} />,
       onSelect: () => {
-        void updateThread(thread.id, { pinned: !thread.pinned })
-        showToast(thread.pinned ? 'Unpinned' : 'Pinned to the top')
+        void setFolderPinned(folder.id, !folder.pinned)
+        showToast(folder.pinned ? 'Folder unpinned' : 'Folder pinned to the top')
       }
     },
     {
-      id: 'tag',
-      label: 'Add a tag…',
-      hint: formatBinding(settings?.keybinds['tags.add'] ?? 'mod+shift+k'),
+      id: 'rename',
+      label: 'Rename…',
+      icon: <Pencil {...ICON} />,
       onSelect: () => {
         void (async () => {
           const name = await askPrompt({
-            title: `Tag “${thread.title || 'Untitled thread'}”`,
-            body: 'Tags are shared between threads and searchable from anywhere.',
-            placeholder: 'Tag name',
-            confirmLabel: 'Add tag'
+            title: `Rename “${folder.name}”`,
+            defaultValue: folder.name,
+            placeholder: 'Folder name',
+            confirmLabel: 'Rename'
           })
-          if (name?.trim()) await addTag(thread.id, name)
+          if (name?.trim()) await renameFolder(folder.id, name)
         })()
       }
     },
     {
-      id: 'retag',
-      label: 'Re-tag with the model',
-      hint: formatBinding(settings?.keybinds['tags.retag'] ?? 'mod+alt+k'),
-      disabled: taggingThreadId !== null,
-      onSelect: () => void retagThread(thread.id)
-    },
-    {
       id: 'delete',
-      label: 'Delete',
-      hint: formatBinding(settings?.keybinds['thread.delete'] ?? 'mod+shift+backspace'),
+      label: 'Delete folder',
+      icon: <Trash2 {...ICON} />,
       danger: true,
       onSelect: () => {
-        // Deleting takes the messages with it and cannot be undone, so ask —
-        // naming the thread, since the menu may not be over the active one.
         void (async () => {
+          const inside = threads.filter((t) => t.folderId === folder.id).length
           const ok = await askConfirm({
-            title: `Delete “${thread.title || 'Untitled thread'}”?`,
-            body: 'Its messages go with it. This cannot be undone.',
-            confirmLabel: 'Delete',
+            title: `Delete “${folder.name}”?`,
+            body: inside
+              ? `The ${inside} thread${inside === 1 ? '' : 's'} inside return to the list. Nothing is deleted with it.`
+              : 'The folder is empty.',
+            confirmLabel: 'Delete folder',
             danger: true
           })
-          if (ok) void deleteThread(thread.id)
+          if (ok) await deleteFolder(folder.id)
         })()
       }
     }
   ]
 
-  const folderMenuItems = (name: string): ContextMenuItem[] => {
-    const tag = allTags.find((t) => t.name === name)
-    return [
-      {
-        id: 'pin',
-        label: tag?.pinned ? 'Unpin this folder' : 'Pin this folder',
-        onSelect: () => {
-          void setTagFlags(name, { pinned: !tag?.pinned })
-          showToast(tag?.pinned ? 'Folder unpinned' : 'Folder pinned to the top')
-        }
-      },
-      {
-        id: 'manual',
-        label: tag?.manualOnly ? 'Let the model use this tag' : 'Keep the model off this tag',
-        onSelect: () => {
-          void setTagFlags(name, { manualOnly: !tag?.manualOnly })
-          showToast(
-            tag?.manualOnly
-              ? `The model may use #${name} again`
-              : `#${name} is yours to place from now on`
-          )
-        }
-      },
-      {
-        id: 'search',
-        label: 'Find every thread with this tag',
-        onSelect: () => useStore.getState().openSearch(`tag:${name}`)
-      }
-    ]
-  }
+  /**
+   * With a folder open, everything outside it is dimmed so what is inside can
+   * be read at a glance. Dimming is the only thing that happens: a dim row is
+   * an ordinary row that opens on a click, exactly as it would otherwise.
+   *
+   * Carried as one attribute on the list and applied by the stylesheet, rather
+   * than as a prop on each row. As a prop it changed on every thread the moment
+   * any folder opened, which defeated the memo on the rows and re-rendered the
+   * whole list — hundreds of rows, each re-formatting its two timestamps — for
+   * what is a change of opacity.
+   */
+  const focusing = openFolderIds.length > 0
 
-  const renderThread = (thread: Thread): React.JSX.Element => (
+  const renderThread = (thread: Thread, options: { inFolder?: boolean } = {}): React.JSX.Element => (
     <ThreadRow
       key={thread.id}
       thread={thread}
       active={thread.id === activeThreadId}
-      showTags={showTags}
-      showPin={view !== 'tags'}
-      createdFirst={view === 'created'}
+      inFolder={options.inFolder ?? false}
       onSelect={onSelectThread}
       onMenu={onThreadMenu}
+      onDragState={onDragState}
     />
   )
+
+  const renderFolder = (entry: FolderEntry): React.JSX.Element => {
+    const { folder } = entry
+    const open = openFolderIds.includes(folder.id)
+
+    return (
+      <div
+        className="folder-group"
+        key={folder.id}
+        data-open={open}
+        data-dropping={dropTarget === folder.id}
+        onDragOver={(event) => {
+          if (!draggingThreadId) return
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          setDropTarget(folder.id)
+        }}
+        onDrop={(event) => {
+          const threadId = draggedThreadId(event)
+          event.preventDefault()
+          event.stopPropagation()
+          setDropTarget(null)
+          if (threadId) void moveThreadToFolder(threadId, folder.id)
+        }}
+      >
+        <button
+          className="folder"
+          data-open={open}
+          aria-expanded={open}
+          onClick={() => toggleFolder(folder.id)}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setFolderMenu({ x: event.clientX, y: event.clientY, folder })
+          }}
+          title={`${folder.name} — ${entry.threads.length} thread${entry.threads.length === 1 ? '' : 's'}`}
+          type="button"
+        >
+          {open ? (
+            <FolderOpenIcon className="folder__icon" {...ICON_LG} />
+          ) : (
+            <FolderIcon className="folder__icon" {...ICON_LG} />
+          )}
+          {folder.pinned && <Pin className="thread-item__pin" size={11} strokeWidth={2} />}
+          <span className="folder__name">{folder.name}</span>
+          <span className="folder__count">{entry.threads.length}</span>
+        </button>
+
+        {open && (
+          <div className="folder__contents">
+            {entry.threads.length ? (
+              entry.threads.map((thread) => renderThread(thread, { inFolder: true }))
+            ) : (
+              <div className="folder__empty">Empty — drag a thread in</div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderEntry = (entry: Entry): React.JSX.Element =>
+    entry.kind === 'folder' ? renderFolder(entry) : renderThread(entry.thread)
 
   return (
     <aside className="sidebar">
@@ -415,6 +501,7 @@ export function Sidebar(): React.JSX.Element {
           onClick={() => void createThread()}
           type="button"
         >
+          <Plus {...ICON} />
           New thread
         </button>
         <button
@@ -423,30 +510,16 @@ export function Sidebar(): React.JSX.Element {
           title="Command palette"
           type="button"
         >
-          ⌘K
+          <Command {...ICON} />
         </button>
       </div>
 
-      <div className="viewswitch" role="group" aria-label="Order the thread list">
-        {VIEWS.map((entry) => (
-          <button
-            key={entry.id}
-            className="viewswitch__option"
-            data-active={view === entry.id}
-            onClick={() => setThreadSort(entry.id)}
-            title={`${entry.hint} — ${formatBinding(settings?.keybinds[entry.action] ?? '')}`}
-            type="button"
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
       <div className="sidebar__search">
+        <Search className="icon" size={13} strokeWidth={ICON.strokeWidth} />
         <input
           ref={inputRef}
           className="input"
-          placeholder="Search threads and tags…"
+          placeholder="Search threads…"
           value={filter}
           onChange={(event) => setSidebarFilter(event.target.value)}
           onKeyDown={(event) => {
@@ -458,7 +531,53 @@ export function Sidebar(): React.JSX.Element {
         />
       </div>
 
-      <div className="sidebar__list">
+      {/* Deliberately quieter than everything above it: filing is housekeeping,
+          and a full-sized button for it would compete with starting a thread. */}
+      <div className="sidebar__minor">
+        <button
+          className="minor-btn"
+          onClick={() => runAction('folder.new')}
+          title={`New folder — ${formatBinding(settings?.keybinds['folder.new'] ?? 'mod+shift+n')}`}
+          type="button"
+        >
+          <FolderPlus size={12} strokeWidth={ICON.strokeWidth} />
+          New folder
+        </button>
+        {focusing && (
+          <button
+            className="minor-btn"
+            onClick={() => runAction('folder.collapseAll')}
+            title="Close every open folder"
+            type="button"
+          >
+            <ChevronsDownUp size={12} strokeWidth={ICON.strokeWidth} />
+            Close folders
+          </button>
+        )}
+      </div>
+
+      {/* Dropping anywhere that is not a folder takes the thread out of the one
+          it is in, which is how a drag back to the list is meant to read. */}
+      <div
+        className="sidebar__list"
+        data-focusing={focusing}
+        data-dropping={dropTarget === ''}
+        onDragOver={(event) => {
+          if (!draggingThreadId) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          setDropTarget('')
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget === event.target) setDropTarget(null)
+        }}
+        onDrop={(event) => {
+          const threadId = draggedThreadId(event)
+          event.preventDefault()
+          setDropTarget(null)
+          if (threadId) void moveThreadToFolder(threadId, null)
+        }}
+      >
         {filter.trim() ? (
           hitsByThread.length ? (
             <>
@@ -478,20 +597,6 @@ export function Sidebar(): React.JSX.Element {
                       {hit.threadTitle || 'Untitled thread'}
                     </span>
                     {hit.messageId && <Snippet html={hit.snippet} />}
-                    {hit.kind === 'tag' && (
-                      <span className="cmditem__sub">
-                        tagged <span dangerouslySetInnerHTML={{ __html: hit.snippet }} />
-                      </span>
-                    )}
-                    {showTags && hit.tags.length > 0 && (
-                      <span className="tagline">
-                        {hit.tags.map((tag) => (
-                          <span className="tagchip tagchip--static" key={tag}>
-                            #{tag}
-                          </span>
-                        ))}
-                      </span>
-                    )}
                   </span>
                 </button>
               ))}
@@ -499,69 +604,21 @@ export function Sidebar(): React.JSX.Element {
           ) : (
             <div className="sidebar__group-label">No matches</div>
           )
-        ) : view === 'tags' ? (
-          <>
-            {folders.named.map((folder) => {
-              const open = expandedTags.includes(folder.name)
-              return (
-                <div key={folder.name}>
-                  <button
-                    className="folder"
-                    data-open={open}
-                    onClick={() => toggleTagFolder(folder.name)}
-                    onContextMenu={(event) => {
-                      event.preventDefault()
-                      setTagMenu({ x: event.clientX, y: event.clientY, name: folder.name })
-                    }}
-                    type="button"
-                  >
-                    <FolderIcon open={open} />
-                    {folder.pinned && <span className="thread-item__pin">●</span>}
-                    <span className="folder__name">#{folder.name}</span>
-                    <span className="folder__count">{folder.threads.length}</span>
-                  </button>
-                  {open && (
-                    <div className="folder__contents">{folder.threads.map(renderThread)}</div>
-                  )}
-                </div>
-              )
-            })}
-
-            {folders.untagged.length > 0 && (
-              <div>
-                <button
-                  className="folder"
-                  data-open={expandedTags.includes(UNTAGGED)}
-                  onClick={() => toggleTagFolder(UNTAGGED)}
-                  type="button"
-                >
-                  <FolderIcon open={expandedTags.includes(UNTAGGED)} />
-                  <span className="folder__name dim">No tags</span>
-                  <span className="folder__count">{folders.untagged.length}</span>
-                </button>
-                {expandedTags.includes(UNTAGGED) && (
-                  <div className="folder__contents">{folders.untagged.map(renderThread)}</div>
-                )}
-              </div>
-            )}
-
-            {threads.length === 0 && <div className="sidebar__group-label">No threads yet</div>}
-          </>
         ) : (
           <>
             {grouped.pinned.length > 0 && (
               <>
                 <div className="sidebar__group-label">Pinned</div>
-                {grouped.pinned.map(renderThread)}
+                {grouped.pinned.map(renderEntry)}
               </>
             )}
             {[...grouped.buckets.entries()].map(([label, list]) => (
               <div key={label}>
                 <div className="sidebar__group-label">{label}</div>
-                {list.map(renderThread)}
+                {list.map(renderEntry)}
               </div>
             ))}
-            {threads.length === 0 && (
+            {entries.length === 0 && (
               <div className="sidebar__group-label">No threads yet</div>
             )}
           </>
@@ -577,12 +634,12 @@ export function Sidebar(): React.JSX.Element {
         />
       )}
 
-      {tagMenu && (
+      {folderMenu && (
         <ContextMenu
-          x={tagMenu.x}
-          y={tagMenu.y}
-          items={folderMenuItems(tagMenu.name)}
-          onClose={() => setTagMenu(null)}
+          x={folderMenu.x}
+          y={folderMenu.y}
+          items={folderMenuItems(folderMenu.folder)}
+          onClose={() => setFolderMenu(null)}
         />
       )}
 
@@ -593,6 +650,7 @@ export function Sidebar(): React.JSX.Element {
           title="Global statistics"
           type="button"
         >
+          <BarChart3 className="icon" {...ICON} />
           Stats
         </button>
         <button
@@ -601,6 +659,7 @@ export function Sidebar(): React.JSX.Element {
           title="MCP servers"
           type="button"
         >
+          <Blocks className="icon" {...ICON} />
           MCP
         </button>
         <button
@@ -609,6 +668,7 @@ export function Sidebar(): React.JSX.Element {
           title="Settings"
           type="button"
         >
+          <SettingsIcon className="icon" {...ICON} />
           Settings
         </button>
       </div>

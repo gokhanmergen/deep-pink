@@ -4,7 +4,6 @@ import type {
   SendMessageRequest,
   Settings,
   StreamEvent,
-  TagBackfillEstimate,
   Thread,
   ToolCall,
   ToolResult
@@ -576,285 +575,6 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
 }
 
 /* ------------------------------------------------------------------ *
- * Thread tags
- * ------------------------------------------------------------------ */
-
-/** Messages the tagging model is shown, and how much of each. */
-const TAG_CONTEXT_MESSAGES = 10
-const TAG_CONTEXT_CHARS = 900
-/** How much of the library to offer as vocabulary, most-used first. */
-const TAG_VOCABULARY = 60
-
-export interface TagEdit {
-  add: string[]
-  remove: string[]
-}
-
-/**
- * Reads the model's answer.
- *
- * Models wrap JSON in prose or a fenced block however firmly they are asked not
- * to, so take the outermost braces rather than trusting the whole reply to
- * parse. Anything unreadable means "change nothing", which is the safe reading:
- * a bad reply must never strip a thread's tags.
- */
-export function parseTagEdit(raw: string): TagEdit {
-  const empty: TagEdit = { add: [], remove: [] }
-
-  const start = raw.indexOf('{')
-  const end = raw.lastIndexOf('}')
-  if (start < 0 || end <= start) return empty
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1))
-  } catch {
-    return empty
-  }
-
-  if (!parsed || typeof parsed !== 'object') return empty
-  const record = parsed as Record<string, unknown>
-
-  const list = (value: unknown): string[] =>
-    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
-
-  return { add: list(record.add), remove: list(record.remove) }
-}
-
-/**
- * Assembles what would be sent for one thread, or null when there is nothing
- * to tag. Shared by the tagging pass and by the estimate the UI prices, so the
- * figure quoted before a run is arithmetic on the real requests.
- */
-function buildTagRequest(
-  thread: Thread,
-  settings: Settings
-): { system: string; brief: string } | null {
-  const messages = repo
-    .getMessages(thread.id)
-    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
-  if (!messages.length) return null
-
-  const transcript = messages
-    .slice(-TAG_CONTEXT_MESSAGES)
-    .map((m) => `${m.role.toUpperCase()}: ${m.content.slice(0, TAG_CONTEXT_CHARS)}`)
-    .join('\n\n')
-
-  const brief = [
-    ...tagBriefPreamble(thread.tags, settings),
-    thread.title ? `Conversation name: ${thread.title}` : '',
-    '',
-    'Conversation:',
-    transcript
-  ]
-    .filter(Boolean)
-    .join('\n')
-
-  return { system: settings.tagging.prompt, brief }
-}
-
-/**
- * Everything in the brief above the transcript. Its own function so the
- * estimate can measure the same words the request will carry, rather than a
- * copy of them that drifts the moment either is edited.
- */
-function tagBriefPreamble(current: string[], settings: Settings): string[] {
-  // Manual-only tags are left out entirely: offering a tag the model is not
-  // allowed to use spends tokens inviting a suggestion that will be thrown away.
-  const library = repo
-    .listTags()
-    .filter((tag) => !tag.manualOnly)
-    .slice(0, TAG_VOCABULARY)
-    .map((tag) => tag.name)
-
-  return [
-    current.length
-      ? `Tags on this conversation: ${current.join(', ')}`
-      : 'This conversation has no tags yet.',
-    library.length ? `Tags already in use elsewhere: ${library.join(', ')}` : 'No tags exist yet.',
-    settings.tagging.allowNewTags
-      ? `You may create a tag that does not exist yet when nothing in the list fits. At most ${settings.tagging.maxTagsPerThread} tags in total.`
-      : 'You may only use tags from the list above. Do not invent new ones.'
-  ]
-}
-
-/**
- * Asks the tagging model what this thread should be tagged with, and applies
- * the answer. Runs after every turn, because what a conversation is about is
- * not settled by its first exchange.
- *
- * Tags the user added by hand are never removed here — the model's job is to
- * keep its own suggestions current, not to overrule a person.
- *
- * `force` is for tagging the user asked for outright — a re-tag, or the
- * backfill. The setting governs whether tagging happens *by itself*; it was
- * never meant to refuse a button someone just pressed.
- */
-export async function updateTags(
-  threadId: string,
-  emit: Emit,
-  force = false
-): Promise<string[] | null> {
-  const settings = loadSettings()
-  if (!settings.tagging.enabled && !force) return null
-
-  const thread = repo.getThread(threadId)
-  if (!thread) return null
-
-  const request = buildTagRequest(thread, settings)
-  if (!request) return null
-  const current = thread.tags
-
-  try {
-    const result = await complete({
-      model: settings.tagging.model,
-      messages: [
-        { role: 'system', content: request.system },
-        { role: 'user', content: request.brief }
-      ],
-      temperature: 0.2,
-      maxTokens: 200,
-      providerRouting: settings.modelProviderRouting[settings.tagging.model] ?? null,
-      attribution: settings.sendAppAttribution
-    })
-
-    const edit = parseTagEdit(result.content)
-    const sources = repo.getThreadTagSources(threadId)
-    const library = repo.listTags()
-    const known = new Set(library.filter((tag) => !tag.manualOnly).map((tag) => tag.name))
-    const manualOnly = new Set(library.filter((tag) => tag.manualOnly).map((tag) => tag.name))
-
-    for (const raw of edit.remove) {
-      const name = repo.normalizeTagName(raw)
-      // The user's own tags are theirs; the model may only retire its own. A
-      // manual-only tag is out of reach even if the model put it there before
-      // it was marked — that mark means "this one is mine".
-      if (!name || sources[name] !== 'model' || manualOnly.has(name)) continue
-      repo.removeThreadTag(threadId, name)
-    }
-
-    for (const raw of edit.add) {
-      const name = repo.normalizeTagName(raw)
-      if (!name || manualOnly.has(name)) continue
-      if (!settings.tagging.allowNewTags && !known.has(name)) continue
-      repo.addThreadTag(threadId, name, 'model')
-    }
-
-    repo.enforceTagLimit(threadId, settings.tagging.maxTagsPerThread)
-
-    const tags = repo.getThreadTags(threadId)
-
-    if (result.usage.totalTokens) {
-      // Tagging costs money on every turn; it belongs in the statistics.
-      const marker = repo.insertMessage({
-        threadId,
-        role: 'system',
-        content: '',
-        model: settings.tagging.model,
-        compactedInto: 'tags'
-      })
-      repo.recordUsage(threadId, marker.id, settings.tagging.model, result.provider, result.usage)
-    }
-
-    // Only say so when something moved, so an unchanged thread costs no
-    // repaint. Joined on a character a tag cannot contain, since one that
-    // contains a space would otherwise compare equal to two that do not.
-    if (tags.join('\u0000') !== current.join('\u0000')) {
-      emit({ type: 'tags', threadId, tags })
-    }
-    return tags
-  } catch {
-    // Tagging is a convenience. A failure must not disturb the conversation.
-    return null
-  }
-}
-
-/**
- * What a tagging reply costs in output tokens.
- *
- * The request caps output at 200, but a reply is two short JSON arrays, so
- * budgeting for the cap would overstate the price several times over. This is
- * what one actually comes back as, rounded up.
- */
-const TAG_REPLY_TOKENS = 45
-
-/** What tagging every untagged thread would send, priced by the renderer. */
-export function estimateTagBackfill(): TagBackfillEstimate {
-  const settings = loadSettings()
-  const sizes = repo.untaggedThreadSizes(TAG_CONTEXT_MESSAGES, TAG_CONTEXT_CHARS)
-
-  // An untagged thread has no tags by definition, so the preamble is the same
-  // for every one of them and is measured once.
-  const perRequest =
-    estimateTokens(settings.tagging.prompt) +
-    estimateTokens(tagBriefPreamble([], settings).join('\n')) +
-    estimateTokens('\nConversation:\n')
-
-  const promptTokens = sizes.reduce(
-    (sum, row) =>
-      sum +
-      perRequest +
-      estimateTokens(row.title ? `Conversation name: ${row.title}` : '') +
-      Math.ceil(row.chars / 4),
-    0
-  )
-
-  return {
-    model: settings.tagging.model,
-    threads: sizes.length,
-    promptTokens,
-    completionTokens: sizes.length * TAG_REPLY_TOKENS
-  }
-}
-
-/**
- * The backfill runs one thread at a time so a slow provider cannot turn a
- * library-wide pass into hundreds of simultaneous requests, and so stopping it
- * takes effect on the next thread rather than after all of them.
- */
-let backfillRunning = false
-let backfillCancelled = false
-
-export function stopTagBackfill(): void {
-  if (backfillRunning) backfillCancelled = true
-}
-
-export function isTagBackfillRunning(): boolean {
-  return backfillRunning
-}
-
-/** Tags every thread that carries no tags yet, reporting progress as it goes. */
-export async function tagAllUntagged(emit: Emit): Promise<{ tagged: number; total: number }> {
-  if (backfillRunning) return { tagged: 0, total: 0 }
-
-  backfillRunning = true
-  backfillCancelled = false
-
-  const ids = repo.listUntaggedThreadIds()
-  let done = 0
-  let tagged = 0
-
-  emit({ type: 'tag-progress', done: 0, total: ids.length, threadId: null, finished: false })
-
-  try {
-    for (const id of ids) {
-      if (backfillCancelled) break
-
-      emit({ type: 'tag-progress', done, total: ids.length, threadId: id, finished: false })
-      const tags = await updateTags(id, emit, true)
-      if (tags?.length) tagged++
-      done++
-    }
-  } finally {
-    backfillRunning = false
-    backfillCancelled = false
-    emit({ type: 'tag-progress', done, total: ids.length, threadId: null, finished: true })
-  }
-
-  return { tagged, total: ids.length }
-}
-
-/* ------------------------------------------------------------------ *
  * The turn
  * ------------------------------------------------------------------ */
 
@@ -894,8 +614,6 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       const check = await shouldCompact(thread, settings)
       if (check.needed) await compactThread(thread.id, emit)
     }
-
-    const isFirstExchange = repo.getMessages(thread.id).filter((m) => m.role === 'user').length === 1
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       thread = repo.getThread(thread.id)!
@@ -1051,26 +769,67 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       }
     }
 
-    if (isFirstExchange && !thread.title) {
-      await generateTitle(thread.id, emit)
-    }
-
-    // Every turn, not only the first: a conversation drifts, and its tags
-    // should follow it rather than describe where it started.
-    await updateTags(thread.id, emit)
   } finally {
     abortControllers.delete(req.threadId)
+
+    // Naming happens here rather than at the end of the turn, and on any turn
+    // rather than only the first.
+    //
+    // Every way a turn can end short of completing used to skip it and nothing
+    // came back to it later: stopping the reply returns out of the tool loop, a
+    // failed request throws past it, and a first exchange that errored left the
+    // thread permanently unnamed because the retry was no longer "the first".
+    // A thread with something in it and no name gets one, whenever that is.
+    await nameIfUnnamed(req.threadId, emit)
   }
 }
+
+/**
+ * Names a thread if it has no name and has something to name it after.
+ *
+ * Cheap to call on every turn: it reads one row, and the request itself only
+ * happens when the name is still missing.
+ */
+async function nameIfUnnamed(threadId: string, emit: Emit): Promise<void> {
+  try {
+    const thread = repo.getThread(threadId)
+    if (!thread || thread.title) return
+    await generateTitle(threadId, emit)
+  } catch {
+    // Naming is a convenience. A failure must not disturb the conversation.
+  }
+}
+
+/**
+ * Names every thread that still has none, at startup.
+ *
+ * The turn-by-turn attempt covers a thread that is still being used; this is
+ * for the ones that are not — the app was closed mid-reply, or the request that
+ * would have named it failed and the conversation was never returned to. One at
+ * a time, oldest first, and capped, so a library that has been running untitled
+ * for months does not open with a hundred simultaneous requests.
+ */
+export async function nameUntitledThreads(emit: Emit): Promise<number> {
+  const settings = loadSettings()
+  if (!settings.titleGenerationEnabled) return 0
+  // Without a key every attempt fails identically; the thread keeps its place
+  // in the queue and is named on the first start after one is added.
+  if (!settings.hasApiKey) return 0
+
+  let named = 0
+  for (const id of repo.listUntitledThreadIds(TITLE_SWEEP_LIMIT)) {
+    const title = await generateTitle(id, emit)
+    if (title) named++
+  }
+  return named
+}
+
+/** How many threads one startup will name, so a backlog is worked through. */
+const TITLE_SWEEP_LIMIT = 25
 
 /** Used by the UI when the user asks for a fresh title on demand. */
 export async function retitle(threadId: string, emit: Emit): Promise<string | null> {
   return generateTitle(threadId, emit)
-}
-
-/** Used by the UI when the user asks for the tags to be revisited now. */
-export async function retag(threadId: string, emit: Emit): Promise<string[] | null> {
-  return updateTags(threadId, emit, true)
 }
 
 export function newThreadId(): string {

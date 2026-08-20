@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  Folder,
   GlobalStats,
   McpServerConfig,
   McpServerStatus,
@@ -12,8 +13,6 @@ import type {
   ImportResult,
   LiveStream,
   SearchHit,
-  TagBackfillEstimate,
-  TagSummary,
   PromptPreview,
   CompactionStatus,
   SendMessageRequest,
@@ -55,7 +54,20 @@ const api = {
     ): Promise<Thread | null> => ipcRenderer.invoke('threads:update', id, patch),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('threads:delete', id),
     branch: (id: string, messageId: string): Promise<Thread | null> =>
-      ipcRenderer.invoke('threads:branch', id, messageId)
+      ipcRenderer.invoke('threads:branch', id, messageId),
+    /** Files a thread in a folder, or takes it out with null. */
+    setFolder: (id: string, folderId: string | null): Promise<Thread | null> =>
+      ipcRenderer.invoke('threads:setFolder', id, folderId)
+  },
+
+  folders: {
+    list: (): Promise<Folder[]> => ipcRenderer.invoke('folders:list'),
+    /** Returns null when the name is empty once cleaned up. */
+    create: (name: string): Promise<Folder | null> => ipcRenderer.invoke('folders:create', name),
+    update: (id: string, patch: { name?: string; pinned?: boolean }): Promise<Folder | null> =>
+      ipcRenderer.invoke('folders:update', id, patch),
+    /** Deletes the folder; the threads it held return to the list. */
+    remove: (id: string): Promise<void> => ipcRenderer.invoke('folders:delete', id)
   },
 
   messages: {
@@ -96,41 +108,6 @@ const api = {
   prompt: {
     preview: (threadId: string): Promise<PromptPreview | null> =>
       ipcRenderer.invoke('prompt:preview', threadId)
-  },
-
-  tags: {
-    /** Every tag in the library, with how many threads carry it. */
-    list: (): Promise<TagSummary[]> => ipcRenderer.invoke('tags:list'),
-    forThread: (threadId: string): Promise<string[]> =>
-      ipcRenderer.invoke('tags:forThread', threadId),
-    add: (threadId: string, name: string): Promise<Thread | null> =>
-      ipcRenderer.invoke('tags:add', threadId, name),
-    remove: (threadId: string, name: string): Promise<Thread | null> =>
-      ipcRenderer.invoke('tags:remove', threadId, name),
-    /** Renames everywhere; renaming onto an existing tag merges the two. */
-    rename: (from: string, to: string): Promise<string | null> =>
-      ipcRenderer.invoke('tags:rename', from, to),
-    /** Removes a tag from every thread and from the library. */
-    deleteEverywhere: (name: string): Promise<void> => ipcRenderer.invoke('tags:delete', name),
-    /** Empties the library. Returns how many tags went. */
-    deleteAll: (): Promise<number> => ipcRenderer.invoke('tags:deleteAll'),
-    /** `manualOnly` puts a tag out of the model's reach; `pinned` is folder order. */
-    setFlags: (
-      name: string,
-      flags: { manualOnly?: boolean; pinned?: boolean }
-    ): Promise<void> => ipcRenderer.invoke('tags:setFlags', name, flags),
-    /** Asks the tagging model to revisit this thread now. */
-    retag: (threadId: string): Promise<string[] | null> =>
-      ipcRenderer.invoke('tags:retag', threadId),
-    /** Token counts for tagging every untagged thread, for pricing up front. */
-    backfillEstimate: (): Promise<TagBackfillEstimate> =>
-      ipcRenderer.invoke('tags:backfillEstimate'),
-    /** Tags every untagged thread, reporting progress as a chat event. */
-    tagAllUntagged: (): Promise<{ tagged: number; total: number }> =>
-      ipcRenderer.invoke('tags:tagAllUntagged'),
-    /** Stops that pass after the thread it is on. */
-    stopBackfill: (): Promise<void> => ipcRenderer.invoke('tags:stopBackfill'),
-    backfillRunning: (): Promise<boolean> => ipcRenderer.invoke('tags:backfillRunning')
   },
 
   search: {

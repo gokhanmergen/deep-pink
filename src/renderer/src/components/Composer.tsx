@@ -9,6 +9,17 @@ import {
 } from './attachFiles'
 import type { AttachedRepo } from '@shared/types'
 import { useStore } from '../store'
+import {
+  ArrowUp,
+  Cpu,
+  FolderCode,
+  Globe,
+  Image as ImageIcon,
+  Paperclip,
+  Square,
+  X
+} from 'lucide-react'
+import { ICON } from '../icons'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatBinding, matchesBinding } from '../keybinds'
 
@@ -145,11 +156,13 @@ export function Composer(): React.JSX.Element {
     {
       id: 'files',
       label: 'Images or text files…',
+      icon: <ImageIcon {...ICON} />,
       onSelect: () => fileInputRef.current?.click()
     },
     {
       id: 'repo',
       label: 'Code repository…',
+      icon: <FolderCode {...ICON} />,
       hint: 'read-only',
       onSelect: () => void attachRepo()
     }
@@ -281,7 +294,7 @@ export function Composer(): React.JSX.Element {
                     type="button"
                     aria-label={`Detach ${repo.name}`}
                   >
-                    ✕
+                    <X size={11} strokeWidth={2.25} />
                   </button>
                 </div>
               ))}
@@ -299,7 +312,7 @@ export function Composer(): React.JSX.Element {
                     type="button"
                     aria-label={`Remove ${item.filename}`}
                   >
-                    ✕
+                    <X size={11} strokeWidth={2.25} />
                   </button>
                 )
 
@@ -375,6 +388,7 @@ export function Composer(): React.JSX.Element {
               type="button"
               disabled={!activeThreadId}
             >
+              <Paperclip {...ICON} />
               Attach
             </button>
 
@@ -386,6 +400,7 @@ export function Composer(): React.JSX.Element {
               type="button"
               disabled={!activeThreadId}
             >
+              <Globe {...ICON} />
               Web {webOn ? 'on' : 'off'}
             </button>
 
@@ -395,12 +410,16 @@ export function Composer(): React.JSX.Element {
               title={`Model — ${formatBinding(keybinds['model.picker'] ?? 'mod+m')}`}
               type="button"
             >
-              {(thread?.config.model ?? settings?.defaultModel ?? '').split('/').pop() ||
-                'Choose model'}
+              <Cpu {...ICON} />
+              <span className="btn__label">
+                {(thread?.config.model ?? settings?.defaultModel ?? '').split('/').pop() ||
+                  'Choose model'}
+              </span>
             </button>
 
             {generating ? (
               <button className="btn btn--danger" onClick={() => void abort()} type="button">
+                <Square size={12} strokeWidth={2.5} />
                 Stop
               </button>
             ) : (
@@ -410,6 +429,7 @@ export function Composer(): React.JSX.Element {
                 disabled={!value.trim() && !images.length}
                 type="button"
               >
+                <ArrowUp {...ICON} />
                 Send
               </button>
             )}

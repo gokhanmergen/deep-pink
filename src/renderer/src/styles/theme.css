@@ -2,35 +2,48 @@
    One accent, a narrow neutral ramp, and nothing that glows for no reason. */
 
 :root {
+  /* The name is the colour. Clears 3:1 against this surface, so the same value
+     can carry a chart mark and a button without being re-picked for either. */
   --accent: #ff1493;
   --accent-hover: #ff47a9;
   --accent-dim: rgba(255, 20, 147, 0.16);
   --accent-line: rgba(255, 20, 147, 0.38);
+  /* The area-fill wash: the accent at ~10%, which is a tint of the surface
+     rather than a block of colour. */
+  --accent-wash: rgba(255, 20, 147, 0.1);
 
-  --bg: #0b0b0f;
-  --bg-panel: #101015;
-  --bg-elevated: #16161d;
-  --bg-input: #1a1a22;
-  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg: #0a0a0a;
+  /* The sidebar sits a step below the content it is beside, not above it: the
+     conversation is the lit surface and the chrome recedes from it. */
+  --bg-sidebar: #070707;
+  --bg-panel: #101010;
+  --bg-elevated: #171717;
+  --bg-input: #1c1c1c;
+  --bg-hover: rgba(255, 255, 255, 0.045);
   /* Selection lifts a row onto a lighter surface instead of tinting it, so the
      accent stays a mark of things you act on rather than of where you are. */
   --bg-active: var(--bg-elevated);
 
-  --border: #23232c;
-  --border-strong: #32323e;
+  --border: #232323;
+  --border-strong: #303030;
 
-  --text: #e9e9ef;
-  --text-muted: #9b9baa;
-  --text-dim: #6a6a78;
+  --text: #f2f2f0;
+  --text-muted: #a2a2a0;
+  --text-dim: #6f6f6d;
 
-  --green: #3ecf8e;
-  --amber: #e5a23c;
-  --red: #f2555a;
-  --blue: #5aa9f7;
+  --green: #4cbf8b;
+  --amber: #d9a441;
+  --red: #e26a5c;
+  --blue: #5f9ede;
+
+  /* Chart furniture: one step off the surface, and never louder than the data. */
+  --viz-grid: #1b1b1b;
 
   --radius: 8px;
   --radius-sm: 5px;
   --font-size: 14px;
+  /* The measure the transcript and the composer share. Set from settings. */
+  --chat-width: 780px;
 
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue',
     'Noto Sans', sans-serif;
@@ -129,8 +142,10 @@ button {
 .sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  /* Barely there: the step in surface already separates the two columns, and a
+     drawn line across the whole window height reads louder than either. */
+  border-right: 1px solid #141414;
   overflow: hidden;
   /* Grid and flex children default to min-*: auto, which refuses to shrink
      below their content. Every scroll container below depends on this. */
@@ -180,8 +195,10 @@ button {
 }
 
 .sidebar__brand-name {
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 550;
   letter-spacing: -0.01em;
+  color: var(--text-muted);
 }
 
 .sidebar__actions {
@@ -191,91 +208,27 @@ button {
 }
 
 .sidebar__search {
-  padding: 0 10px 10px;
+  padding: 0 10px 8px;
+  position: relative;
 }
 
-/* How the thread list is ordered — three views, one of which is folders. */
-
-.viewswitch {
-  display: flex;
-  gap: 1px;
-  margin: 0 10px 7px;
-  padding: 1px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-}
-
-.viewswitch__option {
-  flex: 1;
-  padding: 2px 0;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 550;
-  letter-spacing: 0.02em;
-  color: var(--text-dim);
-  transition: background 0.12s, color 0.12s;
-}
-
-.viewswitch__option:hover {
-  color: var(--text);
-}
-
-.viewswitch__option[data-active='true'] {
-  background: var(--bg-input);
-  color: var(--text);
-}
-
-.folder {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 10px;
-  margin-top: 2px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  font-size: 14px;
-  min-width: 0;
-}
-
-.folder:hover {
+.sidebar__search .input {
+  padding-left: 28px;
   background: var(--bg-hover);
-  color: var(--text);
+  border-color: transparent;
 }
 
-.folder__icon {
-  flex: none;
-  opacity: 0.8;
+.sidebar__search .input:focus {
+  background: var(--bg-input);
 }
 
-.folder[data-open='true'] .folder__name,
-.folder[data-open='true'] .folder__icon {
-  color: var(--text);
-  opacity: 1;
-}
-
-.folder__name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 550;
-}
-
-.folder__count {
-  font-size: 12px;
+.sidebar__search .icon {
+  position: absolute;
+  left: 19px;
+  top: 50%;
+  margin-top: -9px;
   color: var(--text-dim);
-  flex: none;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Indented, and hung off a line, so a thread reads as being inside its tag. */
-.folder__contents {
-  margin-left: 12px;
-  padding-left: 6px;
-  border-left: 1px solid var(--border);
+  pointer-events: none;
 }
 
 .sidebar__list {
@@ -312,13 +265,190 @@ button {
   color: var(--text-dim);
 }
 
-.sidebar__footer {
-  border-top: 1px solid var(--border);
-  padding: 8px 10px;
+/* A quieter row than the buttons above it: filing threads is housekeeping, and
+   a full-sized button for it would compete with starting a conversation. */
+
+.sidebar__minor {
   display: flex;
-  gap: 6px;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+/* Icons are inline-level SVGs. Inside a flex row their box is centred for them;
+   anywhere else they sit on the text baseline and hang below it, which is what
+   a "slightly off" icon always turns out to be. This covers both cases. */
+svg.lucide {
+  flex: none;
+  vertical-align: -0.125em;
+}
+
+.minor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.minor-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+/* ------------------------------------------------------------------ *
+ * Folders
+ * ------------------------------------------------------------------ */
+
+/* The wrapper is the drop target, so a thread can be let go anywhere over the
+   folder — its heading or the rows already inside it. */
+.folder-group {
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.folder-group[data-dropping='true'] {
+  border-color: var(--accent-line);
+  background: var(--accent-dim);
+}
+
+/* Dropping onto the list itself is how a thread comes back out of a folder, so
+   the whole list answers a drag rather than only the folders. */
+.sidebar__list[data-dropping='true'] {
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  border-radius: var(--radius-sm);
+}
+
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  min-width: 0;
+  text-align: left;
+}
+
+.folder:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* An open folder keeps its heading lit while everything outside it dims, so
+   the eye is told where the rows below it came from. */
+.folder[data-open='true'] {
+  color: var(--text);
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.folder__icon {
+  flex: none;
+  opacity: 0.85;
+}
+
+.folder__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.folder__count {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Indented, and hung off a line, so a thread reads as being inside the folder
+   rather than merely under it. */
+.folder__contents {
+  margin: 2px 0 4px 13px;
+  padding-left: 7px;
+  border-left: 1px solid var(--border-strong);
+}
+
+.folder__empty {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* Inside a folder the hanging line already says where a row belongs, so the row
+   gives that indent back and the titles stay readable at the same width. */
+.thread-item[data-in-folder='true'] {
+  padding-left: 8px;
+}
+
+/* Everything outside the folder being looked at is dimmed rather than hidden or
+   disabled: the list stays where it was, and a dim row is still an ordinary
+   button that opens its thread on a click.
+
+   Selected from the list rather than marked on each row, so opening a folder
+   changes one attribute in the DOM instead of a prop on every thread. There is
+   deliberately no transition on it either: fading hundreds of rows at once is
+   hundreds of separately composited layers, which is exactly the stall that
+   made opening a folder feel slow. */
+.sidebar__list[data-focusing='true'] .thread-item,
+.sidebar__list[data-focusing='true'] .folder:not([data-open='true']) {
+  opacity: 0.38;
+}
+
+/* What is inside the open folder is the point of the dimming, so it is exempt. */
+.sidebar__list[data-focusing='true'] .folder-group[data-open='true'] .thread-item {
+  opacity: 1;
+}
+
+/* Whatever you are pointing at, and whatever is already open, stay legible. */
+.sidebar__list[data-focusing='true'] .thread-item:hover,
+.sidebar__list[data-focusing='true'] .thread-item[data-active='true'],
+.sidebar__list[data-focusing='true'] .folder:hover {
+  opacity: 1;
+}
+
+/* Rows are draggable, and say so while one is being moved. */
+.thread-item:active {
+  cursor: grabbing;
+}
+
+.sidebar__footer {
+  border-top: 1px solid #141414;
+  padding: 6px 8px;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+/* Footer entries are rows, not buttons: an icon, a word, and nothing drawn
+   around them until you point at one. */
+.sidebar__footer .btn {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 5px 7px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.sidebar__footer .btn:hover {
+  color: var(--text);
+}
+
+.sidebar__footer .icon {
+  flex: none;
+  opacity: 0.9;
 }
 
 /* Selection is shown by lifting a row out of the panel — a lighter surface and
@@ -447,6 +577,20 @@ button {
 
 .topbar__spacer {
   flex: 1;
+}
+
+/* The row has to fit at any window width. The title gives way first, and after
+   that the long names — a model, a provider — truncate rather than pushing the
+   statistics off the end of the bar. */
+.topbar .btn {
+  min-width: 0;
+}
+
+.btn__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------------ *
@@ -589,18 +733,36 @@ button {
   color: var(--text);
 }
 
+/* A hint explains the thing above it, so it takes its own line and its own
+   air. Inline it ran straight into the end of the label — "…date and timeAdds
+   one line to the system prompt" — which reads as one broken sentence. */
 .field__hint {
+  display: block;
+  margin-top: 4px;
   font-size: 12px;
   color: var(--text-dim);
   line-height: 1.45;
 }
 
+/* Beside a control rather than beneath a label, it is one item in a row and
+   lines up with what it explains. */
+.row > .field__hint {
+  margin-top: 0;
+}
+
 .switch {
   display: flex;
-  align-items: center;
+  /* Top-aligned: a switch whose label carries a hint is two or three lines
+     tall, and centring floats the control against the middle of the paragraph. */
+  align-items: flex-start;
   gap: 10px;
   cursor: pointer;
   user-select: none;
+}
+
+/* The label block beside the control. */
+.switch > span {
+  min-width: 0;
 }
 
 .switch input {
@@ -613,6 +775,8 @@ button {
   position: relative;
   cursor: pointer;
   flex: none;
+  /* Sits against the first line of the label rather than the middle of it. */
+  margin-top: 2px;
   transition: background 0.15s, border-color 0.15s;
 }
 
@@ -641,10 +805,16 @@ button {
 /* One row of a list rather than a paragraph of settings: smaller, and the
    label sits tight against its toggle. */
 .switch--inline {
+  /* One line, no hint under it: centre it again. */
+  align-items: center;
   gap: 6px;
   font-size: 12px;
   color: var(--text-dim);
   white-space: nowrap;
+}
+
+.switch--inline input {
+  margin-top: 0;
 }
 
 .switch--inline input {
@@ -674,7 +844,7 @@ button {
 }
 
 .transcript__inner {
-  max-width: 780px;
+  max-width: var(--chat-width);
   margin: 0 auto;
   padding: 0 24px;
 }
@@ -989,7 +1159,7 @@ button {
 }
 
 .composer__inner {
-  max-width: 780px;
+  max-width: var(--chat-width);
   margin: 0 auto;
 }
 
@@ -1064,6 +1234,7 @@ button {
 }
 
 .panel {
+  container: panel / inline-size;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
@@ -1186,30 +1357,92 @@ button {
  * Settings & tabs
  * ------------------------------------------------------------------ */
 
-.tabs {
+/* The sections live down the side of the panel, with the content beside them:
+   eight of them is more than a row can hold at this width, and a column keeps
+   the one you are on visible while you read the one you are looking for. */
+.settings-split {
   display: flex;
-  gap: 2px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  flex: 1;
+  min-height: 0;
+}
+
+.tabs {
   flex: none;
-  overflow-x: auto;
+  width: 178px;
+  padding: 10px 8px 14px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tabs__group + .tabs__group {
+  margin-top: 14px;
+}
+
+.tabs__label {
+  padding: 0 8px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 
 .tab {
-  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: var(--radius-sm);
+  /* Transparent rather than absent, so gaining the marker on selection does not
+     move the row by two pixels. */
+  border-left: 2px solid transparent;
   font-size: 13px;
   color: var(--text-dim);
-  border-bottom: 2px solid transparent;
+  text-align: left;
   white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
 }
 
 .tab:hover {
   color: var(--text);
+  background: var(--bg-hover);
 }
 
+/* Where you are: the row lifts onto a lighter surface, as a selected thread
+   does, and the accent marks the edge rather than flooding the row. */
 .tab[data-active='true'] {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--bg-elevated);
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+
+.settings-split .panel__body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A narrow panel gives the column back to the content: the icons alone still
+   say which section is which, and each row keeps its name on hover. */
+@container panel (max-width: 620px) {
+  .tabs {
+    width: 46px;
+    padding: 10px 6px;
+  }
+
+  .tabs__label {
+    display: none;
+  }
+
+  .tab {
+    justify-content: center;
+    padding: 7px 0;
+  }
+
+  .tab__label {
+    display: none;
+  }
 }
 
 .section-title {
@@ -1264,8 +1497,9 @@ button {
 
 .stat__sub {
   font-size: 11px;
+  line-height: 1.45;
   color: var(--text-dim);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .table {
@@ -1317,6 +1551,336 @@ button {
 
 .meter__fill[data-warn='true'] {
   background: var(--amber);
+}
+
+/* ------------------------------------------------------------------ *
+ * Graphs
+ *
+ * The data is the only thing allowed to be loud: a 2px line in the accent, a
+ * ten-percent wash beneath it, and every other line one step off the surface.
+ * ------------------------------------------------------------------ */
+
+.viz {
+  position: relative;
+  width: 100%;
+}
+
+.viz svg {
+  display: block;
+  overflow: visible;
+}
+
+/* Hairline, solid, and never dashed — it is furniture, not data. */
+.viz__grid {
+  stroke: var(--viz-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.viz__tick {
+  fill: var(--text-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.viz__area {
+  fill: var(--accent-wash);
+}
+
+.viz__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* The end-dot and the hover dot both carry a 2px ring in the surface colour, so
+   they stay legible where they sit on the line. */
+.viz__end,
+.viz__dot {
+  fill: var(--accent);
+  stroke: var(--bg-panel);
+  stroke-width: 2;
+}
+
+.viz__crosshair {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.viz__tip {
+  position: absolute;
+  top: 6px;
+  pointer-events: none;
+  padding: 6px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  z-index: 2;
+}
+
+/* One row per visible series, so the pointer never has to land on a line to
+   get its number. */
+.viz__tip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+/* The value leads and the series name follows: the reader already knows which
+   chart they are pointing at, and came for the number. */
+.viz__tip-value {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.viz__tip-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.viz__tip-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A short stroke of the series colour, not a filled box: at this density a
+   swatch is data-weight ink doing a label's job. */
+.viz__key {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  flex: none;
+  /* Lifted onto the text's middle, since it rides a baseline-aligned row. */
+  transform: translateY(-3px);
+}
+
+/* Identity is never left to colour alone: every series is named here, and each
+   key doubles as the switch for its line. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 8px;
+}
+
+.legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: color 0.12s, border-color 0.12s, opacity 0.12s;
+}
+
+.legend__item:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* A switched-off series stays legible — it is how you switch it back on. */
+.legend__item[data-on='false'] {
+  color: var(--text-dim);
+}
+
+.legend__item[data-on='false'] .viz__key {
+  opacity: 0.35;
+}
+
+/* The headline number a panel leads with. */
+.hero {
+  min-width: 0;
+}
+
+.hero__label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.hero__value {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.hero__sub {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* Headline numbers divided by rules rather than boxed in cards, so a row of
+   them reads as one object. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin: 18px 0;
+}
+
+.tile {
+  padding: 11px 14px;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+
+.tile:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.tile__label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.tile__value {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile__sub {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+
+/* One row of a part-to-whole. */
+.share {
+  margin-bottom: 14px;
+}
+
+.share__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.share__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.share__value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  flex: none;
+}
+
+.share__track {
+  height: 3px;
+  margin-top: 6px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.share__fill {
+  height: 100%;
+  background: var(--accent);
+  /* Square where it starts, rounded where the data ends. */
+  border-radius: 0 999px 999px 0;
+}
+
+.share__sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 5px;
+}
+
+/* The small either/or above a chart. */
+.segmented {
+  display: inline-flex;
+  gap: 1px;
+  padding: 1px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  flex: none;
+}
+
+.segmented__option {
+  padding: 4px 11px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+
+.segmented__option:hover {
+  color: var(--text);
+}
+
+.segmented__option[data-active='true'] {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* A chart and the numbers beside it, which stack when the panel is narrow. */
+.viz-split {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 26px;
+  align-items: start;
+}
+
+/* Grid items refuse to shrink below their content, and a chart's content is an
+   SVG drawn at whatever width it was last measured at — so without this the
+   chart can grow with the panel but never shrink back, and overflows it. */
+.viz-split > * {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .viz-split {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+.viz-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.viz-head__title {
+  font-weight: 600;
 }
 
 .bar-row {
@@ -1604,163 +2168,6 @@ button {
 
 /* Context-window gauge, shown once a thread has enough in it to be worth a
    number. The label is what makes the bar legible as a measurement. */
-/* Tags — a property of the conversation, shown with its name */
-
-.tagbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 24px 0;
-}
-
-.tagchip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--accent-line);
-  background: var(--accent-dim);
-  font-size: 11px;
-  color: var(--text-muted);
-  max-width: 220px;
-}
-
-/* Nowhere to click: the row underneath is already a button. Outlined rather
-   than tinted — a list is mostly tags, and tinting every one of them turns the
-   sidebar into wallpaper. */
-.tagchip--static {
-  padding: 1px 6px;
-  border-color: var(--border);
-  background: none;
-  color: var(--text-dim);
-  font-size: 10px;
-  max-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tagchip__name {
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tagchip__name:hover {
-  color: var(--accent);
-}
-
-.tagchip__remove {
-  color: var(--text-dim);
-  font-size: 9px;
-  flex: none;
-  padding: 0 3px;
-}
-
-.tagchip__remove:hover {
-  color: var(--red);
-}
-
-.tagbar__add,
-.tagbar__input {
-  font-size: 11px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px dashed var(--border-strong);
-  background: none;
-  color: var(--text-dim);
-}
-
-.tagbar__add:hover {
-  color: var(--accent);
-  border-color: var(--accent-line);
-}
-
-.tagbar__input {
-  border-style: solid;
-  background: var(--bg-elevated);
-  color: var(--text);
-  width: 150px;
-}
-
-.tagbar__input:focus {
-  outline: none;
-  border-color: var(--accent-line);
-}
-
-/* Tags under a search result */
-
-.tagline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 3px;
-  overflow: hidden;
-}
-
-.taglist__row {
-  gap: 8px;
-  padding: 4px 0;
-}
-
-/* One thread being re-tagged. Corner-anchored: nothing is blocked while it
-   runs, so taking the window over would overstate what is happening. */
-
-.tagpopup {
-  position: fixed;
-  right: 18px;
-  bottom: calc(var(--composer-height, 96px) + 14px);
-  width: 260px;
-  padding: 10px 12px 12px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-strong);
-  border-left: 2px solid var(--accent);
-  background: var(--bg-elevated);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  z-index: 200;
-}
-
-.tagpopup__label {
-  font-size: 12px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* A single request has no measurable progress, so the bar paces rather than
-   claims a percentage. */
-.meter--indeterminate .meter__fill {
-  width: 40%;
-  transition: none;
-  animation: meter-pace 1.1s ease-in-out infinite;
-}
-
-@keyframes meter-pace {
-  0% {
-    margin-left: -40%;
-  }
-  100% {
-    margin-left: 100%;
-  }
-}
-
-.tagbatch {
-  margin-top: 10px;
-}
-
-.tagbatch__row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
 .context-gauge {
   display: flex;
   align-items: center;
@@ -1803,7 +2210,7 @@ button {
 .context-menu__item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
   width: 100%;
   padding: 6px 9px;
   border-radius: var(--radius-sm);
@@ -1940,6 +2347,8 @@ button {
 }
 
 .repochip__remove {
+  display: inline-flex;
+  align-items: center;
   color: var(--text-dim);
   font-size: 10px;
   flex: none;

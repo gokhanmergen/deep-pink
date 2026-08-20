@@ -31,7 +31,8 @@ function authHeaders(attribution: boolean): Record<string, string> {
     Authorization: `Bearer ${key}`,
     'Content-Type': 'application/json'
   }
-  // Opt-in only: this is what puts an app on OpenRouter's public leaderboards.
+  // On by default, and switchable off: this is what puts an app on
+  // OpenRouter's public leaderboards. It names the app, never the user.
   if (attribution) {
     headers['HTTP-Referer'] = 'https://github.com/gokhanmergen/deep-pink'
     headers['X-Title'] = 'Deep Pink'

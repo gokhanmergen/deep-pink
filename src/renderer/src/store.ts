@@ -1,17 +1,16 @@
 import { create } from 'zustand'
 import type {
+  Folder,
   McpServerStatus,
   Message,
   OpenRouterModel,
   SearchHit,
-  TagSummary,
   PendingAttachment,
   Settings,
   SettingsPatch,
   StreamEvent,
   Thread,
   ThreadConfig,
-  ThreadSort,
   ToolCall
 } from '@shared/types'
 
@@ -23,7 +22,6 @@ export type Overlay =
   | 'models'
   | 'defaultModel'
   | 'titleModel'
-  | 'tagModel'
   | 'providers'
   | 'prompt'
   | 'threadStats'
@@ -81,6 +79,15 @@ interface State {
   settings: Settings | null
   models: OpenRouterModel[]
   threads: Thread[]
+  folders: Folder[]
+  /**
+   * Folders currently open, in the order they were opened. Held here rather
+   * than on disk: which drawer you have out is about the minute you are in,
+   * not a preference worth restoring a week later.
+   */
+  openFolderIds: string[]
+  /** The thread being dragged, so the list can show where it would land. */
+  draggingThreadId: string | null
   activeThreadId: string | null
   messages: Message[]
   generating: boolean
@@ -92,21 +99,12 @@ interface State {
   sidebarVisible: boolean
   sidebarFilter: string
   searchHits: SearchHit[]
-  /** Every tag in the library, for suggestions and the Settings list. */
-  allTags: TagSummary[]
   /** Query the search overlay opens with, when something opened it for you. */
   searchSeed: string
-  /** The thread a one-off re-tag is running on, for the little progress popup. */
-  taggingThreadId: string | null
-  /** How far the "tag every untagged thread" pass has got, while it runs. */
-  tagBatch: { done: number; total: number } | null
-  /** Tag folders currently open in the tag view. */
-  expandedTags: string[]
   /**
    * Threads the sidebar is showing, in the order it is showing them. Published
    * by the sidebar because it is the only thing that knows: the order depends
-   * on the view, on which folders are open, and on whether a search is running.
-   * Empty when the sidebar is not on screen.
+   * on whether a search is running. Empty when the sidebar is not on screen.
    */
   visibleThreadIds: string[]
   pendingApproval: PendingApproval | null
@@ -127,28 +125,30 @@ interface State {
       config?: Partial<ThreadConfig>
     }
   ) => Promise<void>
+  /** Asks the naming model for a fresh name for a thread — any thread. */
+  retitleThread: (id: string) => Promise<void>
+  refreshFolders: () => Promise<void>
+  /** Creates a folder and opens it, so it is ready to be dropped into. */
+  createFolder: (name: string) => Promise<Folder | null>
+  renameFolder: (id: string, name: string) => Promise<void>
+  /** Deletes the folder. The threads it held return to the list. */
+  deleteFolder: (id: string) => Promise<void>
+  setFolderPinned: (id: string, pinned: boolean) => Promise<void>
+  toggleFolder: (id: string) => void
+  /** Closes every open folder, and with them the dimming of everything else. */
+  closeAllFolders: () => void
+  /** Files a thread in a folder, or takes it out again with null. */
+  moveThreadToFolder: (threadId: string, folderId: string | null) => Promise<void>
+  setDraggingThread: (threadId: string | null) => void
   send: (content: string, attachments?: PendingAttachment[]) => Promise<void>
   regenerate: (messageId: string) => Promise<void>
   abort: () => Promise<void>
   compact: () => Promise<void>
   saveSettings: (patch: SettingsPatch) => Promise<void>
-  /** Switches the sidebar's view. Applied on the spot, saved behind it. */
-  setThreadSort: (sort: ThreadSort) => void
   refreshModels: (force?: boolean) => Promise<void>
-  refreshTags: () => Promise<void>
-  /** Asks the tagging model to look at one thread now. */
-  retagThread: (threadId: string) => Promise<void>
-  /** Tags every thread that has no tags yet. */
-  tagAllUntagged: () => Promise<void>
-  /** Marks a tag manual-only, or pins its folder. */
-  setTagFlags: (name: string, flags: { manualOnly?: boolean; pinned?: boolean }) => Promise<void>
-  toggleTagFolder: (name: string) => void
   setVisibleThreads: (ids: string[]) => void
   /** Moves to the thread `delta` places away in the list, as displayed. */
   stepThread: (delta: number) => void
-  /** Adds a tag to a thread by hand. Silently ignores an empty name. */
-  addTag: (threadId: string, name: string) => Promise<void>
-  removeTag: (threadId: string, name: string) => Promise<void>
   runSearch: (query: string) => Promise<void>
   setOverlay: (overlay: Overlay, returnTo?: Overlay) => void
   /** Opens the search overlay, optionally with a query already in it. */
@@ -192,6 +192,9 @@ export const useStore = create<State>((set, get) => ({
   settings: null,
   models: [],
   threads: [],
+  folders: [],
+  openFolderIds: [],
+  draggingThreadId: null,
   activeThreadId: null,
   messages: [],
   generating: false,
@@ -202,11 +205,7 @@ export const useStore = create<State>((set, get) => ({
   sidebarVisible: true,
   sidebarFilter: '',
   searchHits: [],
-  allTags: [],
   searchSeed: '',
-  taggingThreadId: null,
-  tagBatch: null,
-  expandedTags: [],
   visibleThreadIds: [],
   pendingApproval: null,
   toast: null,
@@ -217,14 +216,14 @@ export const useStore = create<State>((set, get) => ({
     if (initialised) return
     initialised = true
 
-    const [settings, threads, mcpStatuses, allTags] = await Promise.all([
+    const [settings, threads, folders, mcpStatuses] = await Promise.all([
       api.settings.get(),
       api.threads.list(),
-      api.mcp.statuses(),
-      api.tags.list()
+      api.folders.list(),
+      api.mcp.statuses()
     ])
 
-    set({ settings, threads, mcpStatuses, allTags, ready: true })
+    set({ settings, threads, folders, mcpStatuses, ready: true })
 
     if (threads.length) {
       await get().selectThread(threads[0].id)
@@ -232,12 +231,6 @@ export const useStore = create<State>((set, get) => ({
 
     unsubscribers.push(api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses })))
     unsubscribers.push(api.chat.onEvent((event) => handleStreamEvent(event, set, get)))
-
-    // A run started before this window existed — or before it was reloaded —
-    // is still going in the main process, so show its bar rather than nothing.
-    void api.tags.backfillRunning().then((running) => {
-      if (running && !get().tagBatch) set({ tagBatch: { done: 0, total: 0 } })
-    })
 
     // The catalogue is cached on disk; refreshing in the background keeps the
     // first paint instant.
@@ -257,6 +250,25 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectThread(id) {
+    // A thread is created the moment the button is pressed, so leaving one
+    // without saying anything is the most ordinary thing in the app — and it
+    // leaves an "Untitled thread" in the list forever. Anything named, pinned,
+    // filed, spoken in, or still generating is left exactly where it is.
+    const leaving = get().activeThreadId
+    if (leaving && leaving !== id && !get().generating && !get().messages.length) {
+      const thread = get().threads.find((t) => t.id === leaving)
+      if (
+        thread &&
+        !thread.title &&
+        thread.messageCount === 0 &&
+        !thread.pinned &&
+        !thread.folderId
+      ) {
+        set({ threads: get().threads.filter((t) => t.id !== leaving) })
+        void window.deepPink.threads.remove(leaving)
+      }
+    }
+
     if (!id) {
       set({ activeThreadId: null, messages: [], generating: false })
       return
@@ -340,6 +352,85 @@ export const useStore = create<State>((set, get) => ({
     await get().refreshThreads()
   },
 
+  async retitleThread(id) {
+    const title = await window.deepPink.chat.retitle(id)
+    await get().refreshThreads()
+    get().showToast(title ? `Renamed to “${title}”` : 'Could not generate a name')
+  },
+
+  async refreshFolders() {
+    set({ folders: await api.folders.list() })
+  },
+
+  async createFolder(name) {
+    const folder = await api.folders.create(name)
+    if (!folder) return null
+    // Opened on creation: a new folder is empty, and an empty closed folder
+    // gives no sign that the thing you just asked for exists.
+    set({ folders: [...get().folders, folder], openFolderIds: [...get().openFolderIds, folder.id] })
+    return folder
+  },
+
+  async renameFolder(id, name) {
+    const updated = await api.folders.update(id, { name })
+    if (!updated) return
+    set({ folders: get().folders.map((f) => (f.id === id ? updated : f)) })
+  },
+
+  async deleteFolder(id) {
+    await api.folders.remove(id)
+    set({
+      folders: get().folders.filter((f) => f.id !== id),
+      openFolderIds: get().openFolderIds.filter((open) => open !== id)
+    })
+    // The threads it held are still there, now carrying no folder.
+    await get().refreshThreads()
+  },
+
+  async setFolderPinned(id, pinned) {
+    const updated = await api.folders.update(id, { pinned })
+    if (!updated) return
+    set({ folders: get().folders.map((f) => (f.id === id ? updated : f)) })
+  },
+
+  toggleFolder(id) {
+    const open = get().openFolderIds
+    set({ openFolderIds: open.includes(id) ? open.filter((f) => f !== id) : [...open, id] })
+  },
+
+  closeAllFolders() {
+    if (get().openFolderIds.length) set({ openFolderIds: [] })
+  },
+
+  async moveThreadToFolder(threadId, folderId) {
+    const current = get().threads.find((t) => t.id === threadId)
+    if (!current || current.folderId === folderId) return
+
+    // Painted before the round trip: a drag has already shown the user where
+    // the row is going, and waiting to move it makes the drop look refused.
+    set({
+      threads: get().threads.map((t) => (t.id === threadId ? { ...t, folderId } : t)),
+      // Dropping into a shut folder opens it, so the thread is not seen to
+      // vanish on being filed.
+      openFolderIds:
+        folderId && !get().openFolderIds.includes(folderId)
+          ? [...get().openFolderIds, folderId]
+          : get().openFolderIds
+    })
+
+    const updated = await api.threads.setFolder(threadId, folderId)
+    if (!updated) {
+      // The folder went away underneath the drag; take the list from the database.
+      await get().refreshThreads()
+      return
+    }
+    set({ threads: get().threads.map((t) => (t.id === threadId ? updated : t)) })
+  },
+
+  setDraggingThread(threadId) {
+    set({ draggingThreadId: threadId })
+  },
+
   async send(content, pending = []) {
     let threadId = get().activeThreadId
     if (!threadId) {
@@ -419,76 +510,12 @@ export const useStore = create<State>((set, get) => ({
     set({ settings: await api.settings.save(patch) })
   },
 
-  setThreadSort(sort) {
-    const current = get().settings
-    if (!current || current.ui.threadSort === sort) return
-
-    // Switching views is a glance, not a decision: waiting on a round trip to
-    // the database — which re-reads the keyring on the way back — makes a free
-    // action feel expensive. Paint it now and persist behind it; nothing else
-    // reads this setting, so there is nothing to disagree with in the meantime.
-    set({ settings: { ...current, ui: { ...current.ui, threadSort: sort } } })
-    void api.settings.save({ ui: { threadSort: sort } })
-  },
-
   async refreshModels(force = false) {
     try {
       set({ models: await api.models.list(force) })
     } catch {
       /* offline or no key yet — the cached catalogue is enough */
     }
-  },
-
-  async refreshTags() {
-    set({ allTags: await api.tags.list() })
-  },
-
-  async retagThread(threadId) {
-    // One thread is one request, so there is nothing to count — the popup says
-    // which thread is being looked at and goes away when it is done.
-    set({ taggingThreadId: threadId })
-    try {
-      const tags = await api.tags.retag(threadId)
-      await get().refreshThreads()
-      await get().refreshTags()
-      get().showToast(
-        tags === null
-          ? 'The tagging model could not be reached'
-          : tags.length
-            ? `Tagged ${tags.join(', ')}`
-            : 'No tags fit this thread'
-      )
-    } catch (err) {
-      get().showToast(err instanceof Error ? err.message : String(err), 'error')
-    } finally {
-      set({ taggingThreadId: null })
-    }
-  },
-
-  async tagAllUntagged() {
-    if (get().tagBatch) return
-    // Painted before the first event arrives, so the bar appears on the click
-    // rather than after the first thread has been through the model.
-    set({ tagBatch: { done: 0, total: 0 } })
-    try {
-      const result = await api.tags.tagAllUntagged()
-      await get().refreshThreads()
-      await get().refreshTags()
-      get().showToast(
-        result.total
-          ? `Tagged ${result.tagged} of ${result.total} untagged threads`
-          : 'Every thread already has tags'
-      )
-    } catch (err) {
-      get().showToast(err instanceof Error ? err.message : String(err), 'error')
-    } finally {
-      set({ tagBatch: null })
-    }
-  },
-
-  async setTagFlags(name, flags) {
-    await api.tags.setFlags(name, flags)
-    await get().refreshTags()
   },
 
   setVisibleThreads(ids) {
@@ -498,8 +525,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   stepThread(delta) {
-    // What the sidebar is showing, or — when it is hidden or every folder is
-    // shut — the underlying list, so the keys still do something sensible.
+    // What the sidebar is showing, or — when it is hidden — the underlying
+    // list, so the keys still do something sensible.
     const visible = get().visibleThreadIds
     const order = visible.length ? visible : get().threads.map((t) => t.id)
     if (!order.length) return
@@ -516,27 +543,6 @@ export const useStore = create<State>((set, get) => ({
     if (next) void get().selectThread(next)
   },
 
-  toggleTagFolder(name) {
-    const open = get().expandedTags
-    set({
-      expandedTags: open.includes(name) ? open.filter((t) => t !== name) : [...open, name]
-    })
-  },
-
-  async addTag(threadId, name) {
-    const updated = await api.tags.add(threadId, name)
-    if (!updated) return
-    set({ threads: get().threads.map((t) => (t.id === threadId ? updated : t)) })
-    await get().refreshTags()
-  },
-
-  async removeTag(threadId, name) {
-    const updated = await api.tags.remove(threadId, name)
-    if (!updated) return
-    set({ threads: get().threads.map((t) => (t.id === threadId ? updated : t)) })
-    await get().refreshTags()
-  },
-
   async runSearch(query) {
     if (!query.trim()) {
       set({ searchHits: [] })
@@ -546,8 +552,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   setOverlay(overlay, returnTo = null) {
-    // Opening search any other way starts empty, rather than with whatever a
-    // tag click left behind.
+    // Opening search any other way starts empty, rather than with whatever
+    // seeded it last time.
     set({ overlay, overlayReturnTo: returnTo, ...(overlay === 'search' ? { searchSeed: '' } : {}) })
   },
 
@@ -670,29 +676,6 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
 
   if (event.type === 'title') {
     void get().refreshThreads()
-    return
-  }
-
-  // Tags belong to the thread rather than to any message, so they land
-  // whether or not the thread they changed is the one on screen. During a
-  // library-wide pass this fires once per thread, which is far more reloading
-  // than anyone can read — there, the progress handler paces it instead.
-  if (event.type === 'tags') {
-    if (!get().tagBatch) {
-      void get().refreshThreads()
-      void get().refreshTags()
-    }
-    return
-  }
-
-  if (event.type === 'tag-progress') {
-    set({ tagBatch: event.finished ? null : { done: event.done, total: event.total } })
-    // Often enough that the list visibly fills in, rarely enough that a run
-    // over a thousand threads is not a thousand round trips.
-    if (!event.finished && event.done > 0 && event.done % 10 === 0) {
-      void get().refreshThreads()
-      void get().refreshTags()
-    }
     return
   }
 

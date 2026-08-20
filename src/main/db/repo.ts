@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import type {
   Attachment,
+  DailyModelUsage,
   DailyUsage,
+  Folder,
   GlobalStats,
   McpServerConfig,
   Message,
   ModelUsageRollup,
   Role,
   SearchHit,
-  TagSource,
-  TagSummary,
   Thread,
   ThreadConfig,
   ThreadStats,
@@ -30,7 +30,15 @@ interface ThreadRow {
   updated_at: number
   pinned: number
   archived: number
+  folder_id: string | null
   config: string
+}
+
+interface FolderRow {
+  id: string
+  name: string
+  created_at: number
+  pinned: number
 }
 
 interface MessageRow {
@@ -91,7 +99,7 @@ function parseJson<T>(raw: string | null, fallback: T): T {
   }
 }
 
-function toThread(row: ThreadRow, tags?: string[], messageCount?: number): Thread {
+function toThread(row: ThreadRow, messageCount?: number): Thread {
   return {
     id: row.id,
     title: row.title,
@@ -99,7 +107,7 @@ function toThread(row: ThreadRow, tags?: string[], messageCount?: number): Threa
     updatedAt: row.updated_at,
     pinned: row.pinned === 1,
     archived: row.archived === 1,
-    tags: tags ?? getThreadTags(row.id),
+    folderId: row.folder_id,
     messageCount: messageCount ?? countMessages(row.id),
     config: { ...EMPTY_THREAD_CONFIG, ...parseJson<Partial<ThreadConfig>>(row.config, {}) }
   }
@@ -147,326 +155,102 @@ function toUsage(row: UsageRow): Usage {
 }
 
 /* ------------------------------------------------------------------ *
- * Tags
+ * Folders
  * ------------------------------------------------------------------ */
 
-/** Longest a tag may be. Past this it is a sentence, not a label. */
-export const MAX_TAG_LENGTH = 32
+/** Longest a folder name may be. Past this it is a sentence, not a label. */
+export const MAX_FOLDER_NAME_LENGTH = 60
 
 /**
- * The single place a tag name is cleaned up.
- *
- * Tags arrive from two directions — typed by the user, or written by a model
- * asked for JSON — and both produce leading hashes, stray quotes, odd spacing
- * and inconsistent case. Normalising here is what makes "Rust ", "#rust" and
- * "RUST" the same tag rather than three.
+ * Folder names are shown, never matched on, so cleaning up is only about what
+ * a row can display: no control characters, no runs of spaces, and a length the
+ * sidebar has room for.
  */
-export function normalizeTagName(raw: string): string {
+export function normalizeFolderName(raw: string): string {
   return raw
     .normalize('NFC')
-    // Control characters and newlines become spaces, and collapse below.
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/^[#\s"'`]+|[\s"'`,.]+$/g, '')
     .replace(/\s+/g, ' ')
-    .toLowerCase()
-    .slice(0, MAX_TAG_LENGTH)
+    .trim()
+    .slice(0, MAX_FOLDER_NAME_LENGTH)
     .trim()
 }
 
-/** The tag row for this name, creating it the first time it is used. */
-function ensureTag(name: string): { id: string; name: string } | null {
-  const clean = normalizeTagName(name)
+function toFolder(row: FolderRow): Folder {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    pinned: row.pinned === 1
+  }
+}
+
+/**
+ * Every folder, oldest first.
+ *
+ * The order here is not the order the sidebar shows: a folder is placed by how
+ * recently anything inside it was edited, which is a question about the threads
+ * and is answered where they are already in hand.
+ */
+export function listFolders(): Folder[] {
+  return (
+    getDb().prepare('SELECT * FROM folders ORDER BY created_at').all() as FolderRow[]
+  ).map(toFolder)
+}
+
+export function getFolder(id: string): Folder | null {
+  const row = getDb().prepare('SELECT * FROM folders WHERE id = ?').get(id) as FolderRow | undefined
+  return row ? toFolder(row) : null
+}
+
+/** Creates a folder. An empty name is refused rather than stored blank. */
+export function createFolder(name: string): Folder | null {
+  const clean = normalizeFolderName(name)
   if (!clean) return null
 
-  const db = getDb()
-  const existing = db
-    .prepare('SELECT id, name FROM tags WHERE name = ? COLLATE NOCASE')
-    .get(clean) as { id: string; name: string } | undefined
-  if (existing) return existing
-
   const id = randomUUID()
-  db.prepare('INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)').run(id, clean, Date.now())
-  return { id, name: clean }
-}
-
-/** Every tag in use, with how many threads carry it and how it is flagged. */
-export function listTags(): TagSummary[] {
-  return (
-    getDb()
-      .prepare(
-        `SELECT t.name        AS name,
-                t.manual_only AS manual_only,
-                t.pinned      AS pinned,
-                COUNT(tt.thread_id) AS threads
-           FROM tags t
-           LEFT JOIN thread_tags tt ON tt.tag_id = t.id
-          GROUP BY t.id
-          ORDER BY threads DESC, t.name`
-      )
-      .all() as { name: string; threads: number; manual_only: number; pinned: number }[]
-  ).map((row) => ({
-    name: row.name,
-    threads: row.threads,
-    manualOnly: row.manual_only === 1,
-    pinned: row.pinned === 1
-  }))
-}
-
-/**
- * Sets the flags on a tag.
- *
- * `manualOnly` takes it out of the model's reach entirely — it will neither be
- * suggested nor withdrawn, which is what makes a tag mean exactly what the
- * person applying it meant. `pinned` floats its folder to the top of the tag
- * view, and is deliberately unrelated to a pinned thread.
- */
-export function setTagFlags(
-  name: string,
-  flags: { manualOnly?: boolean; pinned?: boolean }
-): void {
-  const clean = normalizeTagName(name)
-  if (!clean) return
-
-  const db = getDb()
-  if (flags.manualOnly !== undefined) {
-    db.prepare('UPDATE tags SET manual_only = ? WHERE name = ? COLLATE NOCASE').run(
-      flags.manualOnly ? 1 : 0,
-      clean
-    )
-  }
-  if (flags.pinned !== undefined) {
-    db.prepare('UPDATE tags SET pinned = ? WHERE name = ? COLLATE NOCASE').run(
-      flags.pinned ? 1 : 0,
-      clean
-    )
-  }
-}
-
-export function getThreadTags(threadId: string): string[] {
-  return (
-    getDb()
-      .prepare(
-        `SELECT t.name AS name
-           FROM thread_tags tt
-           JOIN tags t ON t.id = tt.tag_id
-          WHERE tt.thread_id = ?
-          ORDER BY t.name`
-      )
-      .all(threadId) as { name: string }[]
-  ).map((row) => row.name)
-}
-
-/** Which tag came from where, so a model never undoes a choice the user made. */
-export function getThreadTagSources(threadId: string): Record<string, TagSource> {
-  const rows = getDb()
-    .prepare(
-      `SELECT t.name AS name, tt.source AS source
-         FROM thread_tags tt
-         JOIN tags t ON t.id = tt.tag_id
-        WHERE tt.thread_id = ?`
-    )
-    .all(threadId) as { name: string; source: string }[]
-  return Object.fromEntries(rows.map((row) => [row.name, row.source as TagSource]))
-}
-
-/** Tags for many threads at once, so a list does not run a query per row. */
-function tagsForThreads(threadIds: string[]): Map<string, string[]> {
-  const map = new Map<string, string[]>()
-  if (!threadIds.length) return map
-
-  const placeholders = threadIds.map(() => '?').join(',')
-  const rows = getDb()
-    .prepare(
-      `SELECT tt.thread_id AS thread_id, t.name AS name
-         FROM thread_tags tt
-         JOIN tags t ON t.id = tt.tag_id
-        WHERE tt.thread_id IN (${placeholders})
-        ORDER BY t.name`
-    )
-    .all(...threadIds) as { thread_id: string; name: string }[]
-
-  for (const row of rows) {
-    const list = map.get(row.thread_id) ?? []
-    list.push(row.name)
-    map.set(row.thread_id, list)
-  }
-  return map
-}
-
-/**
- * Puts a tag on a thread. Returns the stored name, or null if what was given
- * normalises to nothing.
- *
- * A tag the user adds by hand is recorded as theirs even if a model put it
- * there first, because that is what protects it from being taken off again.
- */
-export function addThreadTag(
-  threadId: string,
-  name: string,
-  source: TagSource = 'user'
-): string | null {
-  const tag = ensureTag(name)
-  if (!tag) return null
-
   getDb()
-    .prepare(
-      `INSERT INTO thread_tags (thread_id, tag_id, source, created_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (thread_id, tag_id) DO UPDATE SET
-         source = CASE WHEN excluded.source = 'user' THEN 'user' ELSE thread_tags.source END`
-    )
-    .run(threadId, tag.id, source, Date.now())
-  return tag.name
+    .prepare('INSERT INTO folders (id, name, created_at, pinned) VALUES (?, ?, ?, 0)')
+    .run(id, clean, Date.now())
+  return getFolder(id)
 }
 
-export function removeThreadTag(threadId: string, name: string): void {
-  const clean = normalizeTagName(name)
-  if (!clean) return
+export function updateFolder(
+  id: string,
+  patch: { name?: string; pinned?: boolean }
+): Folder | null {
+  const existing = getFolder(id)
+  if (!existing) return null
+
+  const name = patch.name === undefined ? existing.name : normalizeFolderName(patch.name)
   getDb()
-    .prepare(
-      `DELETE FROM thread_tags
-        WHERE thread_id = ?
-          AND tag_id IN (SELECT id FROM tags WHERE name = ? COLLATE NOCASE)`
-    )
-    .run(threadId, clean)
-}
-
-/** Removes a tag from every thread and from the library. */
-export function deleteTag(name: string): void {
-  const clean = normalizeTagName(name)
-  if (!clean) return
-  getDb().prepare('DELETE FROM tags WHERE name = ? COLLATE NOCASE').run(clean)
+    .prepare('UPDATE folders SET name = ?, pinned = ? WHERE id = ?')
+    .run(name || existing.name, (patch.pinned ?? existing.pinned) ? 1 : 0, id)
+  return getFolder(id)
 }
 
 /**
- * Empties the tag library: every tag, off every thread. The threads and their
- * messages are untouched — `thread_tags` goes with the tags by cascade.
- * Returns how many tags were removed, so the UI can say what it did.
- */
-export function deleteAllTags(): number {
-  return getDb().prepare('DELETE FROM tags').run().changes
-}
-
-/**
- * Renames a tag everywhere it is used. Renaming onto a name that already
- * exists merges the two, which is the only sensible reading of the request.
- */
-export function renameTag(from: string, to: string): string | null {
-  const source = normalizeTagName(from)
-  const target = normalizeTagName(to)
-  if (!source || !target || source === target) return null
-
-  const db = getDb()
-  return db.transaction(() => {
-    const existing = db.prepare('SELECT id FROM tags WHERE name = ? COLLATE NOCASE').get(source) as
-      | { id: string }
-      | undefined
-    if (!existing) return null
-
-    const collision = db.prepare('SELECT id FROM tags WHERE name = ? COLLATE NOCASE').get(target) as
-      | { id: string }
-      | undefined
-
-    if (!collision) {
-      db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(target, existing.id)
-      return target
-    }
-
-    // Merge: move every thread across, then drop the now-empty tag.
-    db.prepare(
-      `INSERT OR IGNORE INTO thread_tags (thread_id, tag_id, source, created_at)
-       SELECT thread_id, ?, source, created_at FROM thread_tags WHERE tag_id = ?`
-    ).run(collision.id, existing.id)
-    db.prepare('DELETE FROM tags WHERE id = ?').run(existing.id)
-    return target
-  })()
-}
-
-/**
- * Threads carrying no tags at all, and having something to tag — what the
- * "tag everything untagged" pass works through. Newest first, so a long run
- * reaches what the user was most recently doing before it reaches 2019.
- */
-export function listUntaggedThreadIds(): string[] {
-  return (
-    getDb()
-      .prepare(
-        `SELECT t.id AS id
-           FROM threads t
-          WHERE NOT EXISTS (SELECT 1 FROM thread_tags tt WHERE tt.thread_id = t.id)
-            AND EXISTS (
-                  SELECT 1 FROM messages m
-                   WHERE m.thread_id = t.id
-                     AND m.role IN ('user', 'assistant')
-                     AND m.content <> ''
-                     AND m.compacted_into IS NULL
-                )
-          ORDER BY t.pinned DESC, t.updated_at DESC`
-      )
-      .all() as { id: string }[]
-  ).map((row) => row.id)
-}
-
-/**
- * Title and transcript size of every untagged thread, in one query.
+ * Deletes a folder and turns its threads loose.
  *
- * The estimate has to price hundreds of threads while someone watches the
- * dialog, and assembling each request in turn would read every message of
- * every one of them. A tagging request only ever carries the last few
- * messages, each truncated — so measure exactly that, in SQLite, and hand back
- * character counts for the caller to turn into tokens.
+ * `folder_id` is declared `ON DELETE SET NULL`, so this empties the folder
+ * rather than taking the conversations with it — filing something somewhere is
+ * not a statement about whether it should exist.
  */
-export function untaggedThreadSizes(
-  recentMessages: number,
-  charsPerMessage: number
-): { id: string; title: string; chars: number }[] {
-  return getDb()
-    .prepare(
-      `WITH untagged AS (
-         SELECT t.id AS id, t.title AS title
-           FROM threads t
-          WHERE NOT EXISTS (SELECT 1 FROM thread_tags tt WHERE tt.thread_id = t.id)
-       ),
-       recent AS (
-         SELECT m.thread_id AS thread_id,
-                m.role      AS role,
-                m.content   AS content,
-                ROW_NUMBER() OVER (PARTITION BY m.thread_id ORDER BY m.seq DESC) AS rn
-           FROM messages m
-           JOIN untagged u ON u.id = m.thread_id
-          WHERE m.role IN ('user', 'assistant')
-            AND m.content <> ''
-            AND m.compacted_into IS NULL
-       )
-       SELECT u.id    AS id,
-              u.title AS title,
-              -- Each line costs its text (capped as the request caps it), plus
-              -- the "ROLE: " label and the blank line between messages.
-              COALESCE(SUM(MIN(LENGTH(r.content), ?) + LENGTH(r.role) + 4), 0) AS chars
-         FROM untagged u
-         LEFT JOIN recent r ON r.thread_id = u.id AND r.rn <= ?
-        GROUP BY u.id
-       HAVING chars > 0
-        ORDER BY u.title`
-    )
-    .all(charsPerMessage, recentMessages) as { id: string; title: string; chars: number }[]
+export function deleteFolder(id: string): void {
+  getDb().prepare('DELETE FROM folders WHERE id = ?').run(id)
 }
 
 /**
- * Trims a thread back to `max` tags, dropping what a model added before what
- * the user did, and the oldest of those first.
+ * Files a thread in a folder, or takes it out again with null.
+ *
+ * Deliberately does not touch `updated_at`: moving a conversation is not
+ * working on it, and folders are ordered by when what is in them was last
+ * edited — so bumping the stamp here would make every drag reorder the list.
  */
-export function enforceTagLimit(threadId: string, max: number): void {
-  const db = getDb()
-  db.prepare(
-    `DELETE FROM thread_tags
-      WHERE thread_id = ?
-        AND tag_id IN (
-          SELECT tag_id FROM thread_tags
-           WHERE thread_id = ?
-           ORDER BY CASE source WHEN 'user' THEN 1 ELSE 0 END, created_at
-           LIMIT MAX((SELECT COUNT(*) FROM thread_tags WHERE thread_id = ?) - ?, 0)
-        )`
-  ).run(threadId, threadId, threadId, Math.max(max, 0))
+export function setThreadFolder(threadId: string, folderId: string | null): Thread | null {
+  if (folderId !== null && !getFolder(folderId)) return null
+  getDb().prepare('UPDATE threads SET folder_id = ? WHERE id = ?').run(folderId, threadId)
+  return getThread(threadId)
 }
 
 /* ------------------------------------------------------------------ *
@@ -476,9 +260,9 @@ export function enforceTagLimit(threadId: string, max: number): void {
 /**
  * What the sidebar means by "how long is this conversation": exactly what
  * `getMessages` would hand the transcript. A compacted-away message has been
- * replaced by its summary and is no longer there to read, and the naming and
- * tagging markers were never messages at all — both carry a `compacted_into`,
- * which is what this one condition covers.
+ * replaced by its summary and is no longer there to read, and a naming marker
+ * was never a message at all — both carry a `compacted_into`, which is what
+ * this one condition covers.
  *
  * Deliberately not the same question as the statistics panel's message count,
  * which is about everything the thread has ever contained.
@@ -533,9 +317,57 @@ export function listThreads(includeArchived = false): Thread[] {
     )
     .all(includeArchived ? 1 : 0) as ThreadRow[]
 
-  const tags = tagsForThreads(rows.map((row) => row.id))
   const counts = countMessagesByThread()
-  return rows.map((row) => toThread(row, tags.get(row.id) ?? [], counts.get(row.id) ?? 0))
+  return rows.map((row) => toThread(row, counts.get(row.id) ?? 0))
+}
+
+/**
+ * Threads with no name and something worth naming them after, oldest first.
+ *
+ * Oldest first because a thread that has gone unnamed the longest is the one
+ * the turn-by-turn attempt is least likely to reach — anything recent is
+ * probably still being used, and will name itself on its next reply.
+ */
+export function listUntitledThreadIds(limit: number): string[] {
+  return (
+    getDb()
+      .prepare(
+        `SELECT t.id AS id
+           FROM threads t
+          WHERE t.title = ''
+            AND EXISTS (
+                  SELECT 1 FROM messages m
+                   WHERE m.thread_id = t.id
+                     AND m.role IN ('user', 'assistant')
+                     AND m.content <> ''
+                     AND m.compacted_into IS NULL
+                )
+          ORDER BY t.updated_at
+          LIMIT ?`
+      )
+      .all(limit) as { id: string }[]
+  ).map((row) => row.id)
+}
+
+/**
+ * Removes threads that were opened and never used: no name, nothing said, not
+ * pinned and not filed anywhere.
+ *
+ * A new thread is created the moment the button is pressed, so leaving one
+ * without typing is the most ordinary thing in the app. Sweeping them at
+ * startup covers the case the renderer cannot — the window was closed with an
+ * empty thread still open.
+ */
+export function deleteEmptyThreads(): number {
+  return getDb()
+    .prepare(
+      `DELETE FROM threads
+        WHERE title = ''
+          AND pinned = 0
+          AND folder_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = threads.id)`
+    )
+    .run().changes
 }
 
 export function updateThread(
@@ -584,6 +416,8 @@ export function branchThread(threadId: string, throughMessageId: string): Thread
   if (!pivot) return null
 
   const clone = createThread(source.title ? `${source.title} (branch)` : '', source.config)
+  // A branch belongs beside what it came from, so it is filed where that was.
+  if (source.folderId) setThreadFolder(clone.id, source.folderId)
   const rows = db
     .prepare('SELECT * FROM messages WHERE thread_id = ? AND seq <= ? ORDER BY seq')
     .all(threadId, pivot.seq) as MessageRow[]
@@ -601,11 +435,6 @@ export function branchThread(threadId: string, throughMessageId: string): Thread
     for (const row of rows) {
       insert.run({ ...row, id: randomUUID(), thread_id: clone.id })
     }
-    // A branch is about the same subject, so it starts with the same tags.
-    db.prepare(
-      `INSERT OR IGNORE INTO thread_tags (thread_id, tag_id, source, created_at)
-       SELECT ?, tag_id, source, created_at FROM thread_tags WHERE thread_id = ?`
-    ).run(clone.id, threadId)
   })()
 
   return getThread(clone.id)
@@ -968,14 +797,14 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
     avg_ttft: number | null
   }
 
-  // Naming and tagging markers exist only to carry their cost; they are not
-  // messages anyone sent or saw.
+  // A naming marker exists only to carry its cost; it is not a message anyone
+  // sent or saw.
   const messageCount = (
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM messages
           WHERE thread_id = ?
-            AND (compacted_into IS NULL OR compacted_into NOT IN ('title', 'tags'))`
+            AND (compacted_into IS NULL OR compacted_into <> 'title')`
       )
       .get(threadId) as { n: number }
   ).n
@@ -1012,6 +841,21 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
       .all(threadId) as RollupRow[]
   ).map(toRollup)
 
+  // Every request in order. A thread's cost is rarely spread evenly across it —
+  // one long turn can be most of the bill — and only the series shows that.
+  const byTurn = (
+    db
+      .prepare(
+        `SELECT created_at, cost_usd, total_tokens
+           FROM usage WHERE thread_id = ? ORDER BY created_at`
+      )
+      .all(threadId) as { created_at: number; cost_usd: number; total_tokens: number }[]
+  ).map((row) => ({
+    at: row.created_at,
+    costUsd: row.cost_usd,
+    totalTokens: row.total_tokens
+  }))
+
   return {
     threadId,
     messageCount,
@@ -1027,7 +871,8 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
     avgTimeToFirstTokenMs: totals.avg_ttft,
     toolCallCount,
     toolUsage,
-    byModel
+    byModel,
+    byTurn
   }
 }
 
@@ -1060,7 +905,7 @@ export function getGlobalStats(): GlobalStats {
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM messages
-          WHERE compacted_into IS NULL OR compacted_into NOT IN ('title', 'tags')`
+          WHERE compacted_into IS NULL OR compacted_into <> 'title'`
       )
       .get() as { n: number }
   ).n
@@ -1122,6 +967,38 @@ export function getGlobalStats(): GlobalStats {
     })
   )
 
+  // The same series split by model. Bounded to the window `byDay` covers, so a
+  // long history cannot turn one panel into tens of thousands of rows.
+  const byDayModel = (
+    db
+      .prepare(
+        `SELECT date(created_at / 1000, 'unixepoch', 'localtime') AS day,
+                COALESCE(model, '')                               AS model,
+                SUM(total_tokens)                                 AS total_tokens,
+                SUM(cost_usd)                                     AS cost_usd,
+                COUNT(*)                                          AS requests
+           FROM usage
+          WHERE created_at >= ?
+          GROUP BY day, model
+          ORDER BY day DESC`
+      )
+      .all(Date.now() - 90 * 24 * 60 * 60 * 1000) as {
+      day: string
+      model: string
+      total_tokens: number
+      cost_usd: number
+      requests: number
+    }[]
+  ).map(
+    (r): DailyModelUsage => ({
+      day: r.day,
+      model: r.model,
+      totalTokens: r.total_tokens,
+      costUsd: r.cost_usd,
+      requests: r.requests
+    })
+  )
+
   return {
     threadCount,
     messageCount,
@@ -1136,7 +1013,8 @@ export function getGlobalStats(): GlobalStats {
     toolUsage,
     byModel,
     byProvider,
-    byDay
+    byDay,
+    byDayModel
   }
 }
 
@@ -1180,101 +1058,12 @@ function toFtsQuery(input: string): string {
   return terms.map((t) => `"${t}"*`).join(' AND ')
 }
 
-/** Escapes the wildcards LIKE would otherwise read as syntax. */
-function likeEscape(text: string): string {
-  return text.replace(/[\\%_]/g, (char) => `\\${char}`)
-}
-
-export interface ParsedSearchQuery {
-  /** `tag:rust` and `#rust` both narrow the search to threads tagged rust. */
-  tags: string[]
-  /** Whatever was left after the tag terms were taken out. */
-  text: string
-}
-
-export function parseSearchQuery(input: string): ParsedSearchQuery {
-  const tags: string[] = []
-  const rest: string[] = []
-
-  for (const token of input.split(/\s+/).filter(Boolean)) {
-    const match = /^(?:tag:|#)(.+)$/i.exec(token)
-    if (!match) {
-      rest.push(token)
-      continue
-    }
-    const name = normalizeTagName(match[1])
-    if (name) tags.push(name)
-  }
-
-  return { tags, text: rest.join(' ').trim() }
-}
-
-/** Threads carrying a tag that starts with `prefix`. */
-function threadsTagged(prefix: string): Set<string> {
-  const rows = getDb()
-    .prepare(
-      `SELECT DISTINCT tt.thread_id AS id
-         FROM thread_tags tt
-         JOIN tags t ON t.id = tt.tag_id
-        WHERE t.name LIKE ? ESCAPE '\\' COLLATE NOCASE`
-    )
-    .all(`${likeEscape(prefix)}%`) as { id: string }[]
-  return new Set(rows.map((row) => row.id))
-}
-
 export function search(query: string, limit = 50): SearchHit[] {
-  const trimmed = query.trim()
-  if (!trimmed) return []
+  const text = query.trim()
+  if (!text) return []
 
   const db = getDb()
-  const { tags: tagTerms, text } = parseSearchQuery(trimmed)
-
-  // Every `tag:` term narrows further, so a thread must carry all of them.
-  const tagged = tagTerms.map(threadsTagged)
-  const scope: Set<string> | null = tagged.length
-    ? new Set([...tagged[0]].filter((id) => tagged.every((set) => set.has(id))))
-    : null
-  if (scope && !scope.size) return []
-
-  const inScope = (threadId: string): boolean => !scope || scope.has(threadId)
   const hits: SearchHit[] = []
-  const threadLevel = new Set<string>()
-
-  const threadHit = (
-    row: { id: string; title: string; updated_at: number },
-    kind: 'title' | 'tag',
-    snippet: string,
-    score: number
-  ): void => {
-    threadLevel.add(row.id)
-    hits.push({
-      threadId: row.id,
-      threadTitle: row.title,
-      messageId: null,
-      role: null,
-      snippet,
-      createdAt: row.updated_at,
-      score,
-      kind,
-      tags: []
-    })
-  }
-
-  // A bare `tag:` query is a filter rather than a search: every thread wearing
-  // the tag is a result, whether or not anything else matched.
-  if (scope && !text) {
-    const rows = db
-      .prepare(
-        `SELECT id, title, updated_at FROM threads
-          ORDER BY pinned DESC, updated_at DESC`
-      )
-      .all() as { id: string; title: string; updated_at: number }[]
-
-    for (const row of rows.filter((r) => scope!.has(r.id)).slice(0, limit)) {
-      threadHit(row, 'tag', escapeHtml(row.title), 900)
-    }
-    return withTags(hits)
-  }
 
   // Thread titles first — they are the fastest thing to match and the most
   // likely thing a user is jumping to.
@@ -1287,31 +1076,16 @@ export function search(query: string, limit = 50): SearchHit[] {
     .all(`%${text}%`, limit) as { id: string; title: string; updated_at: number }[]
 
   for (const row of titleRows) {
-    if (inScope(row.id)) threadHit(row, 'title', escapeHtml(row.title), 1000)
-  }
-
-  // Then tags. A tag is a name someone chose for a whole conversation, so a
-  // match on one ranks above any single message inside it.
-  const tagRows = db
-    .prepare(
-      `SELECT th.id AS id, th.title AS title, th.updated_at AS updated_at, t.name AS name
-         FROM thread_tags tt
-         JOIN tags    t  ON t.id = tt.tag_id
-         JOIN threads th ON th.id = tt.thread_id
-        WHERE t.name LIKE ? ESCAPE '\\' COLLATE NOCASE
-        ORDER BY th.pinned DESC, th.updated_at DESC
-        LIMIT ?`
-    )
-    .all(`%${likeEscape(text)}%`, limit) as {
-    id: string
-    title: string
-    updated_at: number
-    name: string
-  }[]
-
-  for (const row of tagRows) {
-    if (!inScope(row.id) || threadLevel.has(row.id)) continue
-    threadHit(row, 'tag', markMatch(row.name, text), 900)
+    hits.push({
+      threadId: row.id,
+      threadTitle: row.title,
+      messageId: null,
+      role: null,
+      snippet: escapeHtml(row.title),
+      createdAt: row.updated_at,
+      score: 1000,
+      kind: 'title'
+    })
   }
 
   const ftsQuery = toFtsQuery(text)
@@ -1343,7 +1117,6 @@ export function search(query: string, limit = 50): SearchHit[] {
     }[]
 
     for (const row of rows) {
-      if (!inScope(row.thread_id)) continue
       hits.push({
         threadId: row.thread_id,
         threadTitle: row.thread_title,
@@ -1353,32 +1126,12 @@ export function search(query: string, limit = 50): SearchHit[] {
         createdAt: row.created_at,
         // bm25 returns lower-is-better; flip it so callers can sort descending.
         score: -row.score,
-        kind: 'message',
-        tags: []
+        kind: 'message'
       })
     }
   }
 
-  return withTags(hits.slice(0, limit))
-}
-
-/** Highlights `needle` inside a tag name, the way FTS5 does for message text. */
-function markMatch(name: string, needle: string): string {
-  const at = needle ? name.toLowerCase().indexOf(needle.toLowerCase()) : -1
-  if (at < 0) return escapeHtml(name)
-  return (
-    escapeHtml(name.slice(0, at)) +
-    '<mark>' +
-    escapeHtml(name.slice(at, at + needle.length)) +
-    '</mark>' +
-    escapeHtml(name.slice(at + needle.length))
-  )
-}
-
-/** Hangs each hit's thread tags off it, so results can show them anywhere. */
-function withTags(hits: SearchHit[]): SearchHit[] {
-  const byThread = tagsForThreads([...new Set(hits.map((hit) => hit.threadId))])
-  return hits.map((hit) => ({ ...hit, tags: byThread.get(hit.threadId) ?? [] }))
+  return hits.slice(0, limit)
 }
 
 /* ------------------------------------------------------------------ *
@@ -1461,9 +1214,7 @@ export function wipeAllData(): void {
     db.exec('DELETE FROM usage')
     db.exec('DELETE FROM messages')
     db.exec('DELETE FROM threads')
-    // thread_tags goes with the threads; the tag library goes with it.
-    db.exec('DELETE FROM thread_tags')
-    db.exec('DELETE FROM tags')
+    db.exec('DELETE FROM folders')
   })()
   db.exec('VACUUM')
 }

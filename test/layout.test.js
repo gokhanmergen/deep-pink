@@ -458,8 +458,8 @@ suite(
 
     check('right-clicking opens a menu', opened && menuShown.open, menuShown)
     check(
-      'with pin, the tag actions and delete',
-      JSON.stringify(menuShown.items) === '["Pin","Add a tag…","Re-tag with the model","Delete"]',
+      'with pin, regenerate name and delete',
+      JSON.stringify(menuShown.items) === '["Pin","Regenerate name","Delete"]',
       menuShown.items
     )
     check('positioned on screen', menuShown.onScreen === true, menuShown)

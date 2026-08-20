@@ -105,8 +105,8 @@ export interface Thread {
   updatedAt: number
   pinned: boolean
   archived: boolean
-  /** Tag names attached to this thread, alphabetically. */
-  tags: string[]
+  /** The folder this thread is filed in, or null when it sits in the list. */
+  folderId: string | null
   /** Messages a reader would see — cost markers and compacted text excluded. */
   messageCount: number
   /** Per-thread overrides; anything unset falls back to global settings. */
@@ -114,37 +114,22 @@ export interface Thread {
 }
 
 /* ------------------------------------------------------------------ *
- * Tags
+ * Folders
  * ------------------------------------------------------------------ */
 
-/** Who put a tag on a thread. The user's choices are never undone by a model. */
-export type TagSource = 'user' | 'model'
-
-/** One tag in the library, with how many threads currently carry it. */
-export interface TagSummary {
-  name: string
-  threads: number
-  /** The model may neither add nor remove this tag — it is yours to place. */
-  manualOnly: boolean
-  /** Pinned as a folder in the tag view. Nothing to do with a pinned thread. */
-  pinned: boolean
-}
-
-/** How the sidebar orders threads. Remembered between sessions. */
-export type ThreadSort = 'edited' | 'created' | 'tags'
-
 /**
- * What tagging every untagged thread would involve.
+ * A folder in the thread list.
  *
- * The token counts come from assembling the very requests that would be sent,
- * so the price the UI shows is arithmetic on real numbers rather than a guess
- * at an average thread.
+ * Deliberately thin: what is in a folder is a property of the threads, so the
+ * list is assembled from the threads the sidebar already has rather than from
+ * a second, separately-fetched membership that could disagree with them.
  */
-export interface TagBackfillEstimate {
-  model: string
-  threads: number
-  promptTokens: number
-  completionTokens: number
+export interface Folder {
+  id: string
+  name: string
+  createdAt: number
+  /** Pinned to the top of the list, exactly as a thread is. */
+  pinned: boolean
 }
 
 export interface ThreadConfig {
@@ -231,6 +216,15 @@ export interface ThreadStats {
   toolCallCount: number
   toolUsage: ToolUsageRollup[]
   byModel: ModelUsageRollup[]
+  /** Every request in the thread, oldest first — the shape of the conversation. */
+  byTurn: TurnUsage[]
+}
+
+/** What one request cost, for plotting a thread against its own history. */
+export interface TurnUsage {
+  at: number
+  costUsd: number
+  totalTokens: number
 }
 
 export interface ModelUsageRollup {
@@ -268,6 +262,8 @@ export interface GlobalStats {
   byModel: ModelUsageRollup[]
   byProvider: ModelUsageRollup[]
   byDay: DailyUsage[]
+  /** Per day and model, for a line each. Bounded to the same 90 days. */
+  byDayModel: DailyModelUsage[]
 }
 
 export interface DailyUsage {
@@ -275,6 +271,11 @@ export interface DailyUsage {
   totalTokens: number
   costUsd: number
   requests: number
+}
+
+/** The same day, split by model, so each can be drawn as its own line. */
+export interface DailyModelUsage extends DailyUsage {
+  model: string
 }
 
 /* ------------------------------------------------------------------ *
@@ -423,26 +424,6 @@ export interface CompactionSettings {
 }
 
 /* ------------------------------------------------------------------ *
- * Automatic tagging
- * ------------------------------------------------------------------ */
-
-export interface TaggingSettings {
-  /** When off, no tagging request is ever made; manual tags still work. */
-  enabled: boolean
-  /** Model asked to keep the tags up to date. */
-  model: string
-  /** The instructions it is given. Fully user-editable. */
-  prompt: string
-  /**
-   * When false the model may only pick from tags that already exist, so the
-   * library stays the one you built rather than growing a synonym per thread.
-   */
-  allowNewTags: boolean
-  /** Upper bound on how many tags one thread may carry. */
-  maxTagsPerThread: number
-}
-
-/* ------------------------------------------------------------------ *
  * Settings
  * ------------------------------------------------------------------ */
 
@@ -464,8 +445,7 @@ export interface Settings {
   streamReasoning: boolean
   web: WebSearchSettings
   compaction: CompactionSettings
-  tagging: TaggingSettings
-  /** Sends app name/url to OpenRouter for leaderboard attribution. Off by default. */
+  /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */
   sendAppAttribution: boolean
   keybinds: Record<string, string>
   ui: UiSettings
@@ -477,22 +457,22 @@ export interface Settings {
  */
 export type SettingsPatch = Omit<
   Partial<Settings>,
-  'web' | 'compaction' | 'tagging' | 'ui' | 'defaultProviderRouting'
+  'web' | 'compaction' | 'ui' | 'defaultProviderRouting'
 > & {
   web?: Partial<WebSearchSettings>
   compaction?: Partial<CompactionSettings>
-  tagging?: Partial<TaggingSettings>
   ui?: Partial<UiSettings>
   defaultProviderRouting?: Partial<ProviderRouting>
 }
 
 export interface UiSettings {
   accent: string
-  /** Which of the sidebar's three views is showing. */
-  threadSort: ThreadSort
-  /** Tag chips under each thread in the sidebar. The tag view is unaffected. */
-  showTagsInSidebar: boolean
   fontSize: number
+  /**
+   * How wide the transcript and composer are allowed to get, in pixels. Wider
+   * fits more code on a line; narrower keeps prose at a readable measure.
+   */
+  chatWidth: number
   /**
    * Chromium zoom level, where 0 is 100% and each step scales by 1.2. Scales the
    * whole interface, unlike `fontSize` which only changes text.
@@ -528,17 +508,6 @@ export type StreamEvent =
   | { type: 'compaction-start'; threadId: string }
   | { type: 'compaction-done'; threadId: string; summaryMessageId: string; freedTokens: number }
   | { type: 'title'; threadId: string; title: string }
-  /** The tagging pass changed which tags a thread carries. */
-  | { type: 'tags'; threadId: string; tags: string[] }
-  /** How far the "tag every untagged thread" pass has got. */
-  | {
-      type: 'tag-progress'
-      done: number
-      total: number
-      /** The thread being tagged right now, or null once it is over. */
-      threadId: string | null
-      finished: boolean
-    }
 
 export interface SendMessageRequest {
   threadId: string
@@ -633,8 +602,6 @@ export interface SearchHit {
   snippet: string
   createdAt: number
   score: number
-  /** What matched: the thread's name, one of its tags, or a message body. */
-  kind: 'title' | 'tag' | 'message'
-  /** Every tag on the hit's thread, so results carry them wherever they show. */
-  tags: string[]
+  /** What matched: the thread's name, or a message body. */
+  kind: 'title' | 'message'
 }

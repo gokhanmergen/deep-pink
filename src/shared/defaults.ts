@@ -2,7 +2,6 @@ import type {
   CompactionSettings,
   ProviderRouting,
   Settings,
-  TaggingSettings,
   UiSettings,
   WebSearchSettings
 } from './types'
@@ -57,38 +56,12 @@ Rules:
 
 Reply with the title and nothing else.`
 
-export const DEFAULT_TAG_PROMPT = `You maintain the tags on a conversation, so it can be found again later.
-
-A tag names what the conversation is about: its subject, the technology involved, or the kind of work being done. Not its tone, not its format, and never "chat", "question" or "help".
-
-Rules:
-- One to three words, lower case.
-- Reuse an existing tag over inventing a near-synonym of one.
-- Add a tag only when it describes the conversation as a whole, not a passing mention.
-- Remove a tag once it no longer describes what the conversation became.
-- Two or three tags is usually right. Tagging exhaustively makes tags useless.
-- Leave the tags alone when they are already correct.
-
-Reply with JSON and nothing else, in this shape:
-{"add": ["…"], "remove": ["…"]}
-
-Use empty arrays when nothing should change.`
-
-export const DEFAULT_TAGGING: TaggingSettings = {
-  // Off by default: unlike naming a thread, this runs on every message, so it
-  // is a recurring cost the user should choose deliberately.
-  enabled: false,
-  model: 'google/gemini-2.5-flash-lite',
-  prompt: DEFAULT_TAG_PROMPT,
-  allowNewTags: true,
-  maxTagsPerThread: 6
-}
-
 export const DEFAULT_UI: UiSettings = {
   accent: '#ff1493',
-  threadSort: 'edited',
-  showTagsInSidebar: true,
   fontSize: 14,
+  // Around 90 characters at the default size — a comfortable measure for prose,
+  // and the width the app was designed at.
+  chatWidth: 780,
   zoomLevel: 0,
   messageDensity: 'comfortable',
   codeTheme: 'github-dark-default',
@@ -105,6 +78,8 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   // Threads
   'thread.new': 'mod+n',
   'thread.rename': 'f2',
+  // F2 names it yourself; shift asks the model to.
+  'thread.retitle': 'shift+f2',
   'thread.delete': 'mod+shift+backspace',
   'thread.pin': 'mod+shift+p',
   'thread.archive': 'mod+shift+a',
@@ -112,6 +87,10 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   'thread.export': 'mod+shift+x',
   'thread.next': 'alt+down',
   'thread.prev': 'alt+up',
+
+  // Folders
+  'folder.new': 'mod+shift+n',
+  'folder.fileThread': 'mod+shift+f',
 
   // Navigation & panels
   'palette.open': 'mod+k',
@@ -135,16 +114,6 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   'model.picker': 'mod+m',
   'provider.picker': 'mod+shift+m',
   'titleModel.picker': 'mod+shift+t',
-  'tagModel.picker': 'mod+alt+t',
-
-  // Tags
-  'tags.add': 'mod+shift+k',
-  'tags.retag': 'mod+alt+k',
-
-  // How the thread list is ordered
-  'view.sortEdited': 'alt+1',
-  'view.sortCreated': 'alt+2',
-  'view.sortTags': 'alt+3',
 
   // Capabilities
   'web.toggle': 'mod+shift+w',
@@ -181,8 +150,7 @@ export const DEFAULT_SETTINGS: Settings = {
   streamReasoning: true,
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
-  tagging: DEFAULT_TAGGING,
-  sendAppAttribution: false,
+  sendAppAttribution: true,
   keybinds: DEFAULT_KEYBINDS,
   ui: DEFAULT_UI
 }

@@ -109,6 +109,7 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     actions: [
       { id: 'thread.new', label: 'New thread' },
       { id: 'thread.rename', label: 'Rename thread' },
+      { id: 'thread.retitle', label: 'Regenerate thread name' },
       { id: 'thread.delete', label: 'Delete thread' },
       { id: 'thread.pin', label: 'Pin / unpin thread' },
       { id: 'thread.archive', label: 'Archive thread' },
@@ -116,6 +117,13 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
       { id: 'thread.export', label: 'Export thread as JSON' },
       { id: 'thread.next', label: 'Next thread' },
       { id: 'thread.prev', label: 'Previous thread' }
+    ]
+  },
+  {
+    title: 'Folders',
+    actions: [
+      { id: 'folder.new', label: 'New folder' },
+      { id: 'folder.fileThread', label: 'File this thread in a folder' }
     ]
   },
   {
@@ -146,15 +154,7 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     actions: [
       { id: 'model.picker', label: 'Change model' },
       { id: 'provider.picker', label: 'Choose provider' },
-      { id: 'titleModel.picker', label: 'Choose thread-naming model' },
-      { id: 'tagModel.picker', label: 'Choose tagging model' }
-    ]
-  },
-  {
-    title: 'Tags',
-    actions: [
-      { id: 'tags.add', label: 'Add a tag to this thread' },
-      { id: 'tags.retag', label: 'Re-tag this thread now' }
+      { id: 'titleModel.picker', label: 'Choose thread-naming model' }
     ]
   },
   {
@@ -177,9 +177,6 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
   {
     title: 'View',
     actions: [
-      { id: 'view.sortEdited', label: 'Order by last edited' },
-      { id: 'view.sortCreated', label: 'Order by created' },
-      { id: 'view.sortTags', label: 'Show tag folders' },
       { id: 'view.zoomIn', label: 'Zoom in' },
       { id: 'view.zoomOut', label: 'Zoom out' },
       { id: 'view.zoomReset', label: 'Reset zoom' }

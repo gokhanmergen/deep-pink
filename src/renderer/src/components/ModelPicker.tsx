@@ -6,10 +6,9 @@ import { formatTokens, modelShortName } from '../format'
 interface Props {
   /**
    * 'chat' sets the model for the open thread, 'default' sets the one new
-   * threads start with, 'title' sets the model that names threads and 'tag'
-   * the one that keeps their tags up to date.
+   * threads start with, and 'title' sets the model that names threads.
    */
-  mode: 'chat' | 'title' | 'tag' | 'default'
+  mode: 'chat' | 'title' | 'default'
   onClose: () => void
 }
 
@@ -37,11 +36,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const current =
     mode === 'title'
       ? settings?.titleModel
-      : mode === 'tag'
-        ? settings?.tagging.model
-        : mode === 'default'
-          ? settings?.defaultModel
-          : thread?.config.model ?? settings?.defaultModel
+      : mode === 'default'
+        ? settings?.defaultModel
+        : thread?.config.model ?? settings?.defaultModel
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -66,9 +63,6 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     if (mode === 'title') {
       await saveSettings({ titleModel: modelId })
       showToast(`Thread names will use ${modelShortName(modelId)}`)
-    } else if (mode === 'tag') {
-      await saveSettings({ tagging: { model: modelId } })
-      showToast(`Thread tags will use ${modelShortName(modelId)}`)
     } else if (mode === 'default') {
       // Deliberately does not touch the open thread: this is the model new
       // threads start with, which is a different question from what this one
@@ -107,11 +101,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
             placeholder={
               mode === 'title'
                 ? 'Model for generating thread names…'
-                : mode === 'tag'
-                  ? 'Model for keeping thread tags up to date…'
-                  : mode === 'default'
-                    ? 'Model that new threads start with…'
-                    : 'Search models…'
+                : mode === 'default'
+                  ? 'Model that new threads start with…'
+                  : 'Search models…'
             }
             value={query}
             autoFocus

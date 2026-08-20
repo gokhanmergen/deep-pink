@@ -2,6 +2,7 @@ import { statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type {
+  Folder,
   McpServerConfig,
   Message,
   SendMessageRequest,
@@ -33,6 +34,22 @@ function broadcast(channel: string, payload: unknown): void {
 }
 
 const emit = (event: StreamEvent): void => broadcast(CHAT_EVENT, event)
+
+/**
+ * Names anything still unnamed — because the app was closed mid-reply, or the
+ * request that would have named it failed and the thread was never returned to.
+ *
+ * Runs after the window is up so it never delays first paint; each name lands
+ * in the list through the same event a name generated mid-conversation does.
+ */
+export async function nameUnnamedThreads(): Promise<void> {
+  try {
+    const named = await engine.nameUntitledThreads(emit)
+    if (named) console.log(`Named ${named} thread(s) that had gone unnamed.`)
+  } catch {
+    /* naming is a convenience; never let it take the start-up with it */
+  }
+}
 
 export function registerIpc(): void {
   mcp.setStatusListener(() => broadcast(MCP_STATUS_EVENT, mcp.getStatuses()))
@@ -83,6 +100,20 @@ export function registerIpc(): void {
   ipcMain.handle('threads:branch', (_e, id: string, messageId: string) =>
     repo.branchThread(id, messageId)
   )
+  // Filing a thread is its own call rather than part of `threads:update`, which
+  // would stamp it as edited and reorder the list under the cursor.
+  ipcMain.handle('threads:setFolder', (_e, id: string, folderId: string | null) =>
+    repo.setThreadFolder(id, folderId)
+  )
+
+  /* ---------------- folders ---------------- */
+
+  ipcMain.handle('folders:list', (): Folder[] => repo.listFolders())
+  ipcMain.handle('folders:create', (_e, name: string) => repo.createFolder(name))
+  ipcMain.handle('folders:update', (_e, id: string, patch: { name?: string; pinned?: boolean }) =>
+    repo.updateFolder(id, patch)
+  )
+  ipcMain.handle('folders:delete', (_e, id: string) => repo.deleteFolder(id))
 
   /* ---------------- messages ---------------- */
 
@@ -140,40 +171,6 @@ export function registerIpc(): void {
       toolCount: context.tools.length
     }
   })
-
-  /* ---------------- tags ---------------- */
-
-  ipcMain.handle('tags:list', () => repo.listTags())
-  ipcMain.handle('tags:forThread', (_e, threadId: string) => repo.getThreadTags(threadId))
-
-  ipcMain.handle('tags:add', (_e, threadId: string, name: string) => {
-    repo.addThreadTag(threadId, name, 'user')
-    repo.touchThread(threadId)
-    return repo.getThread(threadId)
-  })
-
-  ipcMain.handle('tags:remove', (_e, threadId: string, name: string) => {
-    repo.removeThreadTag(threadId, name)
-    repo.touchThread(threadId)
-    return repo.getThread(threadId)
-  })
-
-  ipcMain.handle('tags:rename', (_e, from: string, to: string) => repo.renameTag(from, to))
-  ipcMain.handle('tags:delete', (_e, name: string) => repo.deleteTag(name))
-  ipcMain.handle('tags:deleteAll', () => repo.deleteAllTags())
-  ipcMain.handle(
-    'tags:setFlags',
-    (_e, name: string, flags: { manualOnly?: boolean; pinned?: boolean }) =>
-      repo.setTagFlags(name, flags)
-  )
-  ipcMain.handle('tags:retag', (_e, threadId: string) => engine.retag(threadId, emit))
-
-  // What tagging every untagged thread would send. The renderer prices it,
-  // because the model catalogue lives there.
-  ipcMain.handle('tags:backfillEstimate', () => engine.estimateTagBackfill())
-  ipcMain.handle('tags:tagAllUntagged', () => engine.tagAllUntagged(emit))
-  ipcMain.handle('tags:stopBackfill', () => engine.stopTagBackfill())
-  ipcMain.handle('tags:backfillRunning', () => engine.isTagBackfillRunning())
 
   /* ---------------- search ---------------- */
 

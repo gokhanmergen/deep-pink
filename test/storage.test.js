@@ -108,12 +108,34 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
     'usage rolls up by model',
     threadStats.byModel.length === 1 && threadStats.byModel[0].requests === 1
   )
+  check(
+    'every request is kept in order, for plotting the thread',
+    threadStats.byTurn.length === 1 && threadStats.byTurn[0].costUsd === 0.00234,
+    threadStats.byTurn
+  )
+  check(
+    'and each carries when it happened and how big it was',
+    typeof threadStats.byTurn[0].at === 'number' && threadStats.byTurn[0].totalTokens === 460,
+    threadStats.byTurn[0]
+  )
 
   const global = repo.getGlobalStats()
   check('threads are counted globally', global.threadCount === 2, global.threadCount)
   check('cost is summed globally', Math.abs(global.costUsd - 0.00234) < 1e-9, global.costUsd)
   check('usage rolls up by provider', global.byProvider.length === 1, global.byProvider)
   check('usage rolls up by day', global.byDay.length === 1, global.byDay)
+  check(
+    'and by day and model together, for a line each',
+    global.byDayModel.length === 1 &&
+      global.byDayModel[0].day === global.byDay[0].day &&
+      global.byDayModel[0].model === 'anthropic/claude-sonnet-4.5',
+    global.byDayModel
+  )
+  check(
+    'the split adds back up to the day it came from',
+    global.byDayModel.reduce((sum, row) => sum + row.costUsd, 0) === global.byDay[0].costUsd,
+    { split: global.byDayModel.map((r) => r.costUsd), day: global.byDay[0].costUsd }
+  )
 
   section('title-cost markers')
   const marker = repo.insertMessage({
@@ -185,199 +207,136 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   )
   check('it rolls up globally too', repo.getGlobalStats().toolUsage.length === 2)
 
-  section('tags')
-  const tagged = repo.createThread('Tag fixture')
-  repo.insertMessage({
-    threadId: tagged.id,
-    role: 'user',
-    content: 'lifetimes and ownership, explained slowly'
-  })
+  section('folders')
+  const filed = repo.createThread('Filed away')
+  const loose = repo.createThread('Left in the list')
 
-  const firstTag = repo.addThreadTag(tagged.id, '  #Rust Lang  ')
-  check('a tag is cleaned up on the way in', firstTag === 'rust lang', firstTag)
-  repo.addThreadTag(tagged.id, 'RUST LANG')
-  check(
-    'the same tag in another case is the same tag',
-    repo.getThreadTags(tagged.id).length === 1,
-    repo.getThreadTags(tagged.id)
-  )
-  check('a tag with nothing in it is refused', repo.addThreadTag(tagged.id, '  ##  ') === null)
+  const work = repo.createFolder('  Work   notes  ')
+  check('a folder name is tidied up on the way in', work.name === 'Work notes', work.name)
+  check('a folder starts unpinned', work.pinned === false, work)
+  check('a folder with no name is refused', repo.createFolder('   ') === null)
 
-  repo.addThreadTag(tagged.id, 'borrow checker', 'model')
+  check('a thread starts in no folder', repo.getThread(filed.id).folderId === null)
+  repo.setThreadFolder(filed.id, work.id)
   check(
-    'the thread carries what was put on it',
-    repo.getThread(tagged.id).tags.join(',') === 'borrow checker,rust lang',
-    repo.getThread(tagged.id).tags
+    'filing a thread records the folder',
+    repo.getThread(filed.id).folderId === work.id,
+    repo.getThread(filed.id).folderId
   )
   check(
-    'where each tag came from is remembered',
-    repo.getThreadTagSources(tagged.id)['borrow checker'] === 'model' &&
-      repo.getThreadTagSources(tagged.id)['rust lang'] === 'user',
-    repo.getThreadTagSources(tagged.id)
+    'and the list agrees',
+    repo.listThreads().find((t) => t.id === filed.id).folderId === work.id
   )
-  repo.addThreadTag(tagged.id, 'borrow checker', 'user')
-  check(
-    'adopting a model tag by hand makes it the user’s',
-    repo.getThreadTagSources(tagged.id)['borrow checker'] === 'user'
-  )
-  check(
-    'the library counts the threads using each tag',
-    repo.listTags().find((t) => t.name === 'rust lang').threads === 1,
-    repo.listTags()
-  )
+  check('other threads are untouched', repo.getThread(loose.id).folderId === null)
 
-  section('tags are searchable')
-  const byTag = repo.search('rust lang')
-  check('a tag match is found', byTag.some((hit) => hit.kind === 'tag'), byTag)
+  // Filing is not working on a conversation, so it must not reorder the list.
+  const stampBefore = repo.getThread(filed.id).updatedAt
+  repo.setThreadFolder(filed.id, null)
   check(
-    'the match is highlighted',
-    byTag.find((hit) => hit.kind === 'tag').snippet.includes('<mark>'),
-    byTag.find((hit) => hit.kind === 'tag')
+    'taking a thread out leaves it in no folder',
+    repo.getThread(filed.id).folderId === null
   )
   check(
-    'every hit carries its thread’s tags',
-    byTag.every((hit) => Array.isArray(hit.tags)) &&
-      byTag.find((hit) => hit.threadId === tagged.id).tags.includes('rust lang'),
-    byTag
+    'and moving it does not count as editing it',
+    repo.getThread(filed.id).updatedAt === stampBefore,
+    { was: stampBefore, now: repo.getThread(filed.id).updatedAt }
+  )
+  repo.setThreadFolder(filed.id, work.id)
+
+  check('filing into a folder that does not exist is refused',
+    repo.setThreadFolder(loose.id, 'no-such-folder') === null)
+  check('and leaves the thread where it was', repo.getThread(loose.id).folderId === null)
+
+  repo.updateFolder(work.id, { pinned: true })
+  check('a folder can be pinned', repo.getFolder(work.id).pinned === true)
+  check(
+    'pinning a folder leaves its threads alone',
+    repo.getThread(filed.id).pinned === false
+  )
+  repo.updateFolder(work.id, { name: 'Reading' })
+  check('a folder can be renamed', repo.getFolder(work.id).name === 'Reading')
+  check('and stays pinned through it', repo.getFolder(work.id).pinned === true)
+  repo.updateFolder(work.id, { name: '   ' })
+  check('an empty rename is ignored', repo.getFolder(work.id).name === 'Reading')
+
+  const branchOfFiled = repo.branchThread(filed.id, repo.insertMessage({
+    threadId: filed.id, role: 'user', content: 'inside a folder'
+  }).id)
+  check(
+    'a branch is filed beside what it came from',
+    branchOfFiled.folderId === work.id,
+    branchOfFiled.folderId
   )
 
-  const filtered = repo.search('tag:rust')
-  check('a tag: term matches on a prefix', filtered.length === 1, filtered)
-  check('and returns the whole thread', filtered[0].threadId === tagged.id, filtered[0])
-  check('a hash means the same thing', repo.search('#rust').length === 1)
-
-  const scoped = repo.search('tag:rust lifetimes')
+  repo.deleteFolder(work.id)
+  check('deleting a folder removes it', repo.getFolder(work.id) === null)
+  check('the folder list is empty again', repo.listFolders().length === 0, repo.listFolders())
   check(
-    'free text inside a tag filter searches only that thread',
-    scoped.length === 1 && scoped[0].messageId !== null && scoped[0].threadId === tagged.id,
-    scoped
+    'and its threads are let go rather than deleted',
+    repo.getThread(filed.id) !== null && repo.getThread(filed.id).folderId === null,
+    repo.getThread(filed.id)
   )
+  check('with their messages intact', repo.getMessages(filed.id).length > 0)
+
+  repo.deleteThread(filed.id)
+  repo.deleteThread(loose.id)
+  repo.deleteThread(branchOfFiled.id)
+
+  section('threads that were opened and never used')
+  const untouched = repo.createThread()
+  const spokenIn = repo.createThread()
+  repo.insertMessage({ threadId: spokenIn.id, role: 'user', content: 'hello' })
+  const named = repo.createThread('Named but empty')
+  const pinnedEmpty = repo.createThread()
+  repo.updateThread(pinnedEmpty.id, { pinned: true })
+  const filedEmpty = repo.createThread()
+  const shelf = repo.createFolder('Shelf')
+  repo.setThreadFolder(filedEmpty.id, shelf.id)
+
+  const swept = repo.deleteEmptyThreads()
+  check('an untouched thread is swept away', repo.getThread(untouched.id) === null)
+  check('one that was spoken in is not', repo.getThread(spokenIn.id) !== null)
+  check('nor is one that has a name', repo.getThread(named.id) !== null)
+  check('nor a pinned one', repo.getThread(pinnedEmpty.id) !== null)
+  check('nor one filed in a folder', repo.getThread(filedEmpty.id) !== null)
+  check('and it reports what it removed', swept === 1, swept)
+
+  section('threads that never got a name')
+  const unnamed = repo.createThread()
+  repo.insertMessage({ threadId: unnamed.id, role: 'user', content: 'what is a monad' })
+  repo.insertMessage({ threadId: unnamed.id, role: 'assistant', content: 'a monoid in…' })
+
+  const hollow = repo.createThread()
+
+  const untitled = repo.listUntitledThreadIds(25)
+  check('a thread with content and no name is listed', untitled.includes(unnamed.id), untitled)
+  check('one that was named is not', !untitled.includes(named.id))
   check(
-    'text that matches elsewhere is excluded by the filter',
-    repo.search('tag:rust borrow').every((hit) => hit.threadId === tagged.id),
-    repo.search('tag:rust borrow')
-  )
-  check('an unused tag filter matches nothing', repo.search('tag:absent').length === 0)
-
-  section('the tag library')
-  const other = repo.createThread('Second Rust thread')
-  repo.addThreadTag(other.id, 'rustlang')
-  check(
-    'renaming merges onto a tag that already exists',
-    repo.renameTag('rustlang', 'rust lang') === 'rust lang' &&
-      repo.getThreadTags(other.id).join(',') === 'rust lang' &&
-      repo.listTags().filter((t) => t.name === 'rustlang').length === 0,
-    repo.listTags()
-  )
-  check('and both threads now wear it', repo.search('tag:rust').length === 2)
-
-  const branchOfTagged = repo.branchThread(tagged.id, repo.getMessages(tagged.id)[0].id)
-  check(
-    'a branch inherits the tags of what it came from',
-    branchOfTagged.tags.join(',') === 'borrow checker,rust lang',
-    branchOfTagged.tags
-  )
-
-  const capped = repo.createThread('Too many tags')
-  for (const name of ['one', 'two', 'three']) repo.addThreadTag(capped.id, name, 'model')
-  repo.addThreadTag(capped.id, 'mine', 'user')
-  repo.enforceTagLimit(capped.id, 2)
-  const remaining = repo.getThreadTags(capped.id)
-  check('the limit is enforced', remaining.length === 2, remaining)
-  check('and the user’s own tag survives it', remaining.includes('mine'), remaining)
-
-  repo.deleteTag('rust lang')
-  check(
-    'deleting a tag takes it off every thread',
-    repo.getThreadTags(tagged.id).join(',') === 'borrow checker' &&
-      repo.getThreadTags(other.id).length === 0,
-    repo.getThreadTags(tagged.id)
-  )
-
-  section('tags the model may not touch')
-  const curated = repo.createThread('Curated')
-  repo.addThreadTag(curated.id, 'reviewed')
-  repo.setTagFlags('reviewed', { manualOnly: true })
-
-  const reviewed = repo.listTags().find((t) => t.name === 'reviewed')
-  check('a tag can be marked manual-only', reviewed.manualOnly === true, reviewed)
-  check('and is not pinned by that', reviewed.pinned === false, reviewed)
-
-  repo.setTagFlags('reviewed', { pinned: true })
-  check(
-    'pinning a tag is a separate flag',
-    repo.listTags().find((t) => t.name === 'reviewed').pinned === true &&
-      repo.listTags().find((t) => t.name === 'reviewed').manualOnly === true
-  )
-  check(
-    'pinning a folder leaves thread pinning alone',
-    repo.getThread(curated.id).pinned === false
-  )
-
-  repo.setTagFlags('reviewed', { manualOnly: false })
-  check(
-    'and it can be handed back to the model',
-    repo.listTags().find((t) => t.name === 'reviewed').manualOnly === false
-  )
-  repo.deleteThread(curated.id)
-
-  section('finding what still needs tagging')
-  const untidy = repo.createThread('Never tagged')
-  repo.insertMessage({ threadId: untidy.id, role: 'user', content: 'x'.repeat(2000) })
-  repo.insertMessage({ threadId: untidy.id, role: 'assistant', content: 'short answer' })
-  const emptyThread = repo.createThread('Nothing said here')
-
-  const untaggedIds = repo.listUntaggedThreadIds()
-  check('a thread with no tags is listed', untaggedIds.includes(untidy.id), untaggedIds.length)
-  check('a thread with tags is not', !untaggedIds.includes(tagged.id))
-  check('an empty thread has nothing to tag', !untaggedIds.includes(emptyThread.id))
-
-  const sizes = repo.untaggedThreadSizes(10, 900)
-  const untidySize = sizes.find((row) => row.id === untidy.id)
-  check('its transcript is measured', Boolean(untidySize), sizes)
-  check(
-    'a long message is measured as the request would truncate it',
-    untidySize.chars < 1100,
-    untidySize
+    'an empty one has nothing to name it after',
+    !untitled.includes(hollow.id),
+    untitled
   )
   check(
-    'and the short one is measured in full',
-    untidySize.chars > 900 + 'short answer'.length,
-    untidySize
+    'a half-finished one still counts — the user said something',
+    untitled.includes(spokenIn.id),
+    untitled
   )
+  check('the limit is respected', repo.listUntitledThreadIds(1).length === 1)
+
+  repo.updateThread(unnamed.id, { title: 'Monads' })
   check(
-    'the empty thread is left out of the measurement',
-    !sizes.some((row) => row.id === emptyThread.id),
-    sizes.map((r) => r.title)
+    'naming it takes it off the list',
+    !repo.listUntitledThreadIds(25).includes(unnamed.id),
+    repo.listUntitledThreadIds(25)
   )
 
-  repo.deleteThread(untidy.id)
-  repo.deleteThread(emptyThread.id)
-
-  const beforeWipe = repo.listTags().length
-  const wiped = repo.deleteAllTags()
-  check('emptying the library reports what it removed', wiped === beforeWipe, {
-    wiped,
-    beforeWipe
-  })
-  check('no tags are left', repo.listTags().length === 0, repo.listTags())
-  check('and no thread still carries one', repo.getThread(tagged.id).tags.length === 0)
-  check(
-    'while the threads themselves are untouched',
-    repo.getMessages(tagged.id).length > 0 && repo.getThread(tagged.id) !== null
-  )
-
-  // Put the thread's tag back on both the thread and its branch, so the checks
-  // below still have the two-thread tag they were written against.
-  repo.addThreadTag(tagged.id, 'borrow checker', 'model')
-  repo.addThreadTag(branchOfTagged.id, 'borrow checker', 'model')
-
-  repo.deleteThread(tagged.id)
-  check(
-    'deleting a thread lets go of its tags',
-    repo.listTags().find((t) => t.name === 'borrow checker').threads === 1,
-    repo.listTags()
-  )
+  repo.deleteThread(unnamed.id)
+  repo.deleteThread(hollow.id)
+  repo.deleteThread(spokenIn.id)
+  repo.deleteThread(named.id)
+  repo.deleteThread(pinnedEmpty.id)
+  repo.deleteThread(filedEmpty.id)
+  repo.deleteFolder(shelf.id)
 
   section('branching and deletion')
   const branch = repo.branchThread(thread.id, question.id)

@@ -1,4 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
+import { X } from 'lucide-react'
+import { ICON } from '../icons'
 
 interface Props {
   title?: ReactNode
@@ -44,7 +46,7 @@ export function Overlay({
             <span className="panel__title">{title}</span>
             <div style={{ flex: 1 }} />
             <button className="btn btn--ghost" onClick={onClose} type="button" aria-label="Close">
-              ✕
+              <X {...ICON} />
             </button>
           </div>
         )}

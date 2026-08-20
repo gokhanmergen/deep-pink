@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { Copy, FileText, GitBranch, RefreshCw } from 'lucide-react'
+import { ICON } from '../icons'
 import type { Message, UiSettings, Usage } from '@shared/types'
 import { Markdown } from './Markdown'
 import { useStore } from '../store'
@@ -126,6 +128,7 @@ export function AssistantTurn({ messages, ui, isLast }: Props): React.JSX.Elemen
 
         <div className="message__actions">
           <button className="btn btn--ghost" onClick={copy} title="Copy" type="button">
+            <Copy {...ICON} />
             Copy
           </button>
           <button
@@ -134,9 +137,11 @@ export function AssistantTurn({ messages, ui, isLast }: Props): React.JSX.Elemen
             title="Regenerate"
             type="button"
           >
+            <RefreshCw {...ICON} />
             Retry
           </button>
           <button className="btn btn--ghost" onClick={() => void branch()} title="Branch" type="button">
+            <GitBranch {...ICON} />
             Branch
           </button>
           {attributed.systemPromptSnapshot && (
@@ -146,6 +151,7 @@ export function AssistantTurn({ messages, ui, isLast }: Props): React.JSX.Elemen
               title="What went into the context for this turn"
               type="button"
             >
+              <FileText {...ICON} />
               Context
             </button>
           )}

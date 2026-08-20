@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 /**
  * A small menu anchored at the pointer.
@@ -11,6 +11,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 export interface ContextMenuItem {
   id: string
   label: string
+  /** Drawn before the label, at the same weight as the rest of the chrome. */
+  icon?: ReactNode
   /** Shown right-aligned, e.g. the keyboard shortcut for the same action. */
   hint?: string
   danger?: boolean
@@ -117,6 +119,7 @@ export function ContextMenu({ x, y, items, onClose }: Props): React.JSX.Element 
               item.onSelect()
             }}
           >
+            {item.icon}
             <span className="context-menu__label">{item.label}</span>
             {item.hint && <span className="context-menu__hint">{item.hint}</span>}
           </button>

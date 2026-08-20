@@ -1,7 +1,7 @@
 const { suite, sseResponse, writeTestApiKey, message } = require('./support/harness')
 
 suite('chat — streaming, tool reconciliation, web guards', async ({ check, section, subject }) => {
-  const { streamChat, toChatParams, htmlToText, runWebFetch, parseTagEdit } = subject
+  const { streamChat, toChatParams, htmlToText, runWebFetch } = subject
   writeTestApiKey()
 
   section('server-sent event parsing')
@@ -121,37 +121,6 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
     toChatParams([
       message({ id: '1', role: 'system', content: 'SUMMARY', isCompactionSummary: true })
     ])[0].role === 'system'
-  )
-
-  section('reading a tagging reply')
-  check(
-    'plain JSON is read',
-    JSON.stringify(parseTagEdit('{"add": ["rust"], "remove": ["python"]}')) ===
-      '{"add":["rust"],"remove":["python"]}'
-  )
-  check(
-    'a fenced block is read',
-    parseTagEdit('```json\n{"add": ["rust"], "remove": []}\n```').add[0] === 'rust'
-  )
-  check(
-    'prose around the JSON is ignored',
-    parseTagEdit('Sure! Here you go:\n{"add":["sql"],"remove":[]}\nHope that helps.').add[0] ===
-      'sql'
-  )
-  const nothing = (raw) => {
-    const edit = parseTagEdit(raw)
-    return edit.add.length === 0 && edit.remove.length === 0
-  }
-  check('an unparseable reply changes nothing', nothing('I am not sure what you want.'))
-  check('broken JSON changes nothing', nothing('{"add": ["rust",}'))
-  check('a JSON array changes nothing', nothing('["rust"]'))
-  check(
-    'entries that are not strings are dropped',
-    parseTagEdit('{"add": ["ok", 3, null, {"x": 1}], "remove": "python"}').add.join(',') === 'ok'
-  )
-  check(
-    'a missing key is an empty list rather than a crash',
-    parseTagEdit('{"add": ["rust"]}').remove.length === 0
   )
 
   section('HTML extraction')

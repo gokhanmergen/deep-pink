@@ -14,6 +14,12 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   const mcpListeners = []
   let persisted = []
   let liveStreams = []
+  // Stands in for the folders table, so the store's optimism can be checked
+  // against what the main process would actually have come back with.
+  const storedFolders = []
+  // Threads besides the fixture, for the "leave an empty one behind" checks.
+  const extraThreads = []
+  const removed = []
 
   const thread = {
     id: 't1',
@@ -22,6 +28,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     updatedAt: 0,
     pinned: false,
     archived: false,
+    folderId: null,
     config: { disabledPromptSegments: [] }
   }
 
@@ -30,10 +37,44 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     deepPink: {
       platform: 'linux',
       settings: { get: async () => ({ ui: {}, keybinds: {}, web: {}, compaction: {} }) },
-      threads: { list: async () => [thread] },
-      messages: { list: async () => persisted },
+      threads: {
+        list: async () => extraThreads.concat([thread]).map((t) => ({ ...t })),
+        remove: async (id) => {
+          removed.push(id)
+          const at = extraThreads.findIndex((t) => t.id === id)
+          if (at >= 0) extraThreads.splice(at, 1)
+        },
+        setFolder: async (id, folderId) => {
+          if (id !== thread.id) return null
+          if (folderId !== null && !storedFolders.some((f) => f.id === folderId)) return null
+          thread.folderId = folderId
+          return { ...thread }
+        }
+      },
+      folders: {
+        list: async () => storedFolders.map((f) => ({ ...f })),
+        create: async (name) => {
+          if (!name.trim()) return null
+          const folder = { id: `f${storedFolders.length + 1}`, name: name.trim(), createdAt: 0, pinned: false }
+          storedFolders.push(folder)
+          return { ...folder }
+        },
+        update: async (id, patch) => {
+          const folder = storedFolders.find((f) => f.id === id)
+          if (!folder) return null
+          Object.assign(folder, patch)
+          return { ...folder }
+        },
+        remove: async (id) => {
+          const at = storedFolders.findIndex((f) => f.id === id)
+          if (at >= 0) storedFolders.splice(at, 1)
+          if (thread.folderId === id) thread.folderId = null
+        }
+      },
+      // Only the fixture thread has a transcript; the rest are as empty as the
+      // database would report them.
+      messages: { list: async (id) => (id === thread.id ? persisted : []) },
       models: { list: async () => [] },
-      tags: { list: async () => [], backfillRunning: async () => false },
       chat: {
         isGenerating: async () => false,
         liveStreams: async () => liveStreams,
@@ -201,6 +242,102 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     groupIntoTurns([message({ id: 's', role: 'assistant', content: '', status: 'streaming' })]).length === 1
   )
 
+  section('leaving a thread nobody used')
+  const blank = {
+    id: 'blank',
+    title: '',
+    createdAt: 0,
+    updatedAt: 0,
+    pinned: false,
+    archived: false,
+    folderId: null,
+    messageCount: 0,
+    config: { disabledPromptSegments: [] }
+  }
+  extraThreads.push(blank)
+  await state().refreshThreads()
+  await state().selectThread('blank')
+  check('the empty thread can be opened', state().activeThreadId === 'blank')
+
+  await state().selectThread('t1')
+  check('leaving it deletes it', removed.includes('blank'), removed)
+  check(
+    'and it goes from the list on the spot',
+    !state().threads.some((t) => t.id === 'blank'),
+    state().threads.map((t) => t.id)
+  )
+  check('while the thread moved to is untouched', state().activeThreadId === 't1')
+
+  const kept = [
+    { ...blank, id: 'named', title: 'Has a name' },
+    { ...blank, id: 'pinned', pinned: true },
+    { ...blank, id: 'filed', folderId: 'f1' },
+    { ...blank, id: 'spoken', messageCount: 2 }
+  ]
+  for (const one of kept) {
+    extraThreads.push(one)
+    await state().refreshThreads()
+    await state().selectThread(one.id)
+    await state().selectThread('t1')
+  }
+  check(
+    'a named, pinned, filed or used thread is left alone',
+    kept.every((one) => !removed.includes(one.id)),
+    removed
+  )
+
+  section('folders')
+  const created = await state().createFolder('Reading')
+  check('creating a folder returns it', created?.name === 'Reading', created)
+  check('it joins the list', state().folders.length === 1, state().folders)
+  check(
+    'and opens, so an empty folder is visibly there',
+    state().openFolderIds.includes(created.id),
+    state().openFolderIds
+  )
+  check('an empty name creates nothing', (await state().createFolder('   ')) === null)
+
+  state().toggleFolder(created.id)
+  check('toggling shuts it', state().openFolderIds.length === 0, state().openFolderIds)
+
+  await state().moveThreadToFolder('t1', created.id)
+  check(
+    'filing a thread records the folder on it',
+    state().threads.find((t) => t.id === 't1').folderId === created.id
+  )
+  check(
+    'and opens the folder it went into, so it is not seen to vanish',
+    state().openFolderIds.includes(created.id),
+    state().openFolderIds
+  )
+
+  await state().moveThreadToFolder('t1', 'gone')
+  check(
+    'a drop onto a folder that no longer exists does not strand the thread',
+    state().threads.find((t) => t.id === 't1').folderId === created.id,
+    state().threads.find((t) => t.id === 't1').folderId
+  )
+
+  await state().moveThreadToFolder('t1', null)
+  check('taking it out clears the folder', state().threads.find((t) => t.id === 't1').folderId === null)
+
+  await state().moveThreadToFolder('t1', created.id)
+  await state().renameFolder(created.id, 'Later')
+  check('renaming lands on the folder', state().folders[0].name === 'Later')
+  await state().setFolderPinned(created.id, true)
+  check('pinning lands on the folder', state().folders[0].pinned === true)
+
+  state().closeAllFolders()
+  check('closing them all leaves none open', state().openFolderIds.length === 0)
+
+  await state().deleteFolder(created.id)
+  check('deleting removes the folder', state().folders.length === 0, state().folders)
+  check(
+    'and the thread it held is still here, now loose',
+    state().threads.find((t) => t.id === 't1')?.folderId === null,
+    state().threads
+  )
+
   section('zoom shortcuts match the keys people actually press')
   const { matchesBinding } = require(path.join(__dirname, '..', '.test-build', 'store.js'))
   // The stub reports platform 'linux', so `mod` is Ctrl here.
@@ -237,13 +374,13 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   )
 
   disposeStore()
-  check('alt+1 switches view', matchesBinding(press('1', { alt: true }), 'alt+1'))
+  check('an alt+digit binding matches', matchesBinding(press('1', { alt: true }), 'alt+1'))
   check(
     'and still does where the option key rewrote the character',
     matchesBinding({ ...press('\u00a1', { alt: true }), code: 'Digit1' }, 'alt+1'),
     'macOS Option+1'
   )
-  check('a bare 1 does not switch view', !matchesBinding(press('1'), 'alt+1'))
+  check('a bare 1 does not match it', !matchesBinding(press('1'), 'alt+1'))
 
   check('disposing removes the listeners', chatListeners.length === 0)
 })

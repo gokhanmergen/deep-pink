@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { Copy, Pencil } from 'lucide-react'
+import { ICON } from '../icons'
 import type { Message, UiSettings } from '@shared/types'
 import { Markdown } from './Markdown'
 import { TextAttachment } from './TextAttachment'
@@ -76,6 +78,7 @@ export function MessageItem({
             title="Copy"
             type="button"
           >
+            <Copy {...ICON} />
             Copy
           </button>
           <button
@@ -87,6 +90,7 @@ export function MessageItem({
             title="Edit"
             type="button"
           >
+            <Pencil {...ICON} />
             Edit
           </button>
         </div>

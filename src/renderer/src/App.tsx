@@ -14,7 +14,6 @@ import { GlobalStatsPanel, ThreadStatsPanel } from './components/StatsPanels'
 import { McpPanel } from './components/McpPanel'
 import { KeybindCheatsheet } from './components/KeybindCheatsheet'
 import { ToolApprovalDialog } from './components/ToolApprovalDialog'
-import { TagProgress } from './components/TagProgress'
 import { Dialog } from './components/Dialog'
 
 /** Bindings the composer owns; the global handler must not steal them. */
@@ -66,6 +65,7 @@ export function App(): React.JSX.Element {
     const root = document.documentElement
     root.style.setProperty('--accent', settings.ui.accent)
     root.style.setProperty('--font-size', `${settings.ui.fontSize}px`)
+    root.style.setProperty('--chat-width', `${settings.ui.chatWidth}px`)
 
     // Derive the softer accent variants so a custom colour stays coherent.
     const hex = settings.ui.accent.replace('#', '')
@@ -75,6 +75,9 @@ export function App(): React.JSX.Element {
     if ([r, g, b].every(Number.isFinite)) {
       root.style.setProperty('--accent-dim', `rgba(${r}, ${g}, ${b}, 0.16)`)
       root.style.setProperty('--accent-line', `rgba(${r}, ${g}, ${b}, 0.38)`)
+      // A chart's area fill is the same hue at a tenth, so a custom accent
+      // carries into the graphs instead of leaving them on the built-in one.
+      root.style.setProperty('--accent-wash', `rgba(${r}, ${g}, ${b}, 0.1)`)
       root.style.setProperty(
         '--accent-hover',
         `rgb(${Math.min(r + 30, 255)}, ${Math.min(g + 40, 255)}, ${Math.min(b + 30, 255)})`
@@ -149,7 +152,6 @@ export function App(): React.JSX.Element {
       {overlay === 'models' && <ModelPicker mode="chat" onClose={close} />}
       {overlay === 'defaultModel' && <ModelPicker mode="default" onClose={close} />}
       {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}
-      {overlay === 'tagModel' && <ModelPicker mode="tag" onClose={close} />}
       {overlay === 'providers' && <ProviderPicker onClose={close} />}
       {overlay === 'prompt' && <SystemPromptInspector onClose={close} />}
       {overlay === 'threadStats' && <ThreadStatsPanel onClose={close} />}
@@ -158,7 +160,6 @@ export function App(): React.JSX.Element {
       {overlay === 'keybinds' && <KeybindCheatsheet onClose={close} />}
 
       <ToolApprovalDialog />
-      <TagProgress />
       <Dialog />
 
       {toast && (
