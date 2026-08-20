@@ -55,10 +55,19 @@ Every action has a binding, every binding is rebindable, and `Ctrl/⌘ K` opens 
 
 ### Download a build
 
-Linux builds are published to the
+Linux and macOS builds are published to the
 [releases page](https://github.com/gokhanmergen/deep-pink/releases): an
-AppImage, a `.deb`, an `.rpm` and a tarball, with `SHA256SUMS.txt` to check
-them against. Built for x86-64.
+AppImage, a `.deb`, an `.rpm` and a tarball for Linux on x86-64, and a `.dmg`
+and `.zip` for macOS on Apple Silicon — with an Intel disk image alongside them
+when that build succeeds. `SHA256SUMS.txt` covers every file.
+
+Nothing is signed with a paid developer certificate. Linux may ask you to
+confirm the first launch; macOS will refuse it outright, so open the app once
+with right-click → Open, or clear the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Deep Pink.app"
+```
 
 The newest one is always at
 [`/releases/latest`](https://github.com/gokhanmergen/deep-pink/releases/latest),
@@ -197,8 +206,9 @@ pnpm build       # production bundle
 ```
 
 To cut a release, bump the version and push the tag — the workflow builds the
-Linux artefacts, refuses to publish if the tests fail or the tag disagrees with
-`package.json`, and attaches everything to a GitHub release:
+Linux and macOS artefacts on their own machines, refuses to publish if the
+tests fail or the tag disagrees with `package.json`, and attaches everything to
+one GitHub release:
 
 ```bash
 pnpm version patch

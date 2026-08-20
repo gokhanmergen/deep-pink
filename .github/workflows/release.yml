@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the Linux packages and attaches them to a GitHub release.
+# Builds the Linux and macOS packages and attaches them to a GitHub release.
 #
 # Two ways to run it:
 #
@@ -33,32 +33,16 @@ permissions:
   contents: write
 
 jobs:
-  linux:
+  # Answered once, before anything is built: every job below agrees on what is
+  # being released, and a tag that lies about its contents stops the run here
+  # rather than after twenty minutes of building.
+  meta:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install system libraries Electron needs
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 libsecret-1-0 \
-            rpm fakeroot xvfb
-
-      - run: pnpm install --frozen-lockfile
-
-      # A version that fails its own tests should not become a release.
-      - name: Typecheck
-        run: pnpm run typecheck
-
-      - name: Test
-        run: xvfb-run --auto-servernum pnpm test
 
       - name: Work out the version being released
         id: meta
@@ -77,32 +61,117 @@ jobs:
             echo "tag=v$version" >> "$GITHUB_OUTPUT"
           fi
 
-      # No token here on purpose: given one, electron-builder tries to publish
-      # the artefacts itself. Publishing is the release step's job.
+  build:
+    needs: meta
+    runs-on: ${{ matrix.os }}
+    # One failing platform should not hide what the others would have said.
+    continue-on-error: ${{ matrix.optional || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          # Apple Silicon, built natively. `better-sqlite3` is compiled against
+          # Electron's ABI, so each architecture is built on its own machine
+          # rather than cross-compiled.
+          - os: macos-latest
+            platform: mac
+            arch: arm64
+          # Intel, cross-compiled from the same Apple Silicon runner because
+          # GitHub's Intel images are on their way out. Marked optional: the
+          # native rebuild is the part that can fail, and an Intel build that
+          # did not work must not hold back a release that otherwise did.
+          - os: macos-latest
+            platform: mac
+            arch: x64
+            optional: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install system libraries Electron needs
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 libsecret-1-0 \
+            rpm fakeroot xvfb
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # A version that fails its own tests should not become a release. The
+      # suites run inside Electron and one of them drives a real window, so they
+      # run on the Linux machine, under a virtual display, as the gate for every
+      # platform — the code under test is the same on all of them.
+      - name: Test
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum pnpm test
+
+      # No token in any of these: given one, electron-builder tries to publish
+      # the artefacts itself. Publishing is the release job's work.
       - name: Build AppImage, deb, rpm and tarball
+        if: matrix.platform == 'linux'
         run: pnpm run dist:linux
 
+      # Ad-hoc signed, using the identity in electron-builder.yml — there is no
+      # Developer ID for this project, and Apple Silicon will not launch a
+      # binary with no signature at all.
+      - name: Build the macOS disk image and zip
+        if: matrix.platform == 'mac'
+        run: |
+          pnpm run build
+          pnpm exec electron-builder --mac --${{ matrix.arch }}
+
       - name: Collect the artefacts
+        shell: bash
         run: |
           mkdir -p artifacts
           find release -maxdepth 1 -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' \) \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' \
+               -o -name '*.dmg' -o -name '*.zip' \) \
             -exec cp {} artifacts/ \;
-          ( cd artifacts && sha256sum * > SHA256SUMS.txt )
           ls -lh artifacts
 
       - uses: actions/upload-artifact@v7
         with:
-          name: deep-pink-linux-${{ steps.meta.outputs.version }}
+          name: deep-pink-${{ matrix.platform }}-${{ matrix.arch }}-${{ needs.meta.outputs.version }}
           path: artifacts/
           retention-days: 14
 
+  publish:
+    needs: [meta, build]
+    if: github.ref_type == 'tag' || inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      # Everything every platform built, in one directory.
+      - uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # Written here rather than per platform, so the file covers the whole
+      # release instead of one machine's share of it.
+      - name: Checksum every file being published
+        run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS.txt
+          ls -lh
+
       - name: Publish the release
-        if: github.ref_type == 'tag' || inputs.publish
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: Deep Pink ${{ steps.meta.outputs.version }}
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: Deep Pink ${{ needs.meta.outputs.version }}
           files: artifacts/*
           # A tag push always publishes. A manual run publishes too unless the
           # draft box was ticked.
@@ -113,7 +182,9 @@ jobs:
           make_latest: true
           generate_release_notes: true
           body: |
-            Linux builds of Deep Pink ${{ steps.meta.outputs.version }}.
+            Builds of Deep Pink ${{ needs.meta.outputs.version }}.
+
+            **Linux** (x86-64)
 
             | Format | Use it when |
             | --- | --- |
@@ -122,7 +193,13 @@ jobs:
             | `.rpm` | Fedora, openSUSE, RHEL |
             | `.tar.gz` | You would rather unpack it yourself |
 
-            Built for x86-64.
+            **macOS**
+
+            | Format | Use it when |
+            | --- | --- |
+            | `-arm64.dmg` | Apple Silicon — M1 and later |
+            | `-x64.dmg` | Intel Macs |
+            | `.zip` | You want the app bundle without mounting anything |
 
             Verify a download against `SHA256SUMS.txt`:
 
@@ -130,5 +207,11 @@ jobs:
             sha256sum -c SHA256SUMS.txt --ignore-missing
             ```
 
-            These builds are unsigned, so your desktop may ask you to confirm
-            the first launch.
+            These builds are not signed with a paid developer certificate.
+            Linux may ask you to confirm the first launch. macOS will refuse it
+            outright — open it once with right-click → Open, or clear the
+            quarantine flag:
+
+            ```bash
+            xattr -dr com.apple.quarantine "/Applications/Deep Pink.app"
+            ```

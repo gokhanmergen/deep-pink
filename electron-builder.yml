@@ -25,6 +25,12 @@ linux:
   # A full-bleed tile: Linux desktops draw the icon as-is, with no rounding of
   # their own, so the padded macOS variant would look undersized here.
   icon: build/icon.png
+  # Names the installed .desktop file after `desktopName` in package.json, which
+  # is also where Electron reads its app_id from — so the running window's
+  # WM_CLASS / Wayland app_id and the entry's StartupWMClass are the same
+  # string, and the desktop can tell that this window belongs to that launcher.
+  # Without it a pinned icon and a running window are two unrelated things.
+  syncDesktopName: true
   # Debian and RPM packages require a maintainer with a real address. This is
   # the GitHub no-reply address for the account, so no personal mailbox ends up
   # in published package metadata.
@@ -66,6 +72,9 @@ rpm:
 
 mac:
   category: public.app-category.productivity
+  # Spelled out because the default drops the suffix for Intel, which would put
+  # two differently-built disk images under the same name in a release.
+  artifactName: ${productName}-${version}-${arch}.${ext}
   # Padded to Apple's 824-in-1024 grid so it lines up with other Dock icons.
   icon: build/icon.icns
   # Ad-hoc signature. Apple Silicon refuses to launch an unsigned binary, and
