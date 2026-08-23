@@ -28,6 +28,8 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 
 **Capabilities**
 
+- Rich blocks: replies can contain charts, sortable tables, tabs, accordions, step-by-steps, callouts, cards, meters, stat tiles and directory trees — a fenced block of JSON per widget, drawn by the app. Off by default, switchable per thread from the composer or with `Ctrl/⌘ ⇧ B`, and the exact page of system prompt the model is given is on screen in Settings › Rich blocks. **It is deliberately not HTML**: nothing a model writes is ever parsed as markup, so a block cannot run a script, load a remote image, restyle the window or escape the message it is in. Everything is validated, clamped to sane limits and handed to React components; anything that does not validate stays the code block it was, and the JSON behind any block is one click away.
+
 - Web search and web fetch as toggleable tools — per thread or globally. Backends: DuckDuckGo, your own SearXNG instance, or OpenRouter's `:online` plugin. Off by default.
 - Full MCP support over stdio and streamable HTTP. Per-server tool toggles, and per-call approval prompts so nothing runs without you saying yes.
 - Context compaction: when a thread approaches the model's context window, the older part is replaced by a summary. The threshold, the prompt and the model are all yours to set; the original messages stay in the database.

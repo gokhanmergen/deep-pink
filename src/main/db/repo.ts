@@ -106,7 +106,8 @@ export const EMPTY_THREAD_CONFIG: ThreadConfig = {
   webAccessEnabled: null,
   enabledMcpServers: null,
   repoPaths: [],
-  disabledPromptSegments: []
+  disabledPromptSegments: [],
+  richBlocksEnabled: null
 }
 
 function jsonOrNull(value: unknown): string | null {

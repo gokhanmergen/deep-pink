@@ -169,7 +169,9 @@ function toConfig(value: unknown): ThreadConfig {
       ? stringList(raw['enabledMcpServers'])
       : null,
     repoPaths: stringList(raw['repoPaths']),
-    disabledPromptSegments: stringList(raw['disabledPromptSegments'])
+    disabledPromptSegments: stringList(raw['disabledPromptSegments']),
+    richBlocksEnabled:
+      typeof raw['richBlocksEnabled'] === 'boolean' ? raw['richBlocksEnabled'] : null
   }
 }
 

@@ -13,7 +13,8 @@ const SOURCE_LABEL: Record<SystemPromptSegment['source'], string> = {
   web: 'Built-in',
   repo: 'Attached repository',
   compaction: 'Compaction',
-  datetime: 'Built-in'
+  datetime: 'Built-in',
+  rich: 'Rich blocks'
 }
 
 /**

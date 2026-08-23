@@ -14,6 +14,7 @@ import {
   Cpu,
   FolderCode,
   Globe,
+  LayoutDashboard,
   Image as ImageIcon,
   Paperclip,
   Square,
@@ -49,6 +50,7 @@ export function Composer(): React.JSX.Element {
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   const webOn = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
+  const richOn = thread?.config.richBlocksEnabled ?? settings?.richBlocksEnabled ?? false
 
   // Web access works by giving the model tools. A model that cannot call tools
   // will simply ignore them, which looks exactly like search being broken.
@@ -232,6 +234,11 @@ export function Composer(): React.JSX.Element {
     void updateThread(activeThreadId, { config: { webAccessEnabled: !webOn } })
   }
 
+  const toggleRich = (): void => {
+    if (!activeThreadId) return
+    void updateThread(activeThreadId, { config: { richBlocksEnabled: !richOn } })
+  }
+
   return (
     <div className="composer" ref={rootRef}>
       <div className="composer__inner">
@@ -402,6 +409,22 @@ export function Composer(): React.JSX.Element {
             >
               <Globe {...ICON} />
               Web {webOn ? 'on' : 'off'}
+            </button>
+
+            {/* Sits beside web access because it is the same kind of switch: what
+                this thread lets a reply be, rather than what the model can do. */}
+            <button
+              className="btn"
+              data-on={richOn}
+              onClick={toggleRich}
+              title={`Charts, tables and panels in replies — ${formatBinding(
+                keybinds['rich.toggle'] ?? 'mod+shift+b'
+              )}`}
+              type="button"
+              disabled={!activeThreadId}
+            >
+              <LayoutDashboard {...ICON} />
+              <span className="btn__label">Rich {richOn ? 'on' : 'off'}</span>
             </button>
 
             <button

@@ -323,6 +323,18 @@ export function buildActions(): AppAction[] {
         store.showToast(on ? 'Web access off' : 'Web access on')
       })
     },
+    {
+      id: 'rich.toggle',
+      label: 'Toggle rich blocks for this thread',
+      group: 'Capabilities',
+      run: requireThread((id) => {
+        const on = thread?.config.richBlocksEnabled ?? settings?.richBlocksEnabled ?? false
+        void store.updateThread(id, { config: { richBlocksEnabled: !on } })
+        store.showToast(
+          on ? 'Rich blocks off' : 'Rich blocks on — charts, tables and panels'
+        )
+      })
+    },
     { id: 'mcp.panel', label: 'MCP servers', group: 'Capabilities', run: () => store.setOverlay('mcp') },
     {
       id: 'reasoning.toggle',

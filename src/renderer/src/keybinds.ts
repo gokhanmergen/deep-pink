@@ -162,6 +162,7 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     title: 'Capabilities',
     actions: [
       { id: 'web.toggle', label: 'Toggle web access' },
+      { id: 'rich.toggle', label: 'Toggle rich blocks' },
       { id: 'mcp.panel', label: 'MCP servers' },
       { id: 'reasoning.toggle', label: 'Show / hide reasoning' },
       { id: 'context.compact', label: 'Compact context now' }

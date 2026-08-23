@@ -180,7 +180,11 @@ export function AssistantTurn({ messages, ui, isLast }: Props): React.JSX.Elemen
 
             {message.content && (
               <div className="message__body">
-                <Markdown content={message.content} codeTheme={ui.codeTheme} />
+                <Markdown
+                  content={message.content}
+                  codeTheme={ui.codeTheme}
+                  streaming={message.status === 'streaming'}
+                />
               </div>
             )}
 

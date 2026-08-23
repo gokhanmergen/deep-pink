@@ -5,6 +5,7 @@ import {
   KeyRound,
   Keyboard,
   Layers,
+  LayoutDashboard,
   MessageSquareText,
   Palette,
   Cpu,
@@ -18,12 +19,14 @@ import { DEFAULT_KEYBINDS, DEFAULT_UI } from '@shared/defaults'
 import { modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 import type { AppInfo, ImportPreview, ImportResult } from '@shared/types'
+import { RICH_BLOCKS_PROMPT, RICH_BLOCK_KINDS } from '@shared/richBlocks'
 
 type Tab =
   | 'account'
   | 'models'
   | 'prompts'
   | 'web'
+  | 'rich'
   | 'context'
   | 'appearance'
   | 'keys'
@@ -53,6 +56,7 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     title: 'Capabilities',
     tabs: [
       { id: 'web', label: 'Web access', icon: <Globe {...ICON} /> },
+      { id: 'rich', label: 'Rich blocks', icon: <LayoutDashboard {...ICON} /> },
       { id: 'context', label: 'Context', icon: <Layers {...ICON} /> }
     ]
   },
@@ -468,6 +472,70 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 Loopback, link-local and private addresses are always refused.
               </span>
             </div>
+          </>
+        )}
+
+        {tab === 'rich' && (
+          <>
+            <div className="section-title">Rich blocks</div>
+            <label className="switch" style={{ marginBottom: 14 }}>
+              <input
+                type="checkbox"
+                checked={settings.richBlocksEnabled}
+                onChange={(event) =>
+                  void saveSettings({ richBlocksEnabled: event.target.checked })
+                }
+              />
+              <span>
+                Let replies contain charts, tables and panels
+                <span className="field__hint">
+                  Can be toggled per thread from the composer. When off the model is not told
+                  about them, and any that arrive anyway — from an import, or a model that
+                  guessed — are shown as the code they are.
+                </span>
+              </span>
+            </label>
+
+            <div className="field">
+              <span className="field__label">What the model can draw</span>
+              <div className="row row--wrap">
+                {RICH_BLOCK_KINDS.map((kind) => (
+                  <span className="chip mono" key={kind}>
+                    dp-{kind}
+                  </span>
+                ))}
+              </div>
+              <span className="field__hint">
+                Each is a fenced block of JSON that this app draws itself. A chart wears the
+                same palette as the statistics panels, because the model chooses the numbers
+                and Deep Pink chooses everything else.
+              </span>
+            </div>
+
+            <div className="field">
+              <span className="field__label">Why this is not HTML</span>
+              <span className="field__hint">
+                Because HTML from a model is a script, a remote image or a stylesheet away from
+                being a problem, and being right about a sanitiser forever is not a promise
+                worth making. Nothing here is parsed as markup: the JSON is validated, clamped
+                and handed to components, so a block cannot run anything, load anything, or
+                reach outside the message it is in. Anything that fails to validate stays a
+                code block.
+              </span>
+            </div>
+
+            <details className="disclosure">
+              <summary className="disclosure__summary">
+                <span className="chip">system prompt</span>
+                <span>
+                  What the model is told — about{' '}
+                  {Math.ceil(RICH_BLOCKS_PROMPT.length / 4).toLocaleString()} tokens per turn
+                </span>
+              </summary>
+              <div className="disclosure__content">
+                <pre>{RICH_BLOCKS_PROMPT}</pre>
+              </div>
+            </details>
           </>
         )}
 

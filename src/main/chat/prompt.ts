@@ -1,4 +1,5 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
+import { RICH_BLOCKS_PROMPT } from '@shared/richBlocks'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
@@ -28,6 +29,11 @@ export interface AssembledContext {
 
 function webEnabledFor(thread: Thread, settings: Settings): boolean {
   return thread.config.webAccessEnabled ?? settings.web.enabled
+}
+
+/** The thread's answer if it has one, otherwise the global setting. */
+export function richBlocksEnabledFor(thread: Thread, settings: Settings): boolean {
+  return thread.config.richBlocksEnabled ?? settings.richBlocksEnabled
 }
 
 export function activeServerIdsFor(thread: Thread): string[] | null {
@@ -79,6 +85,19 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
       text: `The current date and time is ${now.toISOString()} (${
         Intl.DateTimeFormat().resolvedOptions().timeZone
       }).`,
+      removable: true
+    })
+  }
+
+  // Ahead of the tool and web segments because it shapes how every answer is
+  // written, not what the model can go and do.
+  if (richBlocksEnabledFor(thread, settings)) {
+    push({
+      id: 'rich',
+      source: 'rich',
+      label: 'Rich block syntax',
+      origin: 'Deep Pink',
+      text: RICH_BLOCKS_PROMPT,
       removable: true
     })
   }

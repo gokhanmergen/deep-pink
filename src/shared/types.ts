@@ -147,6 +147,12 @@ export interface ThreadConfig {
   repoPaths: string[]
   /** Segment ids the user has explicitly switched off for this thread. */
   disabledPromptSegments: string[]
+  /**
+   * Whether the model is told it may answer with rich blocks — charts, tabs,
+   * callouts and the rest — and whether this thread draws them. Null follows
+   * the global setting, exactly as web access does.
+   */
+  richBlocksEnabled: boolean | null
 }
 
 /* ------------------------------------------------------------------ *
@@ -163,6 +169,7 @@ export type SystemPromptSource =
   | 'repo'
   | 'compaction'
   | 'datetime'
+  | 'rich'
 
 export interface SystemPromptSegment {
   /** Stable id so a segment can be toggled off and remembered. */
@@ -443,6 +450,12 @@ export interface Settings {
   temperature: number
   maxTokens: number | null
   streamReasoning: boolean
+  /**
+   * Lets the model answer with rich blocks. Off by default: it is a page of
+   * system prompt on every turn, and an app that quietly spends tokens on a
+   * feature nobody asked for is not one worth trusting.
+   */
+  richBlocksEnabled: boolean
   web: WebSearchSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */
