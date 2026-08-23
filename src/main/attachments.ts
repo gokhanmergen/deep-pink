@@ -190,6 +190,15 @@ export function readText(id: string): string | null {
   }
 }
 
+/** The bytes as base64, for writing an attachment into an export. */
+export function readBase64(id: string): string | null {
+  try {
+    return readFileSync(fileFor(id)).toString('base64')
+  } catch {
+    return null
+  }
+}
+
 /** The data URL a provider expects. Read from disk only when a request needs it. */
 export function toDataUrl(attachment: Attachment): string {
   const bytes = readFileSync(fileFor(attachment.id))

@@ -74,6 +74,29 @@ interface UsageRow {
   generation_id: string | null
 }
 
+interface ToolInvocationRow {
+  message_id: string
+  source: string
+  server_id: string | null
+  tool_name: string
+  is_error: number
+  duration_ms: number
+  result_chars: number
+  created_at: number
+}
+
+/** One recorded tool call, as an export reads it back out. */
+export interface ToolInvocationRecord {
+  messageId: string
+  source: string
+  serverId: string | null
+  toolName: string
+  isError: boolean
+  durationMs: number
+  resultChars: number
+  createdAt: number
+}
+
 export const EMPTY_THREAD_CONFIG: ThreadConfig = {
   model: null,
   providerRouting: null,
@@ -646,7 +669,10 @@ export function recordUsage(
   messageId: string,
   model: string | null,
   provider: string | null,
-  usage: Usage
+  usage: Usage,
+  /** When the request happened. Given only when restoring an export, so the
+   *  daily statistics land on the day it was actually paid for. */
+  createdAt = Date.now()
 ): void {
   getDb()
     .prepare(
@@ -681,7 +707,7 @@ export function recordUsage(
       usage.timeToFirstTokenMs,
       usage.tokensPerSecond,
       usage.generationId,
-      Date.now()
+      createdAt
     )
 }
 
@@ -695,6 +721,8 @@ export function recordToolInvocation(input: {
   durationMs: number
   /** Characters returned to the model, which is what it costs in context. */
   resultChars?: number
+  /** Given only when restoring an export, so the call keeps its own date. */
+  createdAt?: number
 }): void {
   getDb()
     .prepare(
@@ -711,9 +739,33 @@ export function recordToolInvocation(input: {
       input.toolName,
       input.isError ? 1 : 0,
       input.durationMs,
-      Date.now(),
+      input.createdAt ?? Date.now(),
       input.resultChars ?? 0
     )
+}
+
+/** Every tool call in a thread, oldest first — what an export has to carry. */
+export function listToolInvocations(threadId: string): ToolInvocationRecord[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT message_id, source, server_id, tool_name, is_error, duration_ms, result_chars,
+              created_at
+         FROM tool_invocations
+        WHERE thread_id = ?
+        ORDER BY created_at`
+    )
+    .all(threadId) as ToolInvocationRow[]
+
+  return rows.map((row) => ({
+    messageId: row.message_id,
+    source: row.source,
+    serverId: row.server_id,
+    toolName: row.tool_name,
+    isError: row.is_error === 1,
+    durationMs: row.duration_ms,
+    resultChars: row.result_chars,
+    createdAt: row.created_at
+  }))
 }
 
 /* ------------------------------------------------------------------ *

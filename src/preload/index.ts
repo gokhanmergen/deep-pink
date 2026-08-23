@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  ExportFormat,
   Folder,
   GlobalStats,
   McpServerConfig,
@@ -144,10 +145,12 @@ const api = {
     path: (): Promise<string> => ipcRenderer.invoke('data:path'),
     reveal: (): Promise<void> => ipcRenderer.invoke('data:reveal'),
     wipe: (): Promise<void> => ipcRenderer.invoke('data:wipe'),
-    exportThread: (
-      threadId: string
-    ): Promise<{ thread: Thread; messages: Message[]; exportedAt: string } | null> =>
-      ipcRenderer.invoke('data:exportThread', threadId)
+    /**
+     * Asks where to put the file, writes it, and answers with the path it was
+     * saved to — or null if the dialog was dismissed.
+     */
+    exportThread: (threadId: string, format: ExportFormat): Promise<string | null> =>
+      ipcRenderer.invoke('data:exportThread', threadId, format)
   },
 
   app: {
@@ -166,7 +169,11 @@ const api = {
   import: {
     /** Opens a file picker; returns the chosen path, or null if cancelled. */
     choose: (): Promise<string | null> => ipcRenderer.invoke('import:choose'),
-    /** Reads the export and reports what would happen, changing nothing. */
+    /**
+     * Reads the file and reports what would happen, changing nothing. Takes a
+     * ChatGPT export or a thread exported from Deep Pink; which it is comes
+     * back in `kind`.
+     */
     preview: (path: string): Promise<ImportPreview> => ipcRenderer.invoke('import:preview', path),
     run: (path: string): Promise<ImportResult> => ipcRenderer.invoke('import:run', path)
   },

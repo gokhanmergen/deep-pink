@@ -5,7 +5,15 @@ import { getDb } from '../db/index'
 import * as repo from '../db/repo'
 import * as attachments from '../attachments'
 import type { ImportPreview, ImportResult } from '@shared/types'
+import { looksLikeArchive, parseArchive, type ArchiveReport } from '../export/archive'
+import { importArchive, previewArchive } from './archive'
 import { assetIdFrom, parseExport, type ParsedConversation, type ParseReport } from './chatgpt'
+
+/**
+ * The front door for anything read off disk: a ChatGPT export, or a thread this
+ * app wrote itself. Which one it is is decided by looking inside rather than by
+ * asking the user, because a file knows what it is and they should not have to.
+ */
 
 const MIME_BY_EXT: Record<string, string> = {
   '.png': 'image/png',
@@ -23,8 +31,8 @@ interface LoadedExport {
 }
 
 /**
- * Accepts either the whole export archive or a bare `conversations.json`.
- * People unpack the zip about as often as they don't.
+ * Accepts either the whole ChatGPT export archive or a bare
+ * `conversations.json`. People unpack the zip about as often as they don't.
  */
 export function loadExport(path: string): LoadedExport {
   const filename = basename(path)
@@ -52,7 +60,39 @@ export function loadExport(path: string): LoadedExport {
     return { report: parseExport(json), assets, filename }
   }
 
-  return { report: parseExport(JSON.parse(raw.toString('utf8')) as unknown), assets, filename }
+  return { report: parseExport(readJson(raw) as unknown), assets, filename }
+}
+
+function readJson(raw: Buffer): unknown {
+  try {
+    return JSON.parse(raw.toString('utf8'))
+  } catch {
+    throw new Error('That file is not readable JSON — choose a ChatGPT export or a Deep Pink thread.')
+  }
+}
+
+/**
+ * What a chosen file turned out to be, read once so a preview and the import
+ * that follows it cannot disagree about what they are looking at.
+ */
+type Chosen =
+  | { kind: 'chatgpt'; filename: string; loaded: LoadedExport }
+  | { kind: 'deep-pink'; filename: string; report: ArchiveReport }
+
+function load(path: string): Chosen {
+  const filename = basename(path)
+
+  // Only ChatGPT ships a zip; anything else is JSON, and JSON is where the two
+  // formats have to be told apart. Parsed once here rather than sniffed and
+  // then read again — a year of ChatGPT is a large file to read twice.
+  if (extname(path).toLowerCase() !== '.zip') {
+    const json = readJson(readFileSync(path))
+    return looksLikeArchive(json)
+      ? { kind: 'deep-pink', filename, report: parseArchive(json) }
+      : { kind: 'chatgpt', filename, loaded: { report: parseExport(json), assets: new Map(), filename } }
+  }
+
+  return { kind: 'chatgpt', filename, loaded: loadExport(path) }
 }
 
 function alreadyImportedIds(sourceIds: string[]): Set<string> {
@@ -72,6 +112,7 @@ function summarise(loaded: LoadedExport): ImportPreview {
 
   const times = conversations.map((c) => c.createdAt).filter((t) => t > 0)
   return {
+    kind: 'chatgpt',
     filename: loaded.filename,
     conversations: conversations.length,
     messages: conversations.reduce((n, c) => n + c.messages.length, 0),
@@ -79,17 +120,35 @@ function summarise(loaded: LoadedExport): ImportPreview {
     oldest: times.length ? Math.min(...times) : null,
     newest: times.length ? Math.max(...times) : null,
     skipped,
-    imagesFound: loaded.assets.size
+    imagesFound: loaded.assets.size,
+    // ChatGPT names models this app cannot route to anyway, and an imported
+    // thread is left on your default rather than pointed at one of them, so
+    // there is nothing here to warn about.
+    unavailableModels: []
   }
 }
 
-/** Reads the file and reports what would happen, without writing anything. */
-export function preview(path: string): ImportPreview {
-  return summarise(loadExport(path))
+/**
+ * Reads the file and reports what would happen, without writing anything.
+ *
+ * `knownModels` is the OpenRouter catalogue as this account sees it, passed in
+ * rather than fetched so that reading a file never depends on the network.
+ * Null means it could not be checked.
+ */
+export function preview(path: string, knownModels: Set<string> | null = null): ImportPreview {
+  const chosen = load(path)
+  return chosen.kind === 'deep-pink'
+    ? previewArchive(chosen.report, chosen.filename, knownModels)
+    : summarise(chosen.loaded)
 }
 
-export function importFile(path: string): ImportResult {
-  const loaded = loadExport(path)
+export function importFile(path: string, knownModels: Set<string> | null = null): ImportResult {
+  const chosen = load(path)
+  if (chosen.kind === 'deep-pink') {
+    return importArchive(chosen.report, chosen.filename, knownModels)
+  }
+
+  const loaded = chosen.loaded
   const base = summarise(loaded)
   const existing = alreadyImportedIds(loaded.report.conversations.map((c) => c.sourceId))
 
@@ -148,5 +207,5 @@ export function importFile(path: string): ImportResult {
     }
   })()
 
-  return { ...base, threadsCreated, messagesCreated, imagesAttached, imagesMissing }
+  return { ...base, threadsCreated, messagesCreated, imagesAttached, imagesMissing, modelsCleared: 0 }
 }

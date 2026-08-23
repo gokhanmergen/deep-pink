@@ -6,6 +6,8 @@ import {
   Blocks,
   ChevronsDownUp,
   Command,
+  FileDown,
+  FileJson,
   Folder as FolderIcon,
   FolderOpen as FolderOpenIcon,
   FolderPlus,
@@ -21,7 +23,7 @@ import {
 } from 'lucide-react'
 import { ICON, ICON_LG } from '../icons'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import { buildActions } from '../actions'
+import { buildActions, exportThread } from '../actions'
 import { formatBinding } from '../keybinds'
 import type { Folder, SearchHit, Thread } from '@shared/types'
 
@@ -314,6 +316,20 @@ export function Sidebar(): React.JSX.Element {
         icon: <RefreshCw {...ICON} />,
         hint: formatBinding(settings?.keybinds['thread.retitle'] ?? 'shift+f2'),
         onSelect: () => void retitleThread(thread.id)
+      },
+      {
+        id: 'export',
+        label: 'Export as Markdown',
+        icon: <FileDown {...ICON} />,
+        hint: formatBinding(settings?.keybinds['thread.export'] ?? 'mod+shift+x'),
+        onSelect: () => void exportThread(thread.id, 'markdown')
+      },
+      {
+        id: 'export-archive',
+        label: 'Export as an archive',
+        icon: <FileJson {...ICON} />,
+        hint: formatBinding(settings?.keybinds['thread.exportArchive'] ?? 'mod+alt+x'),
+        onSelect: () => void exportThread(thread.id, 'archive')
       },
       ...(folder
         ? [

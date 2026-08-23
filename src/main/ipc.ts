@@ -1,7 +1,8 @@
 import { statSync } from 'node:fs'
-import { basename } from 'node:path'
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { basename, join } from 'node:path'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type {
+  ExportFormat,
   Folder,
   McpServerConfig,
   Message,
@@ -17,6 +18,7 @@ import { dbPath } from './db/index'
 import * as mcp from './mcp/host'
 import * as attachments from './attachments'
 import * as importer from './import/index'
+import * as exporter from './export/index'
 import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
@@ -207,15 +209,34 @@ export function registerIpc(): void {
   ipcMain.handle('data:path', () => dbPath())
   ipcMain.handle('data:reveal', () => shell.showItemInFolder(dbPath()))
   ipcMain.handle('data:wipe', () => repo.wipeAllData())
-  ipcMain.handle('data:exportThread', (_e, threadId: string) => {
-    const thread = repo.getThread(threadId)
-    if (!thread) return null
-    return {
-      thread,
-      messages: repo.getMessages(threadId, true),
-      exportedAt: new Date().toISOString()
+  /**
+   * Writes a thread to a file the user chooses.
+   *
+   * The save dialog is here rather than a download in the renderer because a
+   * download lands wherever Chromium decides, with no say from anyone; this
+   * asks, and returns where it went so the app can say so.
+   */
+  ipcMain.handle(
+    'data:exportThread',
+    async (event, threadId: string, format: ExportFormat): Promise<string | null> => {
+      const file = exporter.fileFor(threadId, format, __APP_VERSION__)
+      if (!file) return null
+
+      const window = BrowserWindow.fromWebContents(event.sender)
+      const result = await dialog.showSaveDialog(window ?? BrowserWindow.getAllWindows()[0], {
+        title: format === 'markdown' ? 'Export as Markdown' : 'Export thread',
+        defaultPath: join(app.getPath('downloads'), file.filename),
+        filters:
+          format === 'markdown'
+            ? [{ name: 'Markdown', extensions: ['md'] }]
+            : [{ name: 'Deep Pink thread', extensions: ['json'] }]
+      })
+      if (result.canceled || !result.filePath) return null
+
+      exporter.write(result.filePath, file.contents)
+      return result.filePath
     }
-  })
+  )
 
   /* ---------------- about ---------------- */
 
@@ -264,19 +285,36 @@ export function registerIpc(): void {
   ipcMain.handle('import:choose', async (event): Promise<string | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const result = await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0], {
-      title: 'Choose a ChatGPT export',
-      message: 'Select the .zip you downloaded, or conversations.json from inside it',
+      title: 'Import conversations',
+      message: 'A ChatGPT export, or a thread exported from Deep Pink',
       properties: ['openFile'],
       filters: [
-        { name: 'ChatGPT export', extensions: ['zip', 'json'] },
+        { name: 'Conversations', extensions: ['zip', 'json'] },
         { name: 'All files', extensions: ['*'] }
       ]
     })
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
-  ipcMain.handle('import:preview', (_e, path: string) => importer.preview(path))
-  ipcMain.handle('import:run', (_e, path: string) => importer.importFile(path))
+  /**
+   * Which models this account can actually reach, so an import can say when a
+   * thread names one it cannot. Null when the catalogue could not be fetched —
+   * an import must not fail, or lie, because the network is down.
+   */
+  async function knownModels(): Promise<Set<string> | null> {
+    try {
+      return new Set((await listModels()).map((model) => model.id))
+    } catch {
+      return null
+    }
+  }
+
+  ipcMain.handle('import:preview', async (_e, path: string) =>
+    importer.preview(path, await knownModels())
+  )
+  ipcMain.handle('import:run', async (_e, path: string) =>
+    importer.importFile(path, await knownModels())
+  )
 
   /* ---------------- window ---------------- */
 

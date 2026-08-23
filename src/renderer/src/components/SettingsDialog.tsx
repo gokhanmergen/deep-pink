@@ -750,13 +750,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </div>
             </div>
 
-            <div className="section-title">Import from ChatGPT</div>
+            <div className="section-title">Import conversations</div>
             <div className="field">
               <span className="field__hint">
-                In ChatGPT: Settings → Data controls → Export data. They email you a link; choose
-                the <span className="mono">.zip</span> here, or{' '}
-                <span className="mono">conversations.json</span> from inside it. Nothing is
-                uploaded — the file is read on this machine.
+                Two kinds of file are read here, and which one you chose is worked out from the
+                file itself. A thread exported from Deep Pink — its name, its settings, every
+                message and what each cost — comes back whole. A ChatGPT export (Settings → Data
+                controls → Export data) arrives as a <span className="mono">.zip</span>; choose
+                that, or <span className="mono">conversations.json</span> from inside it. Nothing
+                is uploaded — the file is read on this machine.
               </span>
               <div className="row">
                 <button
@@ -789,7 +791,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <div className="spread" style={{ marginBottom: 8 }}>
                   <strong className="mono">{importPreview.filename}</strong>
                   <span className="chip">
-                    {importPreview.conversations.toLocaleString()} conversations
+                    {importPreview.kind === 'deep-pink' ? 'Deep Pink' : 'ChatGPT'} ·{' '}
+                    {importPreview.conversations.toLocaleString()}{' '}
+                    {importPreview.conversations === 1 ? 'conversation' : 'conversations'}
                   </span>
                 </div>
                 <div className="dim" style={{ fontSize: 12, lineHeight: 1.6 }}>
@@ -814,8 +818,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                       conversation.
                     </>
                   )}
+                  {importPreview.unavailableModels.length > 0 && (
+                    <>
+                      <br />
+                      OpenRouter is not offering you{' '}
+                      <span className="mono">{importPreview.unavailableModels.join(', ')}</span>. A
+                      thread set to one of those is imported all the same and follows your default
+                      model; what each reply was answered by is left as it was.
+                    </>
+                  )}
                   <br />
-                  Imported chats carry no cost, so your statistics stay accurate.
+                  {importPreview.kind === 'deep-pink'
+                    ? 'Costs recorded in the file are restored with it, so your statistics match the library it came from.'
+                    : 'Imported chats carry no cost, so your statistics stay accurate.'}
                 </div>
                 <div className="row" style={{ marginTop: 10 }}>
                   <button
@@ -872,6 +887,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     <>
                       {importResult.imagesMissing} images were referenced but not present in the
                       archive.{' '}
+                    </>
+                  )}
+                  {importResult.modelsCleared > 0 && (
+                    <>
+                      {importResult.modelsCleared}{' '}
+                      {importResult.modelsCleared === 1 ? 'thread' : 'threads'} named a model you do
+                      not have and will use your default until you change it.{' '}
                     </>
                   )}
                   {importResult.alreadyImported > 0 && (

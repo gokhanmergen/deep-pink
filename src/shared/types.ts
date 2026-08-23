@@ -537,8 +537,23 @@ export interface CompactionStatus {
 }
 
 /* ------------------------------------------------------------------ *
- * Importing from other clients
+ * Exporting a thread
  * ------------------------------------------------------------------ */
+
+/**
+ * `markdown` is for reading and for anywhere that renders Markdown; it is a
+ * transcript, not a backup. `archive` is the format this app can read back —
+ * the thread's name, its settings, every message and its cost — so a
+ * conversation can move between machines without losing anything.
+ */
+export type ExportFormat = 'markdown' | 'archive'
+
+/* ------------------------------------------------------------------ *
+ * Importing from other clients, and from Deep Pink itself
+ * ------------------------------------------------------------------ */
+
+/** Which reader a chosen file was recognised by. */
+export type ImportKind = 'chatgpt' | 'deep-pink'
 
 export interface ImportSkipped {
   hiddenOrSystem: number
@@ -549,6 +564,7 @@ export interface ImportSkipped {
 
 /** What an export contains, reported before anything is written. */
 export interface ImportPreview {
+  kind: ImportKind
   filename: string
   conversations: number
   messages: number
@@ -558,6 +574,13 @@ export interface ImportPreview {
   newest: number | null
   skipped: ImportSkipped
   imagesFound: number
+  /**
+   * Models the file names that OpenRouter is not offering you — retired, or
+   * never on your account. A thread set to one of them is imported all the
+   * same and falls back to your default model; what each message was answered
+   * by is left alone, because that is a record of what happened.
+   */
+  unavailableModels: string[]
 }
 
 export interface ImportResult extends ImportPreview {
@@ -565,6 +588,8 @@ export interface ImportResult extends ImportPreview {
   messagesCreated: number
   imagesAttached: number
   imagesMissing: number
+  /** Threads whose model was unavailable and now follow your default. */
+  modelsCleared: number
 }
 
 /** Build identity, read from Electron rather than written down. */

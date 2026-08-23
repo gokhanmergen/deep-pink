@@ -84,7 +84,9 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   'thread.pin': 'mod+shift+p',
   'thread.archive': 'mod+shift+a',
   'thread.branch': 'mod+shift+d',
+  // Markdown to read, and the archive that can be read back in.
   'thread.export': 'mod+shift+x',
+  'thread.exportArchive': 'mod+alt+x',
   'thread.next': 'alt+down',
   'thread.prev': 'alt+up',
 

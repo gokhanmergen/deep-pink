@@ -1,3 +1,4 @@
+import type { ExportFormat } from '@shared/types'
 import { useStore } from './store'
 import { COMPOSER_ID } from './components/Composer'
 
@@ -22,6 +23,24 @@ function focusComposer(): void {
  */
 function zoom(direction: 'in' | 'out' | 'reset'): void {
   void window.deepPink.window.zoom(direction)
+}
+
+/**
+ * Writes a thread to a file, and says where it went.
+ *
+ * Exported here rather than kept private because the sidebar's context menu
+ * runs it against the thread under the pointer, which is not always the open
+ * one the actions below work on.
+ */
+export async function exportThread(threadId: string, format: ExportFormat): Promise<void> {
+  const store = useStore.getState()
+  try {
+    const path = await window.deepPink.data.exportThread(threadId, format)
+    // Null means the save dialog was dismissed, which needs no comment.
+    if (path) store.showToast(`Saved as ${path.split(/[\\/]/).pop()}`)
+  } catch (err) {
+    store.showToast(err instanceof Error ? err.message : String(err), 'error')
+  }
 }
 
 /**
@@ -103,20 +122,15 @@ export function buildActions(): AppAction[] {
     },
     {
       id: 'thread.export',
-      label: 'Export thread as JSON',
+      label: 'Export thread as Markdown',
       group: 'Threads',
-      run: requireThread(async (id) => {
-        const data = await window.deepPink.data.exportThread(id)
-        if (!data) return
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        anchor.download = `${(data.thread.title || 'thread').replace(/[^\w -]/g, '')}.json`
-        anchor.click()
-        URL.revokeObjectURL(url)
-        store.showToast('Thread exported')
-      })
+      run: requireThread((id) => exportThread(id, 'markdown'))
+    },
+    {
+      id: 'thread.exportArchive',
+      label: 'Export thread as a file you can import back',
+      group: 'Threads',
+      run: requireThread((id) => exportThread(id, 'archive'))
     },
     // Both walk the list as the sidebar is showing it, so they agree with what
     // is on screen, search results included.

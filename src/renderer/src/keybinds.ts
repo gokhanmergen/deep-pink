@@ -114,7 +114,8 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
       { id: 'thread.pin', label: 'Pin / unpin thread' },
       { id: 'thread.archive', label: 'Archive thread' },
       { id: 'thread.branch', label: 'Branch from message' },
-      { id: 'thread.export', label: 'Export thread as JSON' },
+      { id: 'thread.export', label: 'Export thread as Markdown' },
+      { id: 'thread.exportArchive', label: 'Export thread as an archive' },
       { id: 'thread.next', label: 'Next thread' },
       { id: 'thread.prev', label: 'Previous thread' }
     ]
