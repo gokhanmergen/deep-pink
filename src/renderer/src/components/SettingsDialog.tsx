@@ -511,18 +511,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
             </div>
 
-            <div className="field">
-              <span className="field__label">Why this is not HTML</span>
-              <span className="field__hint">
-                Because HTML from a model is a script, a remote image or a stylesheet away from
-                being a problem, and being right about a sanitiser forever is not a promise
-                worth making. Nothing here is parsed as markup: the JSON is validated, clamped
-                and handed to components, so a chart cannot run anything, load anything, or
-                reach outside the message it is in. Anything that fails to validate stays a
-                code block.
-              </span>
-            </div>
-
             <details className="disclosure">
               <summary className="disclosure__summary">
                 <span className="chip">system prompt</span>
