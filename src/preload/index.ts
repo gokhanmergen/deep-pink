@@ -21,6 +21,7 @@ import type {
   SettingsPatch,
   StreamEvent,
   SyncConfig,
+  SyncProgress,
   SyncResult,
   SyncState,
   Thread,
@@ -214,6 +215,13 @@ const api = {
       const handler = (_e: unknown, payload: SyncState): void => listener(payload)
       ipcRenderer.on('sync:event', handler)
       return () => ipcRenderer.removeListener('sync:event', handler)
+    },
+
+    /** Fires as a run works, for the progress bar. Throttled in the main process. */
+    onProgress: (listener: (progress: SyncProgress) => void): (() => void) => {
+      const handler = (_e: unknown, payload: SyncProgress): void => listener(payload)
+      ipcRenderer.on('sync:progress', handler)
+      return () => ipcRenderer.removeListener('sync:progress', handler)
     },
 
     /** Fires when a sync brought something in, so the window can catch up. */

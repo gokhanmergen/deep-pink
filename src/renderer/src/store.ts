@@ -10,6 +10,8 @@ import type {
   Settings,
   SettingsPatch,
   StreamEvent,
+  SyncProgress,
+  SyncState,
   Thread,
   ThreadConfig,
   ToolCall
@@ -119,6 +121,13 @@ interface State {
    * outlives the row that opened it — a re-render mid-stream must not close it.
    */
   imageViewer: { images: Attachment[]; index: number } | null
+  /**
+   * Sync, held here rather than in the settings panel: the sidebar shows it
+   * too, and two copies of "is it running" would eventually disagree.
+   */
+  sync: SyncState | null
+  /** Where the current run has got to, or null between runs. */
+  syncProgress: SyncProgress | null
 
   init: () => Promise<void>
   refreshThreads: () => Promise<void>
@@ -172,6 +181,9 @@ interface State {
   closeImageViewer: () => void
   /** Moves to the next image along, wrapping at either end. */
   stepImageViewer: (delta: number) => void
+  refreshSync: () => Promise<SyncState | null>
+  /** Syncs now, and reports what happened. */
+  runSync: () => Promise<void>
   /** Resolves true if the user confirms. */
   askConfirm: (options: ConfirmOptions) => Promise<boolean>
   /** Resolves the entered text, or null if cancelled. */
@@ -224,6 +236,8 @@ export const useStore = create<State>((set, get) => ({
   dialog: null,
   highlightMessageId: null,
   imageViewer: null,
+  sync: null,
+  syncProgress: null,
 
   async init() {
     if (initialised) return
@@ -248,6 +262,13 @@ export const useStore = create<State>((set, get) => ({
     // A sync that brought something in has changed the library underneath the
     // window: the list, the open thread and the settings all have to catch up,
     // which is the whole of what "seamless" means here.
+    void get().refreshSync()
+
+    unsubscribers.push(
+      api.sync.onState((state) => set({ sync: state, syncProgress: state.running ? get().syncProgress : null }))
+    )
+    unsubscribers.push(api.sync.onProgress((progress) => set({ syncProgress: progress })))
+
     unsubscribers.push(
       api.sync.onChanged(() => {
         void (async () => {
@@ -626,6 +647,27 @@ export const useStore = create<State>((set, get) => ({
 
   closeImageViewer() {
     set({ imageViewer: null })
+  },
+
+  async refreshSync() {
+    const state = await api.sync.state()
+    set({ sync: state })
+    return state
+  },
+
+  async runSync() {
+    const result = await api.sync.run()
+    await get().refreshSync()
+    if (result.error) {
+      get().showToast(result.error, 'error')
+      return
+    }
+    get().showToast(
+      result.pushed === 0 && result.pulled === 0 && result.deleted === 0
+        ? 'Already up to date'
+        : `Sent ${result.pushed}, received ${result.pulled}` +
+            (result.deleted ? `, removed ${result.deleted}` : '')
+    )
   },
 
   stepImageViewer(delta) {

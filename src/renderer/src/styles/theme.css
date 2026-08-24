@@ -2613,3 +2613,135 @@ svg.lucide {
 .attachment {
   cursor: zoom-in;
 }
+
+/* ------------------------------------------------------------------ *
+ * The sync line
+ *
+ * Sync is meant to be unnoticeable, so its one visible surface is a single
+ * row above the footer: what it is doing, or when it last did it, and a bar
+ * while it is working. Red only when it has actually stopped.
+ * ------------------------------------------------------------------ */
+
+.syncline {
+  display: block;
+  width: 100%;
+  padding: 5px 12px 6px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  text-align: left;
+  transition: color 0.12s, background 0.12s;
+}
+
+.syncline:hover {
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
+.syncline__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+
+.syncline__icon {
+  flex: none;
+}
+
+.syncline[data-state='running'] .syncline__icon {
+  animation: syncline-spin 1.4s linear infinite;
+  color: var(--accent);
+}
+
+.syncline[data-state='error'] {
+  color: var(--red);
+}
+
+@keyframes syncline-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.syncline__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.syncline__count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.syncline__track {
+  display: block;
+  height: 2px;
+  margin-top: 5px;
+  border-radius: 1px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.syncline__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  transition: width 0.2s ease-out;
+}
+
+/* Before there is a count to fill against — listing, mostly — the bar says
+   "working" rather than pretending to a proportion it does not know. */
+.syncline__fill[data-indeterminate='true'] {
+  width: 35%;
+  animation: syncline-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes syncline-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+/* The same bar, at the size a settings panel can give it. */
+.syncbar {
+  height: 4px;
+  margin-top: 10px;
+  border-radius: 2px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.syncbar__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s ease-out;
+}
+
+.syncbar__fill[data-indeterminate='true'] {
+  width: 35%;
+  animation: syncline-sweep 1.1s ease-in-out infinite;
+}
+
+.syncphase {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.syncphase__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  flex: none;
+}

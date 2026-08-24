@@ -149,6 +149,8 @@ export function Sidebar(): React.JSX.Element {
   const askPrompt = useStore((s) => s.askPrompt)
   const retitleThread = useStore((s) => s.retitleThread)
   const settings = useStore((s) => s.settings)
+  const sync = useStore((s) => s.sync)
+  const syncProgress = useStore((s) => s.syncProgress)
   const setVisibleThreads = useStore((s) => s.setVisibleThreads)
   const toggleFolder = useStore((s) => s.toggleFolder)
   const renameFolder = useStore((s) => s.renameFolder)
@@ -657,6 +659,56 @@ export function Sidebar(): React.JSX.Element {
           items={folderMenuItems(folderMenu.folder)}
           onClose={() => setFolderMenu(null)}
         />
+      )}
+
+      {sync?.config.enabled && sync.ready && (
+        // Sync is meant to be invisible, so the one place it is visible has to
+        // say everything at a glance: what it is doing, when it last worked,
+        // and — the only part that needs a person — whether it stopped.
+        <button
+          className="syncline"
+          data-state={syncProgress && sync.running ? 'running' : sync.lastError ? 'error' : 'idle'}
+          onClick={() => setOverlay('settings')}
+          title={
+            sync.lastError
+              ? `Sync: ${sync.lastError}`
+              : sync.lastSyncedAt
+                ? `Last synced ${formatDateTime(sync.lastSyncedAt)}`
+                : 'Not synced yet'
+          }
+          type="button"
+        >
+          <span className="syncline__row">
+            <RefreshCw className="syncline__icon" {...ICON} />
+            <span className="syncline__text">
+              {sync.running
+                ? (syncProgress?.detail ?? 'syncing…')
+                : sync.lastError
+                  ? 'sync stopped'
+                  : sync.lastSyncedAt
+                    ? `synced ${formatRelativeShort(sync.lastSyncedAt)}`
+                    : 'not synced yet'}
+            </span>
+            {sync.running && syncProgress && syncProgress.total > 1 && (
+              <span className="syncline__count">
+                {syncProgress.done}/{syncProgress.total}
+              </span>
+            )}
+          </span>
+          {sync.running && (
+            <span className="syncline__track">
+              <span
+                className="syncline__fill"
+                data-indeterminate={!syncProgress || syncProgress.total < 1}
+                style={
+                  syncProgress && syncProgress.total > 0
+                    ? { width: `${Math.min((syncProgress.done / syncProgress.total) * 100, 100)}%` }
+                    : undefined
+                }
+              />
+            </span>
+          )}
+        </button>
       )}
 
       <div className="sidebar__footer">

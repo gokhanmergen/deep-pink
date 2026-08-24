@@ -13,6 +13,8 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   const chatListeners = []
   const mcpListeners = []
   const syncListeners = []
+  const syncStateListeners = []
+  const syncProgressListeners = []
   let persisted = []
   let liveStreams = []
   // Stands in for the folders table, so the store's optimism can be checked
@@ -92,6 +94,23 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
         }
       },
       sync: {
+        state: async () => ({
+          config: { enabled: false, scopes: { conversations: true, settings: true } },
+          hasKey: false,
+          ready: false,
+          running: false,
+          lastSyncedAt: null,
+          lastError: null,
+          lastResult: null
+        }),
+        onState: (fn) => {
+          syncStateListeners.push(fn)
+          return () => syncStateListeners.splice(syncStateListeners.indexOf(fn), 1)
+        },
+        onProgress: (fn) => {
+          syncProgressListeners.push(fn)
+          return () => syncProgressListeners.splice(syncProgressListeners.indexOf(fn), 1)
+        },
         onChanged: (fn) => {
           syncListeners.push(fn)
           return () => syncListeners.splice(syncListeners.indexOf(fn), 1)
@@ -382,6 +401,16 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
 
   section('a sync that brought something in refreshes the window')
   check('the store subscribed to it', syncListeners.length === 1, syncListeners.length)
+  check('and to what a run is doing', syncStateListeners.length === 1 && syncProgressListeners.length === 1)
+
+  // Progress arrives far more often than anything else, so it must land in the
+  // store without dragging the rest of the window through a render.
+  syncProgressListeners[0]({ phase: 'sending', detail: 'handing over', done: 3, total: 9, pushed: 3, pulled: 0, deleted: 0 })
+  check('progress is kept', state().syncProgress?.done === 3, state().syncProgress)
+
+  syncStateListeners[0]({ ...(await window.deepPink.sync.state()), running: false, lastError: 'nope' })
+  check('so is the state a run left behind', state().sync?.lastError === 'nope', state().sync)
+  check('and the progress of a finished run is cleared', state().syncProgress === null)
 
   // What a pull looks like from in here: the database changed underneath, and
   // nothing on screen knows until the event says so.
@@ -413,5 +442,11 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   check('a bare 1 does not match it', !matchesBinding(press('1'), 'alt+1'))
 
   check('disposing removes the listeners', chatListeners.length === 0)
-  check('every one of them', syncListeners.length === 0 && mcpListeners.length === 0)
+  check(
+    'every one of them',
+    syncListeners.length === 0 &&
+      mcpListeners.length === 0 &&
+      syncStateListeners.length === 0 &&
+      syncProgressListeners.length === 0
+  )
 })

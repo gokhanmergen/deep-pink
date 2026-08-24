@@ -11,7 +11,7 @@ const { suite, settle } = require('./support/harness')
 suite(
   'sync — setting it up',
   async ({ check, section, subject, getWindow }) => {
-    const { getDb } = subject
+    const { getDb, syncEngine } = subject
     getDb()
 
     const win = getWindow()
@@ -111,10 +111,103 @@ suite(
       scopes
     )
 
+    section('the line in the sidebar')
+    // Configured from the main process and pushed into the window over the
+    // real channel, so the renderer half is exercised without a network.
+    syncEngine.setS3Secret('test-secret')
+    syncEngine.saveConfig({
+      enabled: true,
+      endpoint: 'https://s3.example.com',
+      bucket: 'b',
+      accessKeyId: 'K',
+      deviceName: 'This one'
+    })
+    const announce = (state) =>
+      win.webContents.send('sync:event', state ?? syncEngine.state())
+    announce()
+    await settle(300)
+
+    const line = () => run(`(() => {
+      const el = document.querySelector('.syncline')
+      if (!el) return { shown: false }
+      const fill = el.querySelector('.syncline__fill')
+      return {
+        shown: true,
+        state: el.dataset.state,
+        text: el.querySelector('.syncline__text').textContent.trim(),
+        count: el.querySelector('.syncline__count')?.textContent?.trim() ?? null,
+        width: fill?.style.width ?? null,
+        indeterminate: fill?.dataset.indeterminate ?? null
+      }
+    })()`)
+
+    const idle = await line()
+    check('it appears once sync could actually run', idle.shown === true, idle)
+    check('and says it has not synced yet', /not synced/.test(idle.text), idle)
+    check('with no bar, because nothing is happening', idle.width === null, idle)
+
+    section('the progress bar')
+    win.webContents.send('sync:event', { ...syncEngine.state(), running: true })
+    win.webContents.send('sync:progress', {
+      phase: 'listing',
+      detail: 'looking for the other machines',
+      done: 0,
+      total: 0,
+      pushed: 0,
+      pulled: 0,
+      deleted: 0
+    })
+    await settle(300)
+
+    const listing = await line()
+    check('the line says what it is doing', listing.text === 'looking for the other machines', listing)
+    check('and shows it is working', listing.state === 'running', listing)
+    check(
+      'with a bar that does not pretend to a proportion it has not got',
+      listing.indeterminate === 'true',
+      listing
+    )
+
+    win.webContents.send('sync:progress', {
+      phase: 'sending',
+      detail: 'handing over what is newer here',
+      done: 5,
+      total: 20,
+      pushed: 5,
+      pulled: 0,
+      deleted: 0
+    })
+    await settle(300)
+
+    const sending = await line()
+    check('once there is a total, the bar fills to it', sending.width === '25%', sending)
+    check('and the count is on screen', sending.count === '5/20', sending)
+
+    const panelBar = await run(`(() => {
+      const fill = document.querySelector('.syncbar__fill')
+      const phase = document.querySelector('.syncphase')
+      return { width: fill?.style.width ?? null, text: phase?.textContent?.trim() ?? null }
+    })()`)
+    check('the settings panel shows the same run', panelBar.width === '25%', panelBar)
+    check('and names the step', /handing over/.test(panelBar.text ?? ''), panelBar)
+
+    section('when it stops')
+    win.webContents.send('sync:event', {
+      ...syncEngine.state(),
+      running: false,
+      lastError: 'No bucket at https://s3.example.com/b'
+    })
+    await settle(300)
+
+    const failed = await line()
+    check('the line goes to an error state', failed.state === 'error', failed)
+    check('and says so in words', /stopped/.test(failed.text), failed)
+    check('the bar is gone with the run', failed.width === null, failed)
+
     section('status')
     const status = await run(`document.querySelector('.panel__body .list-card')?.textContent ?? ''`)
-    check('it says it has not synced yet', /Not synced yet/.test(status), status)
-    check('and what is still missing', /No bucket credentials yet/.test(status), status)
+    check('the card says it has not synced yet', /Not synced yet/.test(status), status)
+    check('and reports what stopped it', /No bucket at/.test(status), status)
   },
   { bootApp: true }
 )

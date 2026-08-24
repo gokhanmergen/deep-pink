@@ -372,10 +372,66 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
     scopes: { conversations: true, settings: true }
   })
 
+  // Used by the progress checks below, which need something to send again.
+  const becomeFirstMachineAgain = () => {
+    getDb().exec("DELETE FROM settings WHERE key = 'sync.manifest'")
+  }
+
   const first = await syncEngine.run({ fetcher: store.fetcher })
   check('it ran without error', first.error === null, first.error)
   check('and sent something', first.pushed > 0, first)
   check('objects are in the bucket', store.objects.size > 0, store.objects.size)
+
+  section('it says where it has got to')
+  // A first sync of a long library is thousands of objects; a bar that only
+  // appears at the end is a spinner with extra steps.
+  const seenPhases = []
+  becomeFirstMachineAgain()
+  await syncEngine.run({
+    fetcher: store.fetcher,
+    onProgress: (progress) => seenPhases.push(progress)
+  })
+
+  check('it reports as it goes', seenPhases.length > 3, seenPhases.length)
+  check(
+    'starting by finding the other machines',
+    seenPhases[0].phase === 'listing',
+    seenPhases[0]
+  )
+  check(
+    'and ending when it is done',
+    seenPhases[seenPhases.length - 1].phase === 'done',
+    seenPhases[seenPhases.length - 1]
+  )
+  check(
+    'every step says what it is doing',
+    seenPhases.every((p) => typeof p.detail === 'string' && p.detail.length > 0)
+  )
+  check(
+    'a sending step has something to count against',
+    seenPhases.some((p) => p.phase === 'sending' && p.total > 0),
+    seenPhases.filter((p) => p.phase === 'sending').slice(0, 3)
+  )
+  check(
+    'and never counts past its own total',
+    seenPhases.every((p) => p.done <= p.total || p.total === 0),
+    seenPhases.filter((p) => p.done > p.total && p.total > 0)
+  )
+  check(
+    'the running totals only ever grow',
+    seenPhases.every((p, i) => i === 0 || p.pushed >= seenPhases[i - 1].pushed)
+  )
+
+  const failedProgress = []
+  await syncEngine.run({
+    fetcher: async () => new Response('', { status: 500 }),
+    onProgress: (progress) => failedProgress.push(progress)
+  })
+  check(
+    'a run that fails says so through the same channel',
+    failedProgress[failedProgress.length - 1]?.phase === 'error',
+    failedProgress[failedProgress.length - 1]
+  )
 
   section('and the bucket knows nothing about any of it')
   check('not the thread title', leaks(store, 'Rust ownership') === null, leaks(store, 'Rust ownership'))

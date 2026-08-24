@@ -646,6 +646,24 @@ export interface SyncResult {
   error: string | null
 }
 
+/**
+ * Where a run has got to.
+ *
+ * Sent while it works rather than only at the end: a first sync of a long
+ * library is thousands of objects, and a spinner that says nothing for two
+ * minutes is indistinguishable from one that has hung.
+ */
+export interface SyncProgress {
+  phase: 'listing' | 'receiving' | 'sending' | 'tidying' | 'done' | 'error'
+  done: number
+  total: number
+  /** What it is doing, in words, e.g. "receiving messages". */
+  detail: string
+  pushed: number
+  pulled: number
+  deleted: number
+}
+
 export interface SyncState {
   config: SyncConfig
   hasKey: boolean

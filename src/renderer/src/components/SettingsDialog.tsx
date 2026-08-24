@@ -19,7 +19,7 @@ import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS, DEFAULT_UI } from '@shared/defaults'
 import { modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
-import type { AppInfo, ImportPreview, ImportResult, SyncState } from '@shared/types'
+import type { AppInfo, ImportPreview, ImportResult } from '@shared/types'
 import { formatRelative } from '../format'
 import { CHARTS_PROMPT } from '@shared/charts'
 
@@ -92,18 +92,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importBusy, setImportBusy] = useState(false)
 
-  const [sync, setSync] = useState<SyncState | null>(null)
+  const sync = useStore((s) => s.sync)
+  const syncProgress = useStore((s) => s.syncProgress)
+  const refreshSync = useStore((s) => s.refreshSync)
+  const runSync = useStore((s) => s.runSync)
   const [syncBusy, setSyncBusy] = useState('')
   const [revealed, setRevealed] = useState<string | null>(null)
   const [keyDraft, setKeyDraft] = useState('')
   const [secretDraft, setSecretDraft] = useState('')
 
-  // The panel is the only place sync is visible, so it reads the state when it
-  // opens and then follows whatever the background runs report.
+  // The store keeps this current for the sidebar's line; opening the panel is
+  // a reason to be sure it is fresh.
   useEffect(() => {
-    void window.deepPink.sync.state().then(setSync)
-    return window.deepPink.sync.onState(setSync)
-  }, [])
+    void refreshSync()
+  }, [refreshSync])
 
   useEffect(() => {
     void window.deepPink.data.path().then(setDbLocation)
@@ -552,7 +554,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 checked={sync.config.enabled}
                 disabled={!sync.hasKey || !sync.hasSecret}
                 onChange={async (event) =>
-                  setSync(await window.deepPink.sync.save({ enabled: event.target.checked }))
+                  useStore.setState({ sync: await window.deepPink.sync.save({ enabled: event.target.checked }) })
                 }
               />
               <span>
@@ -624,7 +626,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     onClick={async () => {
                       try {
                         setRevealed(await window.deepPink.sync.createKey())
-                        setSync(await window.deepPink.sync.state())
+                        useStore.setState({ sync: await window.deepPink.sync.state() })
                         showToast('Key generated — copy it to your other machines')
                       } catch (err) {
                         showToast(err instanceof Error ? err.message : String(err), 'error')
@@ -650,7 +652,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     disabled={!keyDraft.trim()}
                     onClick={async () => {
                       try {
-                        setSync(await window.deepPink.sync.importKey(keyDraft))
+                        useStore.setState({ sync: await window.deepPink.sync.importKey(keyDraft) })
                         setKeyDraft('')
                         showToast('Key imported')
                       } catch (err) {
@@ -678,7 +680,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 className="input mono"
                 placeholder="https://<account>.r2.cloudflarestorage.com — leave empty for AWS"
                 value={sync.config.endpoint}
-                onCommit={async (next) => setSync(await window.deepPink.sync.save({ endpoint: next }))}
+                onCommit={async (next) => useStore.setState({ sync: await window.deepPink.sync.save({ endpoint: next }) })}
               />
               <span className="field__hint">
                 The account's S3 URL. Providers often show one with the bucket already on the end
@@ -692,7 +694,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <DebouncedInput
                   className="input mono"
                   value={sync.config.bucket}
-                  onCommit={async (next) => setSync(await window.deepPink.sync.save({ bucket: next }))}
+                  onCommit={async (next) => useStore.setState({ sync: await window.deepPink.sync.save({ bucket: next }) })}
                 />
               </div>
               <div className="field" style={{ width: 130 }}>
@@ -700,7 +702,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <DebouncedInput
                   className="input mono"
                   value={sync.config.region}
-                  onCommit={async (next) => setSync(await window.deepPink.sync.save({ region: next }))}
+                  onCommit={async (next) => useStore.setState({ sync: await window.deepPink.sync.save({ region: next }) })}
                 />
               </div>
             </div>
@@ -711,7 +713,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 className="input mono"
                 value={sync.config.accessKeyId}
                 onCommit={async (next) =>
-                  setSync(await window.deepPink.sync.save({ accessKeyId: next }))
+                  useStore.setState({ sync: await window.deepPink.sync.save({ accessKeyId: next }) })
                 }
               />
             </div>
@@ -730,7 +732,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   className="btn"
                   disabled={!secretDraft.trim()}
                   onClick={async () => {
-                    setSync(await window.deepPink.sync.setSecret(secretDraft))
+                    useStore.setState({ sync: await window.deepPink.sync.setSecret(secretDraft) })
                     setSecretDraft('')
                     showToast('Secret stored')
                   }}
@@ -749,7 +751,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <DebouncedInput
                 className="input mono"
                 value={sync.config.prefix}
-                onCommit={async (next) => setSync(await window.deepPink.sync.save({ prefix: next }))}
+                onCommit={async (next) => useStore.setState({ sync: await window.deepPink.sync.save({ prefix: next }) })}
               />
               <span className="field__hint">
                 The folder inside the bucket. Two different prefixes are two separate libraries.
@@ -783,11 +785,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 type="checkbox"
                 checked={sync.config.scopes.conversations}
                 onChange={async (event) =>
-                  setSync(
-                    await window.deepPink.sync.save({
+                  useStore.setState({ sync: await window.deepPink.sync.save({
                       scopes: { ...sync.config.scopes, conversations: event.target.checked }
-                    })
-                  )
+                    }) })
                 }
               />
               <span>
@@ -803,11 +803,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 type="checkbox"
                 checked={sync.config.scopes.settings}
                 onChange={async (event) =>
-                  setSync(
-                    await window.deepPink.sync.save({
+                  useStore.setState({ sync: await window.deepPink.sync.save({
                       scopes: { ...sync.config.scopes, settings: event.target.checked }
-                    })
-                  )
+                    }) })
                 }
               />
               <span>
@@ -825,7 +823,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 className="input"
                 value={sync.config.deviceName}
                 onCommit={async (next) =>
-                  setSync(await window.deepPink.sync.save({ deviceName: next }))
+                  useStore.setState({ sync: await window.deepPink.sync.save({ deviceName: next }) })
                 }
               />
             </div>
@@ -846,15 +844,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   onClick={async () => {
                     setSyncBusy('run')
                     try {
-                      const result = await window.deepPink.sync.run()
-                      showToast(
-                        result.error
-                          ? result.error
-                          : `Sent ${result.pushed}, received ${result.pulled}` +
-                            (result.deleted ? `, removed ${result.deleted}` : ''),
-                        result.error ? 'error' : 'info'
-                      )
-                      setSync(await window.deepPink.sync.state())
+                      // Through the store, so this panel and the sidebar's
+                      // line are reporting the same run.
+                      await runSync()
                       await refreshSettings()
                     } finally {
                       setSyncBusy('')
@@ -865,6 +857,32 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   {syncBusy === 'run' ? 'Syncing…' : 'Sync now'}
                 </button>
               </div>
+              {sync.running && (
+                <>
+                  <div className="syncphase">
+                    <span>{syncProgress?.detail ?? 'starting…'}</span>
+                    {syncProgress && syncProgress.total > 1 && (
+                      <span className="syncphase__count">
+                        {syncProgress.done} of {syncProgress.total}
+                      </span>
+                    )}
+                  </div>
+                  <div className="syncbar">
+                    <span
+                      className="syncbar__fill"
+                      data-indeterminate={!syncProgress || syncProgress.total < 1}
+                      style={
+                        syncProgress && syncProgress.total > 0
+                          ? {
+                              width: `${Math.min((syncProgress.done / syncProgress.total) * 100, 100)}%`
+                            }
+                          : undefined
+                      }
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="dim" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.6 }}>
                 {!sync.hasKey && <>No key yet — generate or import one above.<br /></>}
                 {sync.hasKey && !sync.hasSecret && <>No bucket credentials yet.<br /></>}
@@ -899,7 +917,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                       danger: true
                     })
                     if (!ok) return
-                    setSync(await window.deepPink.sync.disconnect())
+                    useStore.setState({ sync: await window.deepPink.sync.disconnect() })
                     setRevealed(null)
                     showToast('Disconnected')
                   }}

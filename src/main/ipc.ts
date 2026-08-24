@@ -31,6 +31,7 @@ import { isEncryptionAvailable, setApiKey } from './secrets'
 const CHAT_EVENT = 'chat:event'
 const MCP_STATUS_EVENT = 'mcp:status'
 const SYNC_EVENT = 'sync:event'
+const SYNC_PROGRESS = 'sync:progress'
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -72,8 +73,22 @@ let syncInterval: ReturnType<typeof setInterval> | null = null
 
 async function runSync(): Promise<import('@shared/types').SyncResult> {
   const before = repo.listThreads(true).length
+
+  // Say it has started before the first request goes out, so the indicator
+  // moves on the click rather than after the round trip.
+  broadcast(SYNC_EVENT, sync.state())
+
+  // Throttled: a first sync is one of these per object, and a window redrawing
+  // a progress bar ten thousand times is slower than the upload.
+  let lastSent = 0
   const result = await sync.run({
-    onProgress: () => undefined
+    onProgress: (progress) => {
+      const now = Date.now()
+      const milestone = progress.phase === 'done' || progress.phase === 'error'
+      if (!milestone && now - lastSent < 90) return
+      lastSent = now
+      broadcast(SYNC_PROGRESS, progress)
+    }
   })
 
   broadcast(SYNC_EVENT, sync.state())

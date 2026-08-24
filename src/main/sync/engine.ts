@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
-import type { SyncConfig, SyncResult, SyncScopes, SyncState } from '@shared/types'
+import type {
+  SyncConfig,
+  SyncProgress,
+  SyncResult,
+  SyncScopes,
+  SyncState
+} from '@shared/types'
 import { getDb } from '../db/index'
 import { getSetting, setSetting } from '../db/repo'
 import { getSecret, setSecret } from '../secrets'
@@ -247,8 +253,8 @@ function recordObject(key: Buffer, logical: string, rev: number): string {
 export interface SyncOptions {
   /** Injected by the tests, which have a bucket in memory rather than a network. */
   fetcher?: Fetcher
-  /** Called as work is done, for the progress line in Settings. */
-  onProgress?: (done: number, total: number) => void
+  /** Called as the run moves, for the progress bar. */
+  onProgress?: (progress: SyncProgress) => void
 }
 
 /**
@@ -288,16 +294,35 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
   const client = new S3Client(credentials, options.fetcher)
   const result: SyncResult = { ...empty }
 
+  const report = (
+    phase: SyncProgress['phase'],
+    detail: string,
+    done = 0,
+    total = 0
+  ): void =>
+    options.onProgress?.({
+      phase,
+      detail,
+      done,
+      total,
+      pushed: result.pushed,
+      pulled: result.pulled,
+      deleted: result.deleted
+    })
+
   try {
     /* ---- everyone's manifests, including the copy of ours out there ---- */
 
     const mine = localManifest(config.deviceId, config.deviceName)
     const myName = `${MANIFEST_DIR}${vault.objectName(key, `manifest:${config.deviceId}`)}`
 
+    report('listing', 'looking for the other machines')
     const listed = await client.list(MANIFEST_DIR)
     const theirs: DeviceManifest[] = []
 
+    let read = 0
     for (const object of listed) {
+      report('listing', 'reading what each machine has', read++, listed.length)
       const name = object.key.slice(object.key.lastIndexOf('/') + 1)
       const path = `${MANIFEST_DIR}${name}`
       if (path === myName) continue
@@ -353,7 +378,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     )
 
     for (const [logical, entry] of arriving) {
-      options.onProgress?.(done++, total)
+      report('receiving', 'taking what is newer', done++, total)
 
       const kind = kindOf(logical)
       const id = logical.slice(logical.indexOf(':') + 1)
@@ -401,6 +426,16 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
 
     const entries: Record<string, ManifestEntry> = { ...mine.entries }
     const superseded: string[] = []
+
+    // Counted up front so the bar has something to fill: the first sync of a
+    // long library is thousands of objects, and "sending…" on its own says
+    // nothing about whether to wait or go and make tea.
+    let sent = 0
+    const sending =
+      [...local.records].filter(([logical, rev]) => {
+        const known = entries[logical]
+        return !known || known.deleted || known.rev < rev
+      }).length + [...local.deletions].filter(([logical]) => !entries[logical]?.deleted).length
     // An idle machine should cost one listing and nothing else; re-uploading an
     // unchanged manifest every five minutes is a write per machine per run,
     // forever, for no information.
@@ -409,6 +444,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     for (const [logical, rev] of local.records) {
       const known = entries[logical]
       if (known && !known.deleted && known.rev >= rev) continue
+      report('sending', 'handing over what is newer here', sent++, sending)
 
       const separator = logical.indexOf(':')
       const kind = logical.slice(0, separator) as records.RecordKind
@@ -433,6 +469,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     for (const [logical, deletedAt] of local.deletions) {
       const known = entries[logical]
       if (known?.deleted) continue
+      report('sending', 'passing on what was deleted', sent++, sending)
       if (known && !known.deleted) superseded.push(recordObject(key, logical, known.rev))
       entries[logical] = { rev: deletedAt, deleted: true }
       changed = true
@@ -457,7 +494,11 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
 
     /* ---- collect what nothing points at any more ---- */
 
+    if (superseded.length) report('tidying', 'clearing up old copies', 0, superseded.length)
+
+    let cleared = 0
     for (const path of superseded) {
+      report('tidying', 'clearing up old copies', cleared++, superseded.length)
       try {
         await client.remove(path)
       } catch {
@@ -468,11 +509,12 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
 
     records.pruneDeletions(TOMBSTONE_LIFETIME_MS)
     store({ lastSyncedAt: result.at, lastError: null, lastResult: result })
-    options.onProgress?.(total, total)
+    report('done', 'up to date', 1, 1)
     return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     store({ lastError: message })
+    report('error', message, 0, 0)
     return { ...result, error: message }
   } finally {
     running = false
