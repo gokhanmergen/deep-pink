@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 import type {
   SyncConfig,
+  SyncPause,
   SyncProgress,
   SyncResult,
   SyncScopes,
@@ -83,6 +84,7 @@ export const DEFAULT_SCOPES: SyncScopes = { conversations: true, settings: true 
 function defaults(): StoredSync {
   return {
     enabled: false,
+    pause: null,
     endpoint: '',
     region: 'auto',
     bucket: '',
@@ -166,10 +168,47 @@ function s3Config(config: StoredSync): S3Config | null {
 }
 
 /* ------------------------------------------------------------------ *
- * What the settings panel shows
+ * Pausing
  * ------------------------------------------------------------------ */
 
 let running = false
+/** Set while a run is in flight and a pause arrives, so it stops where it is. */
+let stopRequested = false
+
+/**
+ * Whether syncing is on hold, expiring a pause whose time has come.
+ *
+ * Read rather than scheduled: a machine that was asleep past the end of its
+ * pause should wake up syncing, and a timer would have slept through it.
+ */
+export function paused(): boolean {
+  const pause = stored().pause
+  if (!pause) return false
+  if (pause.until === null || pause.until > Date.now()) return true
+
+  store({ pause: null })
+  return false
+}
+
+/**
+ * Stops syncing for a while, or until told otherwise.
+ *
+ * A run already in flight is asked to stop where it is rather than left to
+ * finish: "pause" that takes another two minutes of uploading is not a pause.
+ * What it has already done is kept — records are immutable in the bucket, so a
+ * half-finished push is a smaller sync, never a broken one.
+ */
+export function pause(until: number | null): SyncState {
+  const next: SyncPause = { until, at: Date.now() }
+  store({ pause: next })
+  if (running) stopRequested = true
+  return state()
+}
+
+export function resume(): SyncState {
+  store({ pause: null })
+  return state()
+}
 
 export function state(): SyncState {
   const config = stored()
@@ -184,7 +223,8 @@ export function state(): SyncState {
       prefix: config.prefix,
       accessKeyId: config.accessKeyId,
       scopes: config.scopes,
-      deviceName: config.deviceName
+      deviceName: config.deviceName,
+      pause: config.pause
     },
     hasKey: Boolean(key),
     // Shown so two machines can be checked against each other at a glance
@@ -192,6 +232,7 @@ export function state(): SyncState {
     keyFingerprint: key ? vault.keyFingerprint(key) : null,
     hasSecret: Boolean(getSecret(S3_SECRET)),
     ready: Boolean(key && s3Config(config)),
+    paused: paused(),
     running,
     lastSyncedAt: config.lastSyncedAt,
     lastError: config.lastError,
@@ -255,6 +296,8 @@ export interface SyncOptions {
   fetcher?: Fetcher
   /** Called as the run moves, for the progress bar. */
   onProgress?: (progress: SyncProgress) => void
+  /** True for the timer's own runs, which a pause holds back. */
+  automatic?: boolean
 }
 
 /**
@@ -268,6 +311,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
   const at = Date.now()
   const empty: SyncResult = {
     at,
+    stopped: false,
     pushed: 0,
     pulled: 0,
     deleted: 0,
@@ -284,6 +328,9 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
   const credentials = s3Config(config)
 
   if (!config.enabled) return { ...empty, error: 'Sync is switched off' }
+  // A pause stops the timer, not the person: "Sync now" is an explicit
+  // instruction and does what it says, which is why this is a caller's choice.
+  if (options.automatic && paused()) return { ...empty, error: 'Syncing is paused' }
   if (!key) return { ...empty, error: 'No sync key on this machine yet' }
   if (!credentials) return { ...empty, error: 'The bucket is not fully configured' }
 
@@ -291,6 +338,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
   if (!kinds.length) return { ...empty, error: 'Nothing is selected to sync' }
 
   running = true
+  stopRequested = false
   const client = new S3Client(credentials, options.fetcher)
   const result: SyncResult = { ...empty }
 
@@ -378,6 +426,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     )
 
     for (const [logical, entry] of arriving) {
+      if (stopRequested) break
       report('receiving', 'taking what is newer', done++, total)
 
       const kind = kindOf(logical)
@@ -442,6 +491,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     let changed = mine.at === 0
 
     for (const [logical, rev] of local.records) {
+      if (stopRequested) break
       const known = entries[logical]
       if (known && !known.deleted && known.rev >= rev) continue
       report('sending', 'handing over what is newer here', sent++, sending)
@@ -467,6 +517,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     }
 
     for (const [logical, deletedAt] of local.deletions) {
+      if (stopRequested) break
       const known = entries[logical]
       if (known?.deleted) continue
       report('sending', 'passing on what was deleted', sent++, sending)
@@ -508,8 +559,9 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     }
 
     records.pruneDeletions(TOMBSTONE_LIFETIME_MS)
+    result.stopped = stopRequested
     store({ lastSyncedAt: result.at, lastError: null, lastResult: result })
-    report('done', 'up to date', 1, 1)
+    report('done', stopRequested ? 'paused part-way' : 'up to date', 1, 1)
     return result
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -518,6 +570,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     return { ...result, error: message }
   } finally {
     running = false
+    stopRequested = false
   }
 }
 

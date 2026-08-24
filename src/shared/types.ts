@@ -620,8 +620,23 @@ export interface SyncScopes {
  * Everything about syncing that is not a secret. The S3 secret access key and
  * the encryption key live under the OS keyring and never cross IPC.
  */
+/**
+ * A pause, which is not the same as switching sync off.
+ *
+ * Off means "this machine does not sync"; paused means "not for now" — the
+ * bucket, the key and the choices all stay exactly as they are, and it starts
+ * again by itself if a time was given.
+ */
+export interface SyncPause {
+  /** When it resumes on its own, or null for "until I say so". */
+  until: number | null
+  at: number
+}
+
 export interface SyncConfig {
   enabled: boolean
+  /** Null when syncing normally. */
+  pause: SyncPause | null
   /** Empty for AWS; an origin for R2, MinIO, Backblaze and the rest. */
   endpoint: string
   region: string
@@ -635,6 +650,8 @@ export interface SyncConfig {
 
 export interface SyncResult {
   at: number
+  /** True when a pause cut the run short. What it managed is still recorded. */
+  stopped: boolean
   pushed: number
   pulled: number
   /** Records deleted here because another machine deleted them. */
@@ -673,6 +690,8 @@ export interface SyncState {
   hasSecret: boolean
   /** Everything needed to sync is present. */
   ready: boolean
+  /** Paused right now — a pause with a time on it expires by itself. */
+  paused: boolean
   running: boolean
   lastSyncedAt: number | null
   lastError: string | null

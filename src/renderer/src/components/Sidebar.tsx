@@ -15,6 +15,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Pause as PauseIcon,
   Plus,
   RefreshCw,
   Search,
@@ -667,27 +668,45 @@ export function Sidebar(): React.JSX.Element {
         // and — the only part that needs a person — whether it stopped.
         <button
           className="syncline"
-          data-state={syncProgress && sync.running ? 'running' : sync.lastError ? 'error' : 'idle'}
+          data-state={
+            sync.running
+              ? 'running'
+              : sync.paused
+                ? 'paused'
+                : sync.lastError
+                  ? 'error'
+                  : 'idle'
+          }
           onClick={() => setOverlay('settings')}
           title={
-            sync.lastError
-              ? `Sync: ${sync.lastError}`
-              : sync.lastSyncedAt
-                ? `Last synced ${formatDateTime(sync.lastSyncedAt)}`
-                : 'Not synced yet'
+            sync.paused
+              ? sync.config.pause?.until
+                ? `Paused until ${formatDateTime(sync.config.pause.until)}`
+                : 'Paused until you resume it'
+              : sync.lastError
+                ? `Sync: ${sync.lastError}`
+                : sync.lastSyncedAt
+                  ? `Last synced ${formatDateTime(sync.lastSyncedAt)}`
+                  : 'Not synced yet'
           }
           type="button"
         >
           <span className="syncline__row">
-            <RefreshCw className="syncline__icon" {...ICON} />
+            {sync.paused && !sync.running ? (
+              <PauseIcon className="syncline__icon" {...ICON} />
+            ) : (
+              <RefreshCw className="syncline__icon" {...ICON} />
+            )}
             <span className="syncline__text">
               {sync.running
                 ? (syncProgress?.detail ?? 'syncing…')
-                : sync.lastError
-                  ? 'sync stopped'
-                  : sync.lastSyncedAt
-                    ? `synced ${formatRelativeShort(sync.lastSyncedAt)}`
-                    : 'not synced yet'}
+                : sync.paused
+                  ? 'sync paused'
+                  : sync.lastError
+                    ? 'sync stopped'
+                    : sync.lastSyncedAt
+                      ? `synced ${formatRelativeShort(sync.lastSyncedAt)}`
+                      : 'not synced yet'}
             </span>
             {sync.running && syncProgress && syncProgress.total > 1 && (
               <span className="syncline__count">

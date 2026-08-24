@@ -551,6 +551,72 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   check('a later edit is the one that survives', onE[0]?.title === 'Renamed on D', onE)
 
   /* ---------------------------------------------------------------- */
+  section('pausing')
+  syncEngine.saveConfig({ enabled: true })
+  syncEngine.resume()
+  check('it starts unpaused', syncEngine.state().paused === false)
+
+  syncEngine.pause(null)
+  check('pausing says so', syncEngine.state().paused === true)
+  check('and remembers there is no end to it', syncEngine.state().config.pause?.until === null)
+
+  const held = await syncEngine.run({ fetcher: store.fetcher, automatic: true })
+  check('the timer is held back', held.error === 'Syncing is paused' && held.pushed === 0, held)
+
+  // A pause stops the schedule, not the person: "Sync now" still means now.
+  repo.createThread('Written while paused')
+  const byHand = await syncEngine.run({ fetcher: store.fetcher })
+  check('but syncing by hand still works', byHand.error === null, byHand.error)
+
+  syncEngine.resume()
+  check('resuming clears it', syncEngine.state().paused === false)
+  const afterResume = await syncEngine.run({ fetcher: store.fetcher, automatic: true })
+  check('and the timer runs again', afterResume.error === null, afterResume.error)
+
+  syncEngine.pause(Date.now() - 1000)
+  check(
+    'a pause whose time has passed is over, without anything having to notice',
+    syncEngine.state().paused === false
+  )
+  check('and it is forgotten rather than left lying around', syncEngine.state().config.pause === null)
+
+  syncEngine.pause(Date.now() + 60_000)
+  check('a pause with a future time holds', syncEngine.state().paused === true)
+  check('and says when it lifts', typeof syncEngine.state().config.pause?.until === 'number')
+  syncEngine.resume()
+
+  section('a pause during a run stops it where it is')
+  // Enough to push that the pause lands mid-flight, and a bucket slow enough
+  // for that to be true.
+  becomeFreshMachine('device-P')
+  for (let i = 0; i < 25; i++) {
+    const thread = repo.createThread(`Thread ${i}`)
+    repo.insertMessage({ threadId: thread.id, role: 'user', content: `message ${i}` })
+  }
+
+  const slow = bucket()
+  const slowFetcher = async (url, init) => {
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    return slow.fetcher(url, init)
+  }
+
+  const inFlight = syncEngine.run({ fetcher: slowFetcher })
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  syncEngine.pause(null)
+  const cut = await inFlight
+
+  check('the run comes back rather than hanging', cut.error === null, cut.error)
+  check('it says it was cut short', cut.stopped === true, cut)
+  check('having done some of the work', cut.pushed > 0, cut.pushed)
+  check('but not all of it', cut.pushed < 50, cut.pushed)
+
+  // The half that went is recorded, so resuming carries on rather than
+  // starting over.
+  syncEngine.resume()
+  const rest = await syncEngine.run({ fetcher: slowFetcher })
+  check('the rest goes on the next run', rest.pushed > 0 && rest.error === null, rest)
+  check('and then there is nothing left', (await syncEngine.run({ fetcher: slowFetcher })).pushed === 0)
+
   section('when it cannot work, it says so rather than throwing')
 
   const broken = await syncEngine.run({

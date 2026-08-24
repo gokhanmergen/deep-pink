@@ -120,6 +120,7 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   // Capabilities
   'web.toggle': 'mod+shift+w',
   'charts.toggle': 'mod+shift+b',
+  'sync.pause': 'mod+shift+u',
   'mcp.panel': 'mod+shift+e',
   'reasoning.toggle': 'mod+shift+r',
   'context.compact': 'mod+shift+c',

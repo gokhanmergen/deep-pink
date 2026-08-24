@@ -11,7 +11,7 @@ const { suite, settle } = require('./support/harness')
 suite(
   'sync — setting it up',
   async ({ check, section, subject, getWindow }) => {
-    const { getDb, syncEngine } = subject
+    const { getDb } = subject
     getDb()
 
     const win = getWindow()
@@ -112,20 +112,33 @@ suite(
     )
 
     section('the line in the sidebar')
-    // Configured from the main process and pushed into the window over the
-    // real channel, so the renderer half is exercised without a network.
-    syncEngine.setS3Secret('test-secret')
-    syncEngine.saveConfig({
-      enabled: true,
-      endpoint: 'https://s3.example.com',
-      bucket: 'b',
-      accessKeyId: 'K',
-      deviceName: 'This one'
-    })
-    const announce = (state) =>
-      win.webContents.send('sync:event', state ?? syncEngine.state())
-    announce()
+    /*
+     * Configured through the window's own bridge rather than through the copy
+     * of the main modules this suite imports: the app under test is a separate
+     * instance with its own caches, and configuring the wrong one is a way to
+     * test nothing at all. Progress and state events are then pushed over the
+     * real channels, which is how the renderer hears about a run without one
+     * having to reach a network.
+     */
+    const appState = () => run(`window.deepPink.sync.state()`)
+    const announce = async (patch = {}) =>
+      win.webContents.send('sync:event', { ...(await appState()), ...patch })
+
+    await run(`(async () => {
+      await window.deepPink.sync.setSecret('test-secret')
+      await window.deepPink.sync.save({
+        enabled: true,
+        endpoint: 'https://s3.example.com',
+        bucket: 'b',
+        accessKeyId: 'K',
+        deviceName: 'This one'
+      })
+    })()`)
+    await announce()
     await settle(300)
+
+    const ready = await appState()
+    check('it is ready to sync once it has all three', ready.ready === true, ready)
 
     const line = () => run(`(() => {
       const el = document.querySelector('.syncline')
@@ -147,7 +160,7 @@ suite(
     check('with no bar, because nothing is happening', idle.width === null, idle)
 
     section('the progress bar')
-    win.webContents.send('sync:event', { ...syncEngine.state(), running: true })
+    await announce({ running: true })
     win.webContents.send('sync:progress', {
       phase: 'listing',
       detail: 'looking for the other machines',
@@ -191,12 +204,55 @@ suite(
     check('the settings panel shows the same run', panelBar.width === '25%', panelBar)
     check('and names the step', /handing over/.test(panelBar.text ?? ''), panelBar)
 
+    section('pausing from the panel')
+    await announce({ running: false })
+    await settle(300)
+
+    const pauseButtons = await run(`[...document.querySelectorAll('.panel__body button')]
+      .map((b) => b.textContent.trim())`)
+    check('it offers an hour', pauseButtons.includes('Pause for an hour'), pauseButtons)
+    check('a night', pauseButtons.includes('Until tomorrow'), pauseButtons)
+    check('and indefinitely', pauseButtons.includes('Until I resume'), pauseButtons)
+
+    await run(`[...document.querySelectorAll('.panel__body button')]
+      .find((b) => b.textContent.trim() === 'Until I resume').click()`)
+    await settle(500)
+
+    const paused = await line()
+    check('the sidebar says it is paused', paused.text === 'sync paused', paused)
+    check('and shows it as a state of its own, not an error', paused.state === 'paused', paused)
+    check('the app agrees, not just the window', (await appState()).paused === true)
+
+    const pausedPanel = await run(`(() => {
+      const panel = document.querySelector('.panel__body')
+      const card = panel.querySelector('.list-card')
+      return {
+        text: panel.textContent,
+        card: card?.textContent ?? '',
+        buttons: [...panel.querySelectorAll('button')].map((b) => b.textContent.trim())
+      }
+    })()`)
+    check('the panel offers the way back', pausedPanel.buttons.includes('Resume'), pausedPanel.buttons)
+    check('the status card says so', /Paused/.test(pausedPanel.card), pausedPanel.card)
+    check(
+      'and it is clear that syncing by hand still works',
+      /Sync now still works/.test(pausedPanel.text)
+    )
+    check(
+      'so the button is not disabled by the pause',
+      (await run(
+        `[...document.querySelectorAll('.panel__body button')].find((b) => b.textContent.trim() === 'Sync now').disabled`
+      )) === false
+    )
+
+    await run(`[...document.querySelectorAll('.panel__body button')]
+      .find((b) => b.textContent.trim() === 'Resume').click()`)
+    await settle(500)
+    check('resuming puts it back', (await appState()).paused === false)
+    check('and the line stops saying paused', (await line()).text !== 'sync paused')
+
     section('when it stops')
-    win.webContents.send('sync:event', {
-      ...syncEngine.state(),
-      running: false,
-      lastError: 'No bucket at https://s3.example.com/b'
-    })
+    await announce({ running: false, lastError: 'No bucket at https://s3.example.com/b' })
     await settle(300)
 
     const failed = await line()

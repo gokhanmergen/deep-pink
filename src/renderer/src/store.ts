@@ -182,6 +182,9 @@ interface State {
   /** Moves to the next image along, wrapping at either end. */
   stepImageViewer: (delta: number) => void
   refreshSync: () => Promise<SyncState | null>
+  /** Holds off automatic syncing; null means until it is resumed by hand. */
+  pauseSync: (until: number | null) => Promise<void>
+  resumeSync: () => Promise<void>
   /** Syncs now, and reports what happened. */
   runSync: () => Promise<void>
   /** Resolves true if the user confirms. */
@@ -653,6 +656,20 @@ export const useStore = create<State>((set, get) => ({
     const state = await api.sync.state()
     set({ sync: state })
     return state
+  },
+
+  async pauseSync(until) {
+    set({ sync: await api.sync.pause(until) })
+    get().showToast(
+      until === null
+        ? 'Syncing paused'
+        : `Syncing paused until ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    )
+  },
+
+  async resumeSync() {
+    set({ sync: await api.sync.resume() })
+    get().showToast('Syncing resumed')
   },
 
   async runSync() {

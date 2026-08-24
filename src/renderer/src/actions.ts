@@ -324,6 +324,18 @@ export function buildActions(): AppAction[] {
       })
     },
     {
+      id: 'sync.pause',
+      label: store.sync?.paused ? 'Resume syncing' : 'Pause syncing',
+      group: 'Capabilities',
+      run: () => {
+        if (!store.sync?.config.enabled || !store.sync.ready) {
+          store.showToast('Sync is not set up on this machine')
+          return
+        }
+        return store.sync.paused ? store.resumeSync() : store.pauseSync(null)
+      }
+    },
+    {
       id: 'charts.toggle',
       label: 'Toggle charts for this thread',
       group: 'Capabilities',

@@ -207,6 +207,13 @@ const api = {
     /** Writes and reads back a probe object; throws with what went wrong. */
     test: (): Promise<void> => ipcRenderer.invoke('sync:test'),
     run: (): Promise<SyncResult> => ipcRenderer.invoke('sync:run'),
+    /**
+     * Holds off automatic syncing. `until` is a timestamp to resume at, or null
+     * for "until I say so"; a run in flight stops where it is. Syncing by hand
+     * still works while paused.
+     */
+    pause: (until: number | null): Promise<SyncState> => ipcRenderer.invoke('sync:pause', until),
+    resume: (): Promise<SyncState> => ipcRenderer.invoke('sync:resume'),
     /** Forgets the key, the credentials and the config. The bucket is left. */
     disconnect: (): Promise<SyncState> => ipcRenderer.invoke('sync:disconnect'),
 

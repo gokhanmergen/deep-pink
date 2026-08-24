@@ -2745,3 +2745,13 @@ svg.lucide {
   color: var(--text-dim);
   flex: none;
 }
+
+/* Paused is a state to notice, not to worry about: dimmer than working, and
+   nothing like the red of something that broke. */
+.syncline[data-state='paused'] {
+  color: var(--text-dim);
+}
+
+.syncline[data-state='paused'] .syncline__icon {
+  color: var(--amber);
+}

@@ -71,7 +71,7 @@ const SYNC_DEBOUNCE_MS = 8000
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 let syncInterval: ReturnType<typeof setInterval> | null = null
 
-async function runSync(): Promise<import('@shared/types').SyncResult> {
+async function runSync(automatic = false): Promise<import('@shared/types').SyncResult> {
   const before = repo.listThreads(true).length
 
   // Say it has started before the first request goes out, so the indicator
@@ -82,6 +82,7 @@ async function runSync(): Promise<import('@shared/types').SyncResult> {
   // a progress bar ten thousand times is slower than the upload.
   let lastSent = 0
   const result = await sync.run({
+    automatic,
     onProgress: (progress) => {
       const now = Date.now()
       const milestone = progress.phase === 'done' || progress.phase === 'error'
@@ -99,13 +100,20 @@ async function runSync(): Promise<import('@shared/types').SyncResult> {
   return result
 }
 
+/** Whether the timer should be doing anything at all right now. */
+function syncWanted(): boolean {
+  const state = sync.state()
+  return state.ready && state.config.enabled && !state.paused
+}
+
 /** Asks for a sync in a moment, collapsing a burst of changes into one. */
 export function syncSoon(delay = SYNC_DEBOUNCE_MS): void {
-  if (!sync.state().ready || !sync.state().config.enabled) return
+  if (!syncWanted()) return
   if (syncTimer) clearTimeout(syncTimer)
   syncTimer = setTimeout(() => {
     syncTimer = null
-    void runSync()
+    // Checked again on the way out: the pause may have arrived while waiting.
+    if (syncWanted()) void runSync(true)
   }, delay)
 }
 
@@ -113,7 +121,7 @@ export function syncSoon(delay = SYNC_DEBOUNCE_MS): void {
 export function startSync(): void {
   if (syncInterval) return
   syncInterval = setInterval(() => {
-    if (sync.state().ready && sync.state().config.enabled) void runSync()
+    if (syncWanted()) void runSync(true)
   }, SYNC_INTERVAL_MS)
   syncSoon(4000)
 }
@@ -414,6 +422,22 @@ export function registerIpc(): void {
     sync.setS3Secret(secret)
     return sync.state()
   })
+  ipcMain.handle('sync:pause', (_e, until: number | null) => {
+    const next = sync.pause(until)
+    // Nothing queued should fire after this; anything running is stopping.
+    if (syncTimer) clearTimeout(syncTimer)
+    syncTimer = null
+    broadcast(SYNC_EVENT, next)
+    return next
+  })
+
+  ipcMain.handle('sync:resume', () => {
+    const next = sync.resume()
+    broadcast(SYNC_EVENT, next)
+    if (next.ready && next.config.enabled) syncSoon(1000)
+    return next
+  })
+
   ipcMain.handle('sync:disconnect', () => sync.disconnect())
   ipcMain.handle('sync:test', () => sync.testConnection())
   ipcMain.handle('sync:run', () => runSync())

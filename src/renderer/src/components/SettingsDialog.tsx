@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import {
   BarChart3,
   Database,
+  Pause,
+  Play,
   RefreshCw,
   Globe,
   KeyRound,
@@ -74,6 +76,14 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
   }
 ]
 
+/** Nine in the morning, tomorrow — which is what "until tomorrow" means. */
+function tomorrowMorning(): number {
+  const at = new Date()
+  at.setDate(at.getDate() + 1)
+  at.setHours(9, 0, 0, 0)
+  return at.getTime()
+}
+
 export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const settings = useStore((s) => s.settings)
   const saveSettings = useStore((s) => s.saveSettings)
@@ -95,6 +105,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const sync = useStore((s) => s.sync)
   const syncProgress = useStore((s) => s.syncProgress)
   const refreshSync = useStore((s) => s.refreshSync)
+  const pauseSync = useStore((s) => s.pauseSync)
+  const resumeSync = useStore((s) => s.resumeSync)
   const runSync = useStore((s) => s.runSync)
   const [syncBusy, setSyncBusy] = useState('')
   const [revealed, setRevealed] = useState<string | null>(null)
@@ -567,6 +579,60 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
             </label>
 
+            {sync.config.enabled && sync.ready && (
+              <div className="field">
+                <span className="field__label">
+                  {sync.paused ? 'Paused' : 'Automatic syncing'}
+                </span>
+                <span className="field__hint">
+                  {sync.paused
+                    ? sync.config.pause?.until
+                      ? `Nothing will sync on its own until ${new Date(
+                          sync.config.pause.until
+                        ).toLocaleString([], {
+                          weekday: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}. Sync now still works.`
+                      : 'Nothing will sync on its own until you resume. Sync now still works.'
+                    : 'Runs a few seconds after something changes, and every five minutes for what changed elsewhere.'}
+                </span>
+                <div className="row row--wrap">
+                  {sync.paused ? (
+                    <button
+                      className="btn btn--primary"
+                      onClick={() => void resumeSync()}
+                      type="button"
+                    >
+                      <Play {...ICON} />
+                      Resume
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="btn"
+                        onClick={() => void pauseSync(Date.now() + 60 * 60 * 1000)}
+                        type="button"
+                      >
+                        <Pause {...ICON} />
+                        Pause for an hour
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => void pauseSync(tomorrowMorning())}
+                        type="button"
+                      >
+                        Until tomorrow
+                      </button>
+                      <button className="btn" onClick={() => void pauseSync(null)} type="button">
+                        Until I resume
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="section-title">The key</div>
             {sync.hasKey ? (
               <div className="field">
@@ -834,13 +900,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <strong>
                   {sync.running
                     ? 'Syncing…'
-                    : sync.lastSyncedAt
-                      ? `Last synced ${formatRelative(sync.lastSyncedAt)}`
-                      : 'Not synced yet'}
+                    : sync.paused
+                      ? sync.lastSyncedAt
+                        ? `Paused — last synced ${formatRelative(sync.lastSyncedAt)}`
+                        : 'Paused'
+                      : sync.lastSyncedAt
+                        ? `Last synced ${formatRelative(sync.lastSyncedAt)}`
+                        : 'Not synced yet'}
                 </strong>
                 <button
                   className="btn"
                   disabled={!sync.ready || !sync.config.enabled || sync.running || syncBusy === 'run'}
+                  title={sync.paused ? 'Paused, but this runs one sync now' : 'Sync now'}
                   onClick={async () => {
                     setSyncBusy('run')
                     try {
