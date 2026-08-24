@@ -238,5 +238,63 @@ export const MIGRATIONS: string[] = [
    WHERE key = 'settings'
      AND json_valid(value)
      AND json_extract(value, '$.sendAppAttribution') = 0;
+  `,
+
+  /* 13 — what sync needs: a stamp on everything it can carry, and a mark left
+     behind by everything that goes */ `
+  -- When a row last changed, so two machines can tell which copy is newer.
+  -- Backfilled from creation, which is the truth for anything never edited.
+  ALTER TABLE messages    ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE folders     ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE attachments ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE mcp_servers ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE settings    ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+
+  UPDATE messages    SET updated_at = created_at;
+  UPDATE folders     SET updated_at = created_at;
+  UPDATE attachments SET updated_at = created_at;
+  UPDATE mcp_servers SET updated_at = created_at;
+
+  /*
+   * A deletion has to travel, and it can only travel as a fact of its own:
+   * "there is no thread 7 here" is indistinguishable from "this machine has
+   * never heard of thread 7" unless something remembers that it went.
+   *
+   * Recorded by trigger rather than at each call site, so it cannot be missed —
+   * not by a delete written later, and not by the cascade that takes a thread's
+   * messages and their attachments with it.
+   */
+  CREATE TABLE sync_deletions (
+    kind       TEXT    NOT NULL,
+    id         TEXT    NOT NULL,
+    deleted_at INTEGER NOT NULL,
+    PRIMARY KEY (kind, id)
+  );
+  CREATE INDEX idx_sync_deletions_at ON sync_deletions (deleted_at);
+
+  CREATE TRIGGER threads_deleted AFTER DELETE ON threads BEGIN
+    INSERT OR REPLACE INTO sync_deletions (kind, id, deleted_at)
+    VALUES ('thread', old.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER));
+  END;
+
+  CREATE TRIGGER messages_deleted AFTER DELETE ON messages BEGIN
+    INSERT OR REPLACE INTO sync_deletions (kind, id, deleted_at)
+    VALUES ('message', old.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER));
+  END;
+
+  CREATE TRIGGER folders_deleted AFTER DELETE ON folders BEGIN
+    INSERT OR REPLACE INTO sync_deletions (kind, id, deleted_at)
+    VALUES ('folder', old.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER));
+  END;
+
+  CREATE TRIGGER attachments_deleted AFTER DELETE ON attachments BEGIN
+    INSERT OR REPLACE INTO sync_deletions (kind, id, deleted_at)
+    VALUES ('attachment', old.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER));
+  END;
+
+  CREATE TRIGGER mcp_servers_deleted AFTER DELETE ON mcp_servers BEGIN
+    INSERT OR REPLACE INTO sync_deletions (kind, id, deleted_at)
+    VALUES ('mcp', old.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER));
+  END;
   `
 ]

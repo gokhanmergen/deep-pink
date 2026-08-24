@@ -234,8 +234,10 @@ export function createFolder(name: string): Folder | null {
 
   const id = randomUUID()
   getDb()
-    .prepare('INSERT INTO folders (id, name, created_at, pinned) VALUES (?, ?, ?, 0)')
-    .run(id, clean, Date.now())
+    .prepare(
+      'INSERT INTO folders (id, name, created_at, updated_at, pinned) VALUES (?, ?, ?, ?, 0)'
+    )
+    .run(id, clean, Date.now(), Date.now())
   return getFolder(id)
 }
 
@@ -248,8 +250,8 @@ export function updateFolder(
 
   const name = patch.name === undefined ? existing.name : normalizeFolderName(patch.name)
   getDb()
-    .prepare('UPDATE folders SET name = ?, pinned = ? WHERE id = ?')
-    .run(name || existing.name, (patch.pinned ?? existing.pinned) ? 1 : 0, id)
+    .prepare('UPDATE folders SET name = ?, pinned = ?, updated_at = ? WHERE id = ?')
+    .run(name || existing.name, (patch.pinned ?? existing.pinned) ? 1 : 0, Date.now(), id)
   return getFolder(id)
 }
 
@@ -483,8 +485,9 @@ export function insertMessage(
     .prepare(
       `INSERT INTO messages (id, thread_id, seq, role, content, reasoning, created_at, model,
                              provider, status, error, tool_calls, tool_result,
-                             system_prompt_snapshot, is_compaction_summary, compacted_into)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                             system_prompt_snapshot, is_compaction_summary, compacted_into,
+                             updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -502,7 +505,10 @@ export function insertMessage(
       jsonOrNull(input.toolResult),
       jsonOrNull(input.systemPromptSnapshot),
       input.isCompactionSummary ? 1 : 0,
-      input.compactedInto ?? null
+      input.compactedInto ?? null,
+      // What sync compares. Starts life as the moment it was written, and is
+      // bumped by every path below that changes the row.
+      Date.now()
     )
   touchThread(input.threadId)
   return getMessage(id)!
@@ -517,7 +523,7 @@ export function updateMessage(id: string, patch: Partial<Message>): Message | nu
       `UPDATE messages
           SET content = ?, reasoning = ?, model = ?, provider = ?, status = ?, error = ?,
               tool_calls = ?, tool_result = ?, system_prompt_snapshot = ?,
-              is_compaction_summary = ?, compacted_into = ?
+              is_compaction_summary = ?, compacted_into = ?, updated_at = ?
         WHERE id = ?`
     )
     .run(
@@ -536,6 +542,7 @@ export function updateMessage(id: string, patch: Partial<Message>): Message | nu
       ),
       (patch.isCompactionSummary ?? existing.isCompactionSummary) ? 1 : 0,
       patch.compactedInto !== undefined ? patch.compactedInto : existing.compactedInto,
+      Date.now(),
       id
     )
   return getMessage(id)
@@ -603,12 +610,15 @@ export function insertMessageBefore(
 ): Message {
   const db = getDb()
   return db.transaction(() => {
-    db.prepare('UPDATE messages SET seq = seq + 1 WHERE thread_id = ? AND seq >= ?').run(
-      input.threadId,
-      beforeSeq
-    )
+    db.prepare(
+      'UPDATE messages SET seq = seq + 1, updated_at = ? WHERE thread_id = ? AND seq >= ?'
+    ).run(Date.now(), input.threadId, beforeSeq)
     const message = insertMessage(input)
-    db.prepare('UPDATE messages SET seq = ? WHERE id = ?').run(beforeSeq, message.id)
+    db.prepare('UPDATE messages SET seq = ?, updated_at = ? WHERE id = ?').run(
+      beforeSeq,
+      Date.now(),
+      message.id
+    )
     return getMessage(message.id)!
   })()
 }
@@ -621,9 +631,11 @@ export function seqOf(messageId: string): number | null {
 }
 
 export function markCompacted(messageIds: string[], summaryMessageId: string): void {
-  const stmt = getDb().prepare('UPDATE messages SET compacted_into = ? WHERE id = ?')
+  const stmt = getDb().prepare(
+    'UPDATE messages SET compacted_into = ?, updated_at = ? WHERE id = ?'
+  )
   getDb().transaction(() => {
-    for (const id of messageIds) stmt.run(summaryMessageId, id)
+    for (const id of messageIds) stmt.run(summaryMessageId, Date.now(), id)
   })()
 }
 
@@ -1201,10 +1213,10 @@ export function getSetting<T>(key: string, fallback: T): T {
 export function setSetting(key: string, value: unknown): void {
   getDb()
     .prepare(
-      `INSERT INTO settings (key, value) VALUES (?, ?)
-       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
     )
-    .run(key, JSON.stringify(value))
+    .run(key, JSON.stringify(value), Date.now())
 }
 
 /* ------------------------------------------------------------------ *
@@ -1223,10 +1235,10 @@ export function listMcpServers(): McpServerConfig[] {
 export function upsertMcpServer(config: McpServerConfig): McpServerConfig {
   getDb()
     .prepare(
-      `INSERT INTO mcp_servers (id, config, created_at) VALUES (?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET config = excluded.config`
+      `INSERT INTO mcp_servers (id, config, created_at, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at`
     )
-    .run(config.id, JSON.stringify(config), Date.now())
+    .run(config.id, JSON.stringify(config), Date.now(), Date.now())
   return config
 }
 

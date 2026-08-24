@@ -20,6 +20,9 @@ import type {
   Settings,
   SettingsPatch,
   StreamEvent,
+  SyncConfig,
+  SyncResult,
+  SyncState,
   Thread,
   ThreadConfig,
   ThreadStats
@@ -187,6 +190,38 @@ const api = {
     save: (id: string): Promise<string | null> => ipcRenderer.invoke('attachments:save', id),
     /** Puts the image on the clipboard. False if there was nothing to copy. */
     copy: (id: string): Promise<boolean> => ipcRenderer.invoke('attachments:copy', id)
+  },
+
+  sync: {
+    /** Everything the settings panel shows. Never includes a secret. */
+    state: (): Promise<SyncState> => ipcRenderer.invoke('sync:state'),
+    save: (patch: Partial<SyncConfig>): Promise<SyncState> =>
+      ipcRenderer.invoke('sync:save', patch),
+    /** Makes a key and returns it once, so it can be written down. */
+    createKey: (): Promise<string> => ipcRenderer.invoke('sync:createKey'),
+    importKey: (text: string): Promise<SyncState> => ipcRenderer.invoke('sync:importKey', text),
+    /** The key as text, for showing it again. */
+    revealKey: (): Promise<string | null> => ipcRenderer.invoke('sync:revealKey'),
+    setSecret: (secret: string): Promise<SyncState> => ipcRenderer.invoke('sync:setSecret', secret),
+    /** Writes and reads back a probe object; throws with what went wrong. */
+    test: (): Promise<void> => ipcRenderer.invoke('sync:test'),
+    run: (): Promise<SyncResult> => ipcRenderer.invoke('sync:run'),
+    /** Forgets the key, the credentials and the config. The bucket is left. */
+    disconnect: (): Promise<SyncState> => ipcRenderer.invoke('sync:disconnect'),
+
+    /** Fires whenever a run finishes, with the state it left behind. */
+    onState: (listener: (state: SyncState) => void): (() => void) => {
+      const handler = (_e: unknown, payload: SyncState): void => listener(payload)
+      ipcRenderer.on('sync:event', handler)
+      return () => ipcRenderer.removeListener('sync:event', handler)
+    },
+
+    /** Fires when a sync brought something in, so the window can catch up. */
+    onChanged: (listener: () => void): (() => void) => {
+      const handler = (): void => listener()
+      ipcRenderer.on('sync:changed', handler)
+      return () => ipcRenderer.removeListener('sync:changed', handler)
+    }
   },
 
   shell: {

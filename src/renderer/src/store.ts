@@ -245,6 +245,20 @@ export const useStore = create<State>((set, get) => ({
     unsubscribers.push(api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses })))
     unsubscribers.push(api.chat.onEvent((event) => handleStreamEvent(event, set, get)))
 
+    // A sync that brought something in has changed the library underneath the
+    // window: the list, the open thread and the settings all have to catch up,
+    // which is the whole of what "seamless" means here.
+    unsubscribers.push(
+      api.sync.onChanged(() => {
+        void (async () => {
+          await get().refreshSettings()
+          await get().refreshThreads()
+          const active = get().activeThreadId
+          if (active) await get().selectThread(active)
+        })()
+      })
+    )
+
     // The catalogue is cached on disk; refreshing in the background keeps the
     // first paint instant.
     get()

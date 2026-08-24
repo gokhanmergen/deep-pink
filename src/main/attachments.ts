@@ -116,8 +116,8 @@ export function store(
   const now = Date.now()
   getDb()
     .prepare(
-      `INSERT INTO attachments (id, message_id, thread_id, mime, filename, bytes, width, height, created_at, preview)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO attachments (id, message_id, thread_id, mime, filename, bytes, width, height, created_at, updated_at, preview)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -128,6 +128,7 @@ export function store(
       buffer.length,
       input.width,
       input.height,
+      now,
       now,
       preview
     )
@@ -185,6 +186,22 @@ export function readText(id: string): string | null {
   if (!row || kindOf(row.mime) === 'image') return null
   try {
     return readFileSync(fileFor(row.id), 'utf8')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Where an attachment's bytes belong, whether or not they are there yet.
+ *
+ * `filePath` answers about a file that exists; this answers about one that is
+ * arriving — sync writes the row and the bytes together and needs somewhere to
+ * put them. Null for anything that is not shaped like an id, which is the same
+ * guard every other path through this module goes through.
+ */
+export function pathFor(id: string): string | null {
+  try {
+    return fileFor(id)
   } catch {
     return null
   }

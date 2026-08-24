@@ -3,6 +3,7 @@ import { basename, join } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from 'electron'
 import type {
   ExportFormat,
+  SyncConfig,
   Folder,
   McpServerConfig,
   Message,
@@ -19,6 +20,7 @@ import * as mcp from './mcp/host'
 import * as attachments from './attachments'
 import * as importer from './import/index'
 import * as exporter from './export/index'
+import * as sync from './sync/engine'
 import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
@@ -28,6 +30,7 @@ import { isEncryptionAvailable, setApiKey } from './secrets'
 
 const CHAT_EVENT = 'chat:event'
 const MCP_STATUS_EVENT = 'mcp:status'
+const SYNC_EVENT = 'sync:event'
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -53,6 +56,53 @@ export async function nameUnnamedThreads(): Promise<void> {
   }
 }
 
+/**
+ * Syncing on its own, which is the only way it is any use.
+ *
+ * A run happens shortly after anything changes, on a slow timer for whatever
+ * changed on another machine, and once at start-up. Debounced rather than
+ * immediate: a reply streaming in changes its row on every chunk, and syncing
+ * each of those would be a request per token.
+ */
+const SYNC_INTERVAL_MS = 5 * 60 * 1000
+const SYNC_DEBOUNCE_MS = 8000
+
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+let syncInterval: ReturnType<typeof setInterval> | null = null
+
+async function runSync(): Promise<import('@shared/types').SyncResult> {
+  const before = repo.listThreads(true).length
+  const result = await sync.run({
+    onProgress: () => undefined
+  })
+
+  broadcast(SYNC_EVENT, sync.state())
+  // Something arrived: the window is showing a list that is now out of date.
+  if (result.pulled > 0 || result.deleted > 0 || before !== repo.listThreads(true).length) {
+    broadcast('sync:changed', null)
+  }
+  return result
+}
+
+/** Asks for a sync in a moment, collapsing a burst of changes into one. */
+export function syncSoon(delay = SYNC_DEBOUNCE_MS): void {
+  if (!sync.state().ready || !sync.state().config.enabled) return
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => {
+    syncTimer = null
+    void runSync()
+  }, delay)
+}
+
+/** Starts the background loop. Called once the window is up. */
+export function startSync(): void {
+  if (syncInterval) return
+  syncInterval = setInterval(() => {
+    if (sync.state().ready && sync.state().config.enabled) void runSync()
+  }, SYNC_INTERVAL_MS)
+  syncSoon(4000)
+}
+
 export function registerIpc(): void {
   mcp.setStatusListener(() => broadcast(MCP_STATUS_EVENT, mcp.getStatuses()))
 
@@ -60,7 +110,11 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:get', (): Settings => loadSettings())
 
-  ipcMain.handle('settings:save', (_e, patch: SettingsPatch): Settings => saveSettings(patch))
+  ipcMain.handle('settings:save', (_e, patch: SettingsPatch): Settings => {
+    const next = saveSettings(patch)
+    syncSoon()
+    return next
+  })
 
   ipcMain.handle('settings:setApiKey', (_e, key: string): Settings => {
     setApiKey(key)
@@ -98,6 +152,7 @@ export function registerIpc(): void {
   ipcMain.handle('threads:delete', (_e, id: string) => {
     engine.abortThread(id)
     repo.deleteThread(id)
+    syncSoon()
   })
   ipcMain.handle('threads:branch', (_e, id: string, messageId: string) =>
     repo.branchThread(id, messageId)
@@ -122,19 +177,26 @@ export function registerIpc(): void {
   ipcMain.handle('messages:list', (_e, threadId: string, includeCompacted = false): Message[] =>
     repo.getMessages(threadId, includeCompacted)
   )
-  ipcMain.handle('messages:delete', (_e, id: string) => repo.deleteMessage(id))
+  ipcMain.handle('messages:delete', (_e, id: string) => {
+    repo.deleteMessage(id)
+    syncSoon()
+  })
   ipcMain.handle('messages:deleteAfter', (_e, threadId: string, messageId: string) =>
     repo.deleteMessagesAfter(threadId, messageId)
   )
-  ipcMain.handle('messages:update', (_e, id: string, patch: Partial<Message>) =>
-    repo.updateMessage(id, patch)
-  )
+  ipcMain.handle('messages:update', (_e, id: string, patch: Partial<Message>) => {
+    const next = repo.updateMessage(id, patch)
+    syncSoon()
+    return next
+  })
 
   /* ---------------- chat ---------------- */
 
   ipcMain.handle('chat:send', async (_e, req: SendMessageRequest) => {
     try {
       await engine.sendMessage(req, emit)
+      // A finished turn is the moment a conversation is worth carrying.
+      syncSoon()
     } catch (err) {
       emit({
         type: 'error',
@@ -315,6 +377,31 @@ export function registerIpc(): void {
   ipcMain.handle('import:run', async (_e, path: string) =>
     importer.importFile(path, await knownModels())
   )
+
+  /* ---------------- sync ---------------- */
+
+  ipcMain.handle('sync:state', () => sync.state())
+
+  ipcMain.handle('sync:save', (_e, patch: Partial<SyncConfig>) => {
+    const next = sync.saveConfig(patch)
+    // Turning it on is a reason to sync; so is pointing it at a new bucket.
+    if (next.ready && next.config.enabled) syncSoon(1500)
+    return next
+  })
+
+  ipcMain.handle('sync:createKey', () => sync.createKey())
+  ipcMain.handle('sync:importKey', (_e, text: string) => {
+    sync.importKey(text)
+    return sync.state()
+  })
+  ipcMain.handle('sync:revealKey', () => sync.revealKey())
+  ipcMain.handle('sync:setSecret', (_e, secret: string) => {
+    sync.setS3Secret(secret)
+    return sync.state()
+  })
+  ipcMain.handle('sync:disconnect', () => sync.disconnect())
+  ipcMain.handle('sync:test', () => sync.testConnection())
+  ipcMain.handle('sync:run', () => runSync())
 
   /* ---------------- window ---------------- */
 

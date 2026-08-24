@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import {
   BarChart3,
   Database,
+  RefreshCw,
   Globe,
   KeyRound,
   Keyboard,
@@ -18,7 +19,8 @@ import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS, DEFAULT_UI } from '@shared/defaults'
 import { modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
-import type { AppInfo, ImportPreview, ImportResult } from '@shared/types'
+import type { AppInfo, ImportPreview, ImportResult, SyncState } from '@shared/types'
+import { formatRelative } from '../format'
 import { CHARTS_PROMPT } from '@shared/charts'
 
 type Tab =
@@ -31,6 +33,7 @@ type Tab =
   | 'appearance'
   | 'keys'
   | 'data'
+  | 'sync'
 
 interface TabDef {
   id: Tab
@@ -65,7 +68,8 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     tabs: [
       { id: 'appearance', label: 'Appearance', icon: <Palette {...ICON} /> },
       { id: 'keys', label: 'Keyboard', icon: <Keyboard {...ICON} /> },
-      { id: 'data', label: 'Data', icon: <Database {...ICON} /> }
+      { id: 'data', label: 'Data', icon: <Database {...ICON} /> },
+      { id: 'sync', label: 'Sync', icon: <RefreshCw {...ICON} /> }
     ]
   }
 ]
@@ -87,6 +91,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importBusy, setImportBusy] = useState(false)
+
+  const [sync, setSync] = useState<SyncState | null>(null)
+  const [syncBusy, setSyncBusy] = useState('')
+  const [revealed, setRevealed] = useState<string | null>(null)
+  const [keyDraft, setKeyDraft] = useState('')
+  const [secretDraft, setSecretDraft] = useState('')
+
+  // The panel is the only place sync is visible, so it reads the state when it
+  // opens and then follows whatever the background runs report.
+  useEffect(() => {
+    void window.deepPink.sync.state().then(setSync)
+    return window.deepPink.sync.onState(setSync)
+  }, [])
 
   useEffect(() => {
     void window.deepPink.data.path().then(setDbLocation)
@@ -526,6 +543,371 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           </>
         )}
 
+        {tab === 'sync' && sync && (
+          <>
+            <div className="section-title">Sync</div>
+            <label className="switch" style={{ marginBottom: 14 }}>
+              <input
+                type="checkbox"
+                checked={sync.config.enabled}
+                disabled={!sync.hasKey || !sync.hasSecret}
+                onChange={async (event) =>
+                  setSync(await window.deepPink.sync.save({ enabled: event.target.checked }))
+                }
+              />
+              <span>
+                Keep this machine in step with the others
+                <span className="field__hint">
+                  Your conversations are encrypted here, with a key the storage provider never
+                  sees, and only then uploaded. Syncing happens on its own — a few seconds after
+                  something changes, and every five minutes for whatever changed elsewhere.
+                </span>
+              </span>
+            </label>
+
+            <div className="section-title">The key</div>
+            {sync.hasKey ? (
+              <div className="field">
+                <div className="row">
+                  <span className="chip mono">{sync.keyFingerprint}</span>
+                  <span className="field__hint" style={{ margin: 0 }}>
+                    Every machine on this bucket must show the same eight characters.
+                  </span>
+                </div>
+                {revealed ? (
+                  <>
+                    <input className="input mono" readOnly value={revealed} onFocus={(e) => e.target.select()} />
+                    <div className="row">
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(revealed)
+                          showToast('Key copied — keep it somewhere safe')
+                        }}
+                        type="button"
+                      >
+                        Copy
+                      </button>
+                      <button className="btn" onClick={() => setRevealed(null)} type="button">
+                        Hide
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="row">
+                    <button
+                      className="btn"
+                      onClick={async () => setRevealed(await window.deepPink.sync.revealKey())}
+                      type="button"
+                    >
+                      Show the key
+                    </button>
+                  </div>
+                )}
+                <span className="field__hint">
+                  This is the only thing that can decrypt what is in the bucket. Nobody can
+                  recover it for you — not the storage provider, and not us. Write it down before
+                  you need it.
+                </span>
+              </div>
+            ) : (
+              <div className="field">
+                <span className="field__hint">
+                  256 bits of randomness, used to encrypt everything before it leaves this
+                  machine. Symmetric, so there is no public key to be broken later: a quantum
+                  computer running Grover's algorithm would still face 128 bits, which is beyond
+                  reach. Generate one here, then import the same key on your other machines.
+                </span>
+                <div className="row">
+                  <button
+                    className="btn btn--primary"
+                    onClick={async () => {
+                      try {
+                        setRevealed(await window.deepPink.sync.createKey())
+                        setSync(await window.deepPink.sync.state())
+                        showToast('Key generated — copy it to your other machines')
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : String(err), 'error')
+                      }
+                    }}
+                    type="button"
+                  >
+                    Generate a key
+                  </button>
+                </div>
+                <span className="field__label" style={{ marginTop: 10 }}>
+                  Or paste the key from another machine
+                </span>
+                <div className="row">
+                  <input
+                    className="input mono"
+                    placeholder="DPSK1-..."
+                    value={keyDraft}
+                    onChange={(event) => setKeyDraft(event.target.value)}
+                  />
+                  <button
+                    className="btn"
+                    disabled={!keyDraft.trim()}
+                    onClick={async () => {
+                      try {
+                        setSync(await window.deepPink.sync.importKey(keyDraft))
+                        setKeyDraft('')
+                        showToast('Key imported')
+                      } catch (err) {
+                        showToast(err instanceof Error ? err.message : String(err), 'error')
+                      }
+                    }}
+                    type="button"
+                  >
+                    Import
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="section-title">Where it is kept</div>
+            <span className="field__hint" style={{ marginBottom: 10, display: 'block' }}>
+              Any S3-compatible bucket: AWS, Cloudflare R2, Backblaze B2, MinIO on your own
+              machine. It only ever holds ciphertext under names that give nothing away, so the
+              provider learns how much you have and when, and nothing else.
+            </span>
+
+            <div className="field">
+              <span className="field__label">Endpoint</span>
+              <DebouncedInput
+                className="input mono"
+                placeholder="https://<account>.r2.cloudflarestorage.com — leave empty for AWS"
+                value={sync.config.endpoint}
+                onCommit={async (next) => setSync(await window.deepPink.sync.save({ endpoint: next }))}
+              />
+            </div>
+
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}>
+                <span className="field__label">Bucket</span>
+                <DebouncedInput
+                  className="input mono"
+                  value={sync.config.bucket}
+                  onCommit={async (next) => setSync(await window.deepPink.sync.save({ bucket: next }))}
+                />
+              </div>
+              <div className="field" style={{ width: 130 }}>
+                <span className="field__label">Region</span>
+                <DebouncedInput
+                  className="input mono"
+                  value={sync.config.region}
+                  onCommit={async (next) => setSync(await window.deepPink.sync.save({ region: next }))}
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <span className="field__label">Access key ID</span>
+              <DebouncedInput
+                className="input mono"
+                value={sync.config.accessKeyId}
+                onCommit={async (next) =>
+                  setSync(await window.deepPink.sync.save({ accessKeyId: next }))
+                }
+              />
+            </div>
+
+            <div className="field">
+              <span className="field__label">Secret access key</span>
+              <div className="row">
+                <input
+                  className="input mono"
+                  type="password"
+                  placeholder={sync.hasSecret ? '•••••••• stored' : 'not set'}
+                  value={secretDraft}
+                  onChange={(event) => setSecretDraft(event.target.value)}
+                />
+                <button
+                  className="btn"
+                  disabled={!secretDraft.trim()}
+                  onClick={async () => {
+                    setSync(await window.deepPink.sync.setSecret(secretDraft))
+                    setSecretDraft('')
+                    showToast('Secret stored')
+                  }}
+                  type="button"
+                >
+                  Save
+                </button>
+              </div>
+              <span className="field__hint">
+                Kept in the OS keyring beside your OpenRouter key, and never sent to the window.
+              </span>
+            </div>
+
+            <div className="field">
+              <span className="field__label">Prefix</span>
+              <DebouncedInput
+                className="input mono"
+                value={sync.config.prefix}
+                onCommit={async (next) => setSync(await window.deepPink.sync.save({ prefix: next }))}
+              />
+              <span className="field__hint">
+                The folder inside the bucket. Two different prefixes are two separate libraries.
+              </span>
+            </div>
+
+            <div className="row">
+              <button
+                className="btn"
+                disabled={syncBusy === 'test'}
+                onClick={async () => {
+                  setSyncBusy('test')
+                  try {
+                    await window.deepPink.sync.test()
+                    showToast('The bucket answered — settings look right')
+                  } catch (err) {
+                    showToast(err instanceof Error ? err.message : String(err), 'error')
+                  } finally {
+                    setSyncBusy('')
+                  }
+                }}
+                type="button"
+              >
+                {syncBusy === 'test' ? 'Checking…' : 'Test the connection'}
+              </button>
+            </div>
+
+            <div className="section-title">What travels</div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={sync.config.scopes.conversations}
+                onChange={async (event) =>
+                  setSync(
+                    await window.deepPink.sync.save({
+                      scopes: { ...sync.config.scopes, conversations: event.target.checked }
+                    })
+                  )
+                }
+              />
+              <span>
+                Conversations
+                <span className="field__hint">
+                  Threads, messages, folders and every attachment, with their costs.
+                </span>
+              </span>
+            </label>
+
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={sync.config.scopes.settings}
+                onChange={async (event) =>
+                  setSync(
+                    await window.deepPink.sync.save({
+                      scopes: { ...sync.config.scopes, settings: event.target.checked }
+                    })
+                  )
+                }
+              />
+              <span>
+                Settings and MCP servers
+                <span className="field__hint">
+                  Prompts, models, shortcuts, appearance and your configured servers. Your
+                  OpenRouter key is never included — it stays on the machine it was entered on.
+                </span>
+              </span>
+            </label>
+
+            <div className="field" style={{ marginTop: 14 }}>
+              <span className="field__label">This machine is called</span>
+              <DebouncedInput
+                className="input"
+                value={sync.config.deviceName}
+                onCommit={async (next) =>
+                  setSync(await window.deepPink.sync.save({ deviceName: next }))
+                }
+              />
+            </div>
+
+            <div className="section-title">Status</div>
+            <div className="list-card">
+              <div className="spread">
+                <strong>
+                  {sync.running
+                    ? 'Syncing…'
+                    : sync.lastSyncedAt
+                      ? `Last synced ${formatRelative(sync.lastSyncedAt)}`
+                      : 'Not synced yet'}
+                </strong>
+                <button
+                  className="btn"
+                  disabled={!sync.ready || !sync.config.enabled || sync.running || syncBusy === 'run'}
+                  onClick={async () => {
+                    setSyncBusy('run')
+                    try {
+                      const result = await window.deepPink.sync.run()
+                      showToast(
+                        result.error
+                          ? result.error
+                          : `Sent ${result.pushed}, received ${result.pulled}` +
+                            (result.deleted ? `, removed ${result.deleted}` : ''),
+                        result.error ? 'error' : 'info'
+                      )
+                      setSync(await window.deepPink.sync.state())
+                      await refreshSettings()
+                    } finally {
+                      setSyncBusy('')
+                    }
+                  }}
+                  type="button"
+                >
+                  {syncBusy === 'run' ? 'Syncing…' : 'Sync now'}
+                </button>
+              </div>
+              <div className="dim" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.6 }}>
+                {!sync.hasKey && <>No key yet — generate or import one above.<br /></>}
+                {sync.hasKey && !sync.hasSecret && <>No bucket credentials yet.<br /></>}
+                {sync.lastResult && (
+                  <>
+                    {sync.lastResult.devices} machine
+                    {sync.lastResult.devices === 1 ? '' : 's'} on this bucket · sent{' '}
+                    {sync.lastResult.pushed}, received {sync.lastResult.pulled}
+                    {sync.lastResult.deleted > 0 && <>, removed {sync.lastResult.deleted}</>}
+                    <br />
+                  </>
+                )}
+                {sync.lastError && <span style={{ color: 'var(--red)' }}>{sync.lastError}</span>}
+              </div>
+            </div>
+
+            <div className="section-title">Disconnect</div>
+            <div className="field">
+              <span className="field__hint">
+                Forgets the key, the credentials and these settings on this machine. Nothing in
+                the bucket is touched, and nothing here is deleted — but without the key this
+                machine can no longer read what is up there.
+              </span>
+              <div className="row">
+                <button
+                  className="btn btn--danger"
+                  onClick={async () => {
+                    const ok = await useStore.getState().askConfirm({
+                      title: 'Disconnect this machine from sync?',
+                      body: 'The key and the bucket credentials are erased from this machine. Make sure the key is written down somewhere first, or what is in the bucket becomes unreadable.',
+                      confirmLabel: 'Disconnect',
+                      danger: true
+                    })
+                    if (!ok) return
+                    setSync(await window.deepPink.sync.disconnect())
+                    setRevealed(null)
+                    showToast('Disconnected')
+                  }}
+                  type="button"
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
         {tab === 'context' && (
           <>
             <div className="section-title">Compaction</div>
@@ -962,7 +1344,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <div className="field">
               <span className="field__hint">
                 Deletes every thread, message and usage record. Settings, keys and MCP servers are
-                kept.
+                kept. If sync is on, this is a deletion like any other and travels to your other
+                machines — take this one out of sync first if you only meant to clear this one.
               </span>
               <div className="row">
                 <button

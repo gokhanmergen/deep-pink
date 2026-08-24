@@ -604,6 +604,63 @@ export interface ImportResult extends ImportPreview {
   modelsCleared: number
 }
 
+/* ------------------------------------------------------------------ *
+ * Sync
+ * ------------------------------------------------------------------ */
+
+/** What a machine is willing to put in the bucket, and take out of it. */
+export interface SyncScopes {
+  /** Threads, messages, folders and attachments. */
+  conversations: boolean
+  /** App settings and MCP servers. Never the OpenRouter key. */
+  settings: boolean
+}
+
+/**
+ * Everything about syncing that is not a secret. The S3 secret access key and
+ * the encryption key live under the OS keyring and never cross IPC.
+ */
+export interface SyncConfig {
+  enabled: boolean
+  /** Empty for AWS; an origin for R2, MinIO, Backblaze and the rest. */
+  endpoint: string
+  region: string
+  bucket: string
+  prefix: string
+  accessKeyId: string
+  scopes: SyncScopes
+  /** How this machine names itself to the others. */
+  deviceName: string
+}
+
+export interface SyncResult {
+  at: number
+  pushed: number
+  pulled: number
+  /** Records deleted here because another machine deleted them. */
+  deleted: number
+  /** Machines seen in the bucket, this one included. */
+  devices: number
+  bytesUp: number
+  bytesDown: number
+  error: string | null
+}
+
+export interface SyncState {
+  config: SyncConfig
+  hasKey: boolean
+  /** Eight characters derived from the key, for checking two machines match. */
+  keyFingerprint: string | null
+  /** Whether an S3 secret access key is stored. */
+  hasSecret: boolean
+  /** Everything needed to sync is present. */
+  ready: boolean
+  running: boolean
+  lastSyncedAt: number | null
+  lastError: string | null
+  lastResult: SyncResult | null
+}
+
 /** Build identity, read from Electron rather than written down. */
 export interface AppInfo {
   version: string
