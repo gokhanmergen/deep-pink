@@ -12,6 +12,7 @@ const { suite, settle, message } = require('./support/harness')
 suite('renderer streaming — one subscription, one bubble per turn', async ({ check, section }) => {
   const chatListeners = []
   const mcpListeners = []
+  const syncListeners = []
   let persisted = []
   let liveStreams = []
   // Stands in for the folders table, so the store's optimism can be checked
@@ -88,6 +89,12 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
         onStatus: (fn) => {
           mcpListeners.push(fn)
           return () => mcpListeners.splice(mcpListeners.indexOf(fn), 1)
+        }
+      },
+      sync: {
+        onChanged: (fn) => {
+          syncListeners.push(fn)
+          return () => syncListeners.splice(syncListeners.indexOf(fn), 1)
         }
       }
     }
@@ -373,6 +380,29 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       !matchesBinding(press('m', { ctrl: true }), 'mod+shift+m')
   )
 
+  section('a sync that brought something in refreshes the window')
+  check('the store subscribed to it', syncListeners.length === 1, syncListeners.length)
+
+  // What a pull looks like from in here: the database changed underneath, and
+  // nothing on screen knows until the event says so.
+  thread.title = 'Renamed on another machine'
+  persisted.push(
+    message({ id: 'from-elsewhere', threadId: 't1', role: 'user', content: 'said on the laptop' })
+  )
+  syncListeners.slice().forEach((fn) => fn())
+  await settle(60)
+
+  check(
+    'the thread list catches up',
+    state().threads.find((t) => t.id === 't1')?.title === 'Renamed on another machine',
+    state().threads
+  )
+  check(
+    'and so does the open transcript',
+    state().messages.some((m) => m.id === 'from-elsewhere'),
+    state().messages.map((m) => m.id)
+  )
+
   disposeStore()
   check('an alt+digit binding matches', matchesBinding(press('1', { alt: true }), 'alt+1'))
   check(
@@ -383,4 +413,5 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   check('a bare 1 does not match it', !matchesBinding(press('1'), 'alt+1'))
 
   check('disposing removes the listeners', chatListeners.length === 0)
+  check('every one of them', syncListeners.length === 0 && mcpListeners.length === 0)
 })
