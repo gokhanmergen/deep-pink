@@ -1,8 +1,8 @@
-import type { RichUnit } from '@shared/richBlocks'
-import { formatCost, formatDuration, formatTokens } from '../../format'
+import type { ChartUnit } from '@shared/charts'
+import { formatCost, formatDuration, formatTokens } from '../format'
 
 /**
- * How a number in a rich block is written.
+ * How a number in a chart is written.
  *
  * The unit comes from the model, so it is a hint about what the number means —
  * never a licence to print arbitrary text. Every branch here ends in a number
@@ -26,7 +26,7 @@ function bytes(value: number): string {
   return `${sign}${size.toFixed(size < 10 && index > 0 ? 1 : 0)} ${units[index]}`
 }
 
-export function formatUnit(value: number, unit: RichUnit): string {
+export function formatUnit(value: number, unit: ChartUnit): string {
   if (!Number.isFinite(value)) return '—'
   switch (unit) {
     case 'usd':
@@ -45,7 +45,7 @@ export function formatUnit(value: number, unit: RichUnit): string {
 }
 
 /** Axis ticks are terser than values in a tooltip — the unit is in the title. */
-export function formatTick(value: number, unit: RichUnit): string {
+export function formatTick(value: number, unit: ChartUnit): string {
   if (unit === 'plain' || unit === 'tokens') return formatTokens(Math.round(value))
   return formatUnit(value, unit)
 }

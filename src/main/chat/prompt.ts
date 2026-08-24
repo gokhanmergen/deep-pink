@@ -1,5 +1,5 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
-import { RICH_BLOCKS_PROMPT } from '@shared/richBlocks'
+import { CHARTS_PROMPT } from '@shared/charts'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
@@ -32,8 +32,8 @@ function webEnabledFor(thread: Thread, settings: Settings): boolean {
 }
 
 /** The thread's answer if it has one, otherwise the global setting. */
-export function richBlocksEnabledFor(thread: Thread, settings: Settings): boolean {
-  return thread.config.richBlocksEnabled ?? settings.richBlocksEnabled
+export function chartsEnabledFor(thread: Thread, settings: Settings): boolean {
+  return thread.config.chartsEnabled ?? settings.chartsEnabled
 }
 
 export function activeServerIdsFor(thread: Thread): string[] | null {
@@ -89,15 +89,15 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
     })
   }
 
-  // Ahead of the tool and web segments because it shapes how every answer is
+  // Ahead of the tool and web segments because it shapes how an answer is
   // written, not what the model can go and do.
-  if (richBlocksEnabledFor(thread, settings)) {
+  if (chartsEnabledFor(thread, settings)) {
     push({
-      id: 'rich',
-      source: 'rich',
-      label: 'Rich block syntax',
+      id: 'charts',
+      source: 'charts',
+      label: 'Chart syntax',
       origin: 'Deep Pink',
-      text: RICH_BLOCKS_PROMPT,
+      text: CHARTS_PROMPT,
       removable: true
     })
   }

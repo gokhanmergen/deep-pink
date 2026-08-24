@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
+  BarChart3,
   Database,
   Globe,
   KeyRound,
   Keyboard,
   Layers,
-  LayoutDashboard,
   MessageSquareText,
   Palette,
   Cpu,
@@ -19,14 +19,14 @@ import { DEFAULT_KEYBINDS, DEFAULT_UI } from '@shared/defaults'
 import { modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 import type { AppInfo, ImportPreview, ImportResult } from '@shared/types'
-import { RICH_BLOCKS_PROMPT, RICH_BLOCK_KINDS } from '@shared/richBlocks'
+import { CHARTS_PROMPT } from '@shared/charts'
 
 type Tab =
   | 'account'
   | 'models'
   | 'prompts'
   | 'web'
-  | 'rich'
+  | 'charts'
   | 'context'
   | 'appearance'
   | 'keys'
@@ -56,7 +56,7 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     title: 'Capabilities',
     tabs: [
       { id: 'web', label: 'Web access', icon: <Globe {...ICON} /> },
-      { id: 'rich', label: 'Rich blocks', icon: <LayoutDashboard {...ICON} /> },
+      { id: 'charts', label: 'Charts', icon: <BarChart3 {...ICON} /> },
       { id: 'context', label: 'Context', icon: <Layers {...ICON} /> }
     ]
   },
@@ -475,40 +475,39 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           </>
         )}
 
-        {tab === 'rich' && (
+        {tab === 'charts' && (
           <>
-            <div className="section-title">Rich blocks</div>
+            <div className="section-title">Charts in replies</div>
             <label className="switch" style={{ marginBottom: 14 }}>
               <input
                 type="checkbox"
-                checked={settings.richBlocksEnabled}
-                onChange={(event) =>
-                  void saveSettings({ richBlocksEnabled: event.target.checked })
-                }
+                checked={settings.chartsEnabled}
+                onChange={(event) => void saveSettings({ chartsEnabled: event.target.checked })}
               />
               <span>
-                Let replies contain charts, tables and panels
+                Let replies draw charts
                 <span className="field__hint">
-                  Can be toggled per thread from the composer. When off the model is not told
-                  about them, and any that arrive anyway — from an import, or a model that
-                  guessed — are shown as the code they are.
+                  Can be toggled per thread from the composer. When off the model is not told it
+                  can draw, and any chart that arrives anyway — from an import, or a model that
+                  guessed — is shown as the code it is.
                 </span>
               </span>
             </label>
 
             <div className="field">
-              <span className="field__label">What the model can draw</span>
+              <span className="field__label">What it can draw</span>
               <div className="row row--wrap">
-                {RICH_BLOCK_KINDS.map((kind) => (
+                {['line', 'area', 'bar', 'column', 'scatter'].map((kind) => (
                   <span className="chip mono" key={kind}>
-                    dp-{kind}
+                    {kind}
                   </span>
                 ))}
               </div>
               <span className="field__hint">
-                Each is a fenced block of JSON that this app draws itself. A chart wears the
-                same palette as the statistics panels, because the model chooses the numbers
-                and Deep Pink chooses everything else.
+                A <span className="mono">dp-chart</span> block of JSON, drawn by this app in the
+                same palette as the statistics panels: the model chooses the numbers and Deep
+                Pink chooses the colours, the scale and the marks. There is no pie, because a
+                part-to-whole reads better as a bar.
               </span>
             </div>
 
@@ -518,7 +517,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 Because HTML from a model is a script, a remote image or a stylesheet away from
                 being a problem, and being right about a sanitiser forever is not a promise
                 worth making. Nothing here is parsed as markup: the JSON is validated, clamped
-                and handed to components, so a block cannot run anything, load anything, or
+                and handed to components, so a chart cannot run anything, load anything, or
                 reach outside the message it is in. Anything that fails to validate stays a
                 code block.
               </span>
@@ -529,11 +528,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <span className="chip">system prompt</span>
                 <span>
                   What the model is told — about{' '}
-                  {Math.ceil(RICH_BLOCKS_PROMPT.length / 4).toLocaleString()} tokens per turn
+                  {Math.ceil(CHARTS_PROMPT.length / 4).toLocaleString()} tokens per turn
                 </span>
               </summary>
               <div className="disclosure__content">
-                <pre>{RICH_BLOCKS_PROMPT}</pre>
+                <pre>{CHARTS_PROMPT}</pre>
               </div>
             </details>
           </>

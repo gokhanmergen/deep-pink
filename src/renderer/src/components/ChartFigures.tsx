@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import type { ChartSpec, ShareSpec, RichUnit } from '@shared/richBlocks'
-import { SERIES_COLORS, TimeChart, niceScale, useWidth } from '../Charts'
-import { formatTick, formatUnit } from './units'
+import type { ChartSpec } from '@shared/charts'
+import { SERIES_COLORS, TimeChart, niceScale, useWidth } from './Charts'
+import { formatTick, formatUnit } from './chartUnits'
 
 /**
- * The charts a rich block can draw.
+ * The figures a chart block can draw.
  *
  * Same rules as the statistics panels next door, because they are the same
  * app: the five-slot categorical palette in fixed order, hairline solid
@@ -103,7 +103,7 @@ function Legend({ series }: { series: { label: string }[] }): React.JSX.Element 
  * categories, and writing it twice would be two places for the geometry to go
  * wrong.
  */
-export function RichBars({ spec }: { spec: ChartSpec }): React.JSX.Element {
+export function ChartBars({ spec }: { spec: ChartSpec }): React.JSX.Element {
   const [ref, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<Hover | null>(null)
 
@@ -211,7 +211,7 @@ export function RichBars({ spec }: { spec: ChartSpec }): React.JSX.Element {
           )
 
       out.push(
-        <path key={`${band}-${index}`} d={path} style={{ fill: colorAt(index) }} className="rb-bar" />
+        <path key={`${band}-${index}`} d={path} style={{ fill: colorAt(index) }} className="chart-bar" />
       )
     })
 
@@ -227,7 +227,7 @@ export function RichBars({ spec }: { spec: ChartSpec }): React.JSX.Element {
     if (horizontal) {
       return (
         <text
-          className="viz__tick rb-bar__value"
+          className="viz__tick chart-bar__value"
           x={pad.left + along(value) + (value < 0 ? -6 : 6)}
           y={bandAt(band) + air / 2 + barThickness / 2}
           textAnchor={value < 0 ? 'end' : 'start'}
@@ -241,7 +241,7 @@ export function RichBars({ spec }: { spec: ChartSpec }): React.JSX.Element {
     if (bandWidth < 44) return null
     return (
       <text
-        className="viz__tick rb-bar__value"
+        className="viz__tick chart-bar__value"
         x={bandAt(band) + bandWidth / 2}
         y={pad.top + plotHeight - along(value) - 6}
         textAnchor="middle"
@@ -382,7 +382,7 @@ export function RichBars({ spec }: { spec: ChartSpec }): React.JSX.Element {
 
       <Legend series={series} />
       {spec.stacked && negatives && (
-        <div className="rb-note">
+        <div className="chartblock__note">
           Drawn side by side rather than stacked: a stack containing a negative value
           would not add up to anything.
         </div>
@@ -392,7 +392,7 @@ export function RichBars({ spec }: { spec: ChartSpec }): React.JSX.Element {
 }
 
 /** Two measures against each other. Three series at most — see the parser. */
-export function RichScatter({ spec }: { spec: ChartSpec }): React.JSX.Element {
+export function ChartScatter({ spec }: { spec: ChartSpec }): React.JSX.Element {
   const [ref, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<{ series: number; point: number } | null>(null)
 
@@ -493,9 +493,9 @@ export function RichScatter({ spec }: { spec: ChartSpec }): React.JSX.Element {
 }
 
 /** Line and area go through the panels' own chart, which already reads well. */
-export function RichChart({ spec }: { spec: ChartSpec }): React.JSX.Element {
-  if (spec.chart === 'scatter') return <RichScatter spec={spec} />
-  if (spec.chart === 'bar' || spec.chart === 'column') return <RichBars spec={spec} />
+export function ChartFigure({ spec }: { spec: ChartSpec }): React.JSX.Element {
+  if (spec.chart === 'scatter') return <ChartScatter spec={spec} />
+  if (spec.chart === 'bar' || spec.chart === 'column') return <ChartBars spec={spec} />
 
   const labels = spec.labels.length
     ? spec.labels
@@ -516,85 +516,5 @@ export function RichChart({ spec }: { spec: ChartSpec }): React.JSX.Element {
       }))}
       format={(value) => formatTick(value, spec.unit)}
     />
-  )
-}
-
-/**
- * Part-to-whole, as one stacked bar.
- *
- * Not a pie: the eye compares lengths well and angles badly, and two slices of
- * a circle is a sentence written as a picture.
- */
-export function RichShare({ spec }: { spec: ShareSpec }): React.JSX.Element {
-  const total = spec.segments.reduce((sum, segment) => sum + segment.value, 0)
-  const [hover, setHover] = useState<number | null>(null)
-
-  return (
-    <div className="rb-share">
-      <div className="rb-share__bar" role="img" aria-label={spec.title ?? 'Breakdown'}>
-        {spec.segments.map((segment, index) => (
-          <div
-            key={`${segment.label}-${index}`}
-            className="rb-share__part"
-            style={{
-              flexGrow: Math.max(segment.value, 0),
-              background: colorAt(index),
-              opacity: hover === null || hover === index ? 1 : 0.45
-            }}
-            onMouseEnter={() => setHover(index)}
-            onMouseLeave={() => setHover(null)}
-            title={`${segment.label}: ${formatUnit(segment.value, spec.unit)}`}
-          />
-        ))}
-      </div>
-
-      <div className="rb-share__keys">
-        {spec.segments.map((segment, index) => (
-          <div
-            className="rb-share__key"
-            key={`${segment.label}-${index}`}
-            data-dim={hover !== null && hover !== index}
-            onMouseEnter={() => setHover(index)}
-            onMouseLeave={() => setHover(null)}
-          >
-            <span className="viz__key" style={{ background: colorAt(index) }} />
-            <span className="rb-share__label">{segment.label}</span>
-            <span className="rb-share__value">{formatUnit(segment.value, spec.unit)}</span>
-            <span className="rb-share__pct">
-              {total > 0 ? `${((segment.value / total) * 100).toFixed(total < 1 ? 1 : 0)}%` : '—'}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/** The shape of a series behind a headline number. Never labelled or axed. */
-export function Sparkline({ values, unit }: { values: number[]; unit: RichUnit }): React.JSX.Element {
-  const width = 76
-  const height = 20
-  const high = Math.max(...values)
-  const low = Math.min(...values)
-  const span = high - low || 1
-
-  const points = values
-    .map((value, index) => {
-      const x = values.length < 2 ? width : (index / (values.length - 1)) * width
-      const y = height - 2 - ((value - low) / span) * (height - 4)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-
-  return (
-    <svg
-      className="rb-spark"
-      width={width}
-      height={height}
-      role="img"
-      aria-label={`Trend, ${formatUnit(low, unit)} to ${formatUnit(high, unit)}`}
-    >
-      <polyline points={points} />
-    </svg>
   )
 }

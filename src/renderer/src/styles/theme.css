@@ -2360,15 +2360,15 @@ svg.lucide {
 }
 
 /* ------------------------------------------------------------------ *
- * Rich blocks
+ * Charts in replies
  *
- * Drawn from data the model sent, so they wear the app's own tokens rather
+ * Drawn from numbers the model sent, so they wear the app's own tokens rather
  * than anything the model could choose: the same surfaces, the same hairline
  * borders, the same five-slot series palette as the statistics panels. A reply
- * can be structured; it cannot be styled.
+ * can be plotted; it cannot be styled.
  * ------------------------------------------------------------------ */
 
-.rb {
+.chartblock {
   margin: 0 0 14px;
   padding: 10px 12px 12px;
   border: 1px solid var(--border);
@@ -2376,14 +2376,18 @@ svg.lucide {
   background: var(--bg-panel);
 }
 
-/* A callout is already a box; it does not need another one around it. */
-.rb[data-bare='true'] {
+/* One that did not validate is its own code block, with the reason under it. */
+.chartblock--failed {
   padding: 0;
   border: none;
   background: none;
 }
 
-.rb__head {
+.chartblock--failed .codeblock {
+  margin: 0;
+}
+
+.chartblock__head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2391,29 +2395,19 @@ svg.lucide {
   margin-bottom: 8px;
 }
 
-.rb[data-bare='true'] .rb__head {
-  margin-bottom: 0;
-  height: 0;
-  min-height: 0;
-  /* The source switch floats over the callout rather than displacing it. */
-  position: relative;
-  z-index: 1;
-  top: 8px;
-}
-
-.rb__title {
+.chartblock__title {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--text);
 }
 
-.rb__spacer {
+.chartblock__spacer {
   flex: 1;
 }
 
-/* Quiet until the block is pointed at: it is a way out, not a feature. */
-.rb__source {
+/* Quiet until the chart is pointed at: it is a way out, not a feature. */
+.chartblock__source {
   display: inline-flex;
   align-items: center;
   color: var(--text-dim);
@@ -2423,18 +2417,18 @@ svg.lucide {
   transition: opacity 0.12s, color 0.12s;
 }
 
-.rb:hover .rb__source,
-.rb__source:focus-visible,
-.rb__source[aria-pressed='true'] {
+.chartblock:hover .chartblock__source,
+.chartblock__source:focus-visible,
+.chartblock__source[aria-pressed='true'] {
   opacity: 1;
 }
 
-.rb__source:hover {
+.chartblock__source:hover {
   color: var(--text);
   background: var(--bg-hover);
 }
 
-.rb__caption {
+.chartblock__caption {
   margin-top: 8px;
   font-size: 12px;
   color: var(--text-muted);
@@ -2442,535 +2436,22 @@ svg.lucide {
 }
 
 /* What the app had to trim, said out loud rather than left to be noticed. */
-.rb-note {
+.chartblock__note {
   margin-top: 6px;
   font-size: 11px;
   color: var(--text-dim);
   line-height: 1.5;
 }
 
-.rb .codeblock {
+.chartblock .codeblock {
   margin: 0;
 }
 
-/* Charts */
-
-.rb-bar {
+.chart-bar {
   transition: opacity 0.12s;
 }
 
-.rb-bar__value {
+.chart-bar__value {
   fill: var(--text-muted);
   font-weight: 550;
-}
-
-.rb-spark {
-  overflow: visible;
-  flex: none;
-}
-
-.rb-spark polyline {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-/* Part-to-whole: one bar, separated by 2px of the surface behind it. */
-.rb-share__bar {
-  display: flex;
-  gap: 2px;
-  height: 14px;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.rb-share__part {
-  min-width: 3px;
-  transition: opacity 0.12s;
-}
-
-.rb-share__keys {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.rb-share__key {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  padding: 2px 0;
-  transition: opacity 0.12s;
-}
-
-.rb-share__key[data-dim='true'] {
-  opacity: 0.5;
-}
-
-.rb-share__label {
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rb-share__value {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  font-weight: 550;
-}
-
-.rb-share__pct {
-  width: 42px;
-  text-align: right;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Headline numbers */
-
-.rb-tiles {
-  margin: 0;
-}
-
-.rb-tile__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.rb-delta {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-/* Direction is carried by the arrow and the word; colour only agrees with it. */
-.rb-delta[data-direction='up'] {
-  color: var(--green);
-}
-
-.rb-delta[data-direction='down'] {
-  color: var(--red);
-}
-
-.rb-delta__word {
-  margin-left: 5px;
-  color: var(--text-dim);
-}
-
-.rb-meters {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.rb-meter__max {
-  color: var(--text-dim);
-  font-weight: 400;
-}
-
-/* Table */
-
-.rb-table__scroll {
-  overflow-x: auto;
-}
-
-.rb-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.rb-table th,
-.rb-table td {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  vertical-align: top;
-}
-
-.rb-table th {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  white-space: nowrap;
-  border-bottom-color: var(--border-strong);
-}
-
-.rb-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.rb-table tbody tr:hover {
-  background: var(--bg-hover);
-}
-
-.rb-table [data-align='right'] {
-  text-align: right;
-}
-
-.rb-table [data-align='center'] {
-  text-align: center;
-}
-
-/* Figures line up on the decimal point, which is the whole reason to know a
-   column is numeric. */
-.rb-table td[data-numeric='true'] {
-  font-variant-numeric: tabular-nums;
-}
-
-.rb-table__sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-}
-
-.rb-table__sort:hover {
-  color: var(--text);
-}
-
-.rb-table th[data-sorted='true'] .rb-table__sort {
-  color: var(--text);
-}
-
-.rb-table__arrow {
-  font-size: 8px;
-  color: var(--accent);
-}
-
-/* Tabs */
-
-.rb-tabs__strip {
-  display: flex;
-  gap: 2px;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 10px;
-}
-
-.rb-tabs__tab {
-  padding: 5px 10px;
-  font-size: 12px;
-  color: var(--text-muted);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.12s, border-color 0.12s;
-}
-
-.rb-tabs__tab:hover {
-  color: var(--text);
-}
-
-.rb-tabs__tab[data-active='true'] {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.rb-tabs__panel > .md {
-  font-size: 13px;
-}
-
-/* Accordion */
-
-.rb-accordion .disclosure {
-  margin: 0 0 6px;
-  background: var(--bg-elevated);
-}
-
-.rb-accordion .disclosure:last-child {
-  margin-bottom: 0;
-}
-
-.rb-accordion .disclosure__summary {
-  font-size: 13px;
-  color: var(--text);
-}
-
-.rb-accordion__caret {
-  color: var(--text-dim);
-  flex: none;
-  transition: transform 0.12s;
-}
-
-.rb-accordion .disclosure[open] .rb-accordion__caret {
-  transform: rotate(90deg);
-}
-
-.rb-accordion .disclosure__content {
-  color: var(--text);
-  max-height: none;
-}
-
-/* Steps and timelines */
-
-.rb-steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.rb-step {
-  display: flex;
-  gap: 12px;
-  padding-bottom: 14px;
-  position: relative;
-}
-
-.rb-step:last-child {
-  padding-bottom: 0;
-}
-
-/* The rule joining the markers, drawn behind them rather than between them. */
-.rb-step:not(:last-child)::before {
-  content: '';
-  position: absolute;
-  left: 10px;
-  top: 22px;
-  bottom: 2px;
-  width: 1px;
-  background: var(--border);
-}
-
-.rb-step__marker {
-  flex: none;
-  width: 21px;
-  height: 21px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  z-index: 1;
-}
-
-.rb-step__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.rb-step__content {
-  flex: 1;
-  min-width: 0;
-  padding-top: 1px;
-}
-
-.rb-step__head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.rb-step__title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.rb-step__at {
-  font-size: 11px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-  margin-left: auto;
-  flex: none;
-}
-
-.rb-step__body {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-/* Callout */
-
-.rb-callout {
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--text-dim);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-  padding: 9px 12px;
-}
-
-.rb-callout__head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.rb-callout__body {
-  margin-top: 5px;
-  font-size: 13px;
-}
-
-.rb-callout__body > .md > *:last-child {
-  margin-bottom: 0;
-}
-
-.rb-callout[data-tone='note'] {
-  border-left-color: var(--blue);
-}
-.rb-callout[data-tone='note'] .rb-callout__head {
-  color: var(--blue);
-}
-
-.rb-callout[data-tone='tip'] {
-  border-left-color: var(--accent);
-}
-.rb-callout[data-tone='tip'] .rb-callout__head {
-  color: var(--accent);
-}
-
-.rb-callout[data-tone='success'] {
-  border-left-color: var(--green);
-}
-.rb-callout[data-tone='success'] .rb-callout__head {
-  color: var(--green);
-}
-
-.rb-callout[data-tone='warning'] {
-  border-left-color: var(--amber);
-}
-.rb-callout[data-tone='warning'] .rb-callout__head {
-  color: var(--amber);
-}
-
-.rb-callout[data-tone='danger'] {
-  border-left-color: var(--red);
-  background: rgba(226, 106, 92, 0.06);
-}
-.rb-callout[data-tone='danger'] .rb-callout__head {
-  color: var(--red);
-}
-
-/* Cards */
-
-.rb-cards {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
-.rb-cards[data-columns='1'] {
-  grid-template-columns: 1fr;
-}
-
-.rb-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  padding: 9px 11px;
-  min-width: 0;
-}
-
-.rb-card__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.rb-card__title {
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rb-card__body {
-  margin-top: 5px;
-  font-size: 12.5px;
-  color: var(--text-muted);
-}
-
-.rb-card__link {
-  display: inline-block;
-  margin-top: 7px;
-  font-size: 11px;
-  color: var(--accent);
-  border-bottom: 1px solid var(--accent-line);
-}
-
-/* Tree */
-
-.rb-tree {
-  font-family: var(--mono);
-  font-size: 12.5px;
-}
-
-.rb-tree__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-/* Nested levels indent against a hairline, so depth is visible without ASCII
-   pipes the reader would have to parse. */
-.rb-tree__list[data-depth]:not([data-depth='0']) {
-  margin-left: 8px;
-  padding-left: 12px;
-  border-left: 1px solid var(--border);
-}
-
-.rb-tree__row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 2px 0;
-  min-width: 0;
-}
-
-.rb-tree__icon {
-  color: var(--text-dim);
-  flex: none;
-}
-
-.rb-tree__label[data-kind='dir'] {
-  color: var(--text);
-  font-weight: 550;
-}
-
-.rb-tree__label[data-kind='file'] {
-  color: var(--text-muted);
-}
-
-.rb-tree__note {
-  font-family: var(--sans);
-  font-size: 11px;
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* A rich fence that did not validate. It keeps the code block's own margin and
-   adds the reason underneath, indented to read as a footnote to it. */
-.rb-failed {
-  margin: 0 0 14px;
-}
-
-.rb-failed .codeblock {
-  margin: 0;
-}
-
-.rb-failed .rb-note {
-  padding-left: 2px;
 }

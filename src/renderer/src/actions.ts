@@ -324,15 +324,13 @@ export function buildActions(): AppAction[] {
       })
     },
     {
-      id: 'rich.toggle',
-      label: 'Toggle rich blocks for this thread',
+      id: 'charts.toggle',
+      label: 'Toggle charts for this thread',
       group: 'Capabilities',
       run: requireThread((id) => {
-        const on = thread?.config.richBlocksEnabled ?? settings?.richBlocksEnabled ?? false
-        void store.updateThread(id, { config: { richBlocksEnabled: !on } })
-        store.showToast(
-          on ? 'Rich blocks off' : 'Rich blocks on — charts, tables and panels'
-        )
+        const on = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
+        void store.updateThread(id, { config: { chartsEnabled: !on } })
+        store.showToast(on ? 'Charts off' : 'Charts on')
       })
     },
     { id: 'mcp.panel', label: 'MCP servers', group: 'Capabilities', run: () => store.setOverlay('mcp') },

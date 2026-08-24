@@ -14,7 +14,7 @@ const SOURCE_LABEL: Record<SystemPromptSegment['source'], string> = {
   repo: 'Attached repository',
   compaction: 'Compaction',
   datetime: 'Built-in',
-  rich: 'Rich blocks'
+  charts: 'Charts'
 }
 
 /**

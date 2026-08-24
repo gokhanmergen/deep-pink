@@ -14,7 +14,7 @@ import {
   Cpu,
   FolderCode,
   Globe,
-  LayoutDashboard,
+  BarChart3,
   Image as ImageIcon,
   Paperclip,
   Square,
@@ -50,7 +50,7 @@ export function Composer(): React.JSX.Element {
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   const webOn = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
-  const richOn = thread?.config.richBlocksEnabled ?? settings?.richBlocksEnabled ?? false
+  const chartsOn = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
 
   // Web access works by giving the model tools. A model that cannot call tools
   // will simply ignore them, which looks exactly like search being broken.
@@ -234,9 +234,9 @@ export function Composer(): React.JSX.Element {
     void updateThread(activeThreadId, { config: { webAccessEnabled: !webOn } })
   }
 
-  const toggleRich = (): void => {
+  const toggleCharts = (): void => {
     if (!activeThreadId) return
-    void updateThread(activeThreadId, { config: { richBlocksEnabled: !richOn } })
+    void updateThread(activeThreadId, { config: { chartsEnabled: !chartsOn } })
   }
 
   return (
@@ -415,16 +415,16 @@ export function Composer(): React.JSX.Element {
                 this thread lets a reply be, rather than what the model can do. */}
             <button
               className="btn"
-              data-on={richOn}
-              onClick={toggleRich}
-              title={`Charts, tables and panels in replies — ${formatBinding(
-                keybinds['rich.toggle'] ?? 'mod+shift+b'
+              data-on={chartsOn}
+              onClick={toggleCharts}
+              title={`Charts in replies — ${formatBinding(
+                keybinds['charts.toggle'] ?? 'mod+shift+b'
               )}`}
               type="button"
               disabled={!activeThreadId}
             >
-              <LayoutDashboard {...ICON} />
-              <span className="btn__label">Rich {richOn ? 'on' : 'off'}</span>
+              <BarChart3 {...ICON} />
+              <span className="btn__label">Charts {chartsOn ? 'on' : 'off'}</span>
             </button>
 
             <button

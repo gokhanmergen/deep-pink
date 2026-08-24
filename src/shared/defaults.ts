@@ -119,7 +119,7 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
 
   // Capabilities
   'web.toggle': 'mod+shift+w',
-  'rich.toggle': 'mod+shift+b',
+  'charts.toggle': 'mod+shift+b',
   'mcp.panel': 'mod+shift+e',
   'reasoning.toggle': 'mod+shift+r',
   'context.compact': 'mod+shift+c',
@@ -151,7 +151,7 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: 1,
   maxTokens: null,
   streamReasoning: true,
-  richBlocksEnabled: false,
+  chartsEnabled: false,
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,
