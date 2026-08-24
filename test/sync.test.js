@@ -275,6 +275,43 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
     s3.origin({ endpoint: '', region: 'eu-west-2', bucket: 'b', accessKeyId: '', secretAccessKey: '', prefix: '' }) ===
       'https://b.s3.eu-west-2.amazonaws.com'
   )
+  // What Cloudflare shows as a bucket's "S3 API" URL already has the bucket on
+  // the end of it. Pasting that addressed /bucket/bucket, and every request
+  // came back "the specified key does not exist".
+  check(
+    'an endpoint that already names the bucket is not doubled',
+    s3.origin({
+      endpoint: 'https://acct.r2.cloudflarestorage.com/mybucket',
+      region: 'auto',
+      bucket: 'mybucket',
+      accessKeyId: '',
+      secretAccessKey: '',
+      prefix: ''
+    }) === 'https://acct.r2.cloudflarestorage.com/mybucket'
+  )
+  check(
+    'however it was capitalised or punctuated',
+    s3.origin({
+      endpoint: 'https://acct.r2.cloudflarestorage.com/MyBucket/ ',
+      region: 'auto',
+      bucket: 'MyBucket',
+      accessKeyId: '',
+      secretAccessKey: '',
+      prefix: ''
+    }) === 'https://acct.r2.cloudflarestorage.com/MyBucket'
+  )
+  check(
+    'but a path that is not the bucket is left alone',
+    s3.origin({
+      endpoint: 'https://host/s3',
+      region: 'auto',
+      bucket: 'b',
+      accessKeyId: '',
+      secretAccessKey: '',
+      prefix: ''
+    }) === 'https://host/s3/b'
+  )
+
   check(
     'and anything else puts it in the path',
     s3.origin({
@@ -461,9 +498,16 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   section('when it cannot work, it says so rather than throwing')
 
   const broken = await syncEngine.run({
-    fetcher: async () => new Response('<Error><Message>no such bucket</Message></Error>', { status: 404 })
+    fetcher: async () =>
+      new Response('<Error><Message>The specified key does not exist.</Message></Error>', {
+        status: 404
+      })
   })
-  check('a bucket that is not there is reported', /404|no such bucket/i.test(broken.error ?? ''), broken.error)
+  check(
+    'a listing that 404s is explained as an address, not a missing file',
+    /No bucket at/.test(broken.error ?? '') && !/key does not exist/.test(broken.error ?? ''),
+    broken.error
+  )
 
   syncEngine.saveConfig({ enabled: false })
   const off = await syncEngine.run({ fetcher: store.fetcher })

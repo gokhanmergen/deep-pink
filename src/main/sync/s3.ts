@@ -170,11 +170,19 @@ function findHeader(headers: Record<string, string>, lower: string): string {
  * AWS puts the bucket in the hostname; everything else — R2, MinIO, a bucket
  * whose name has a dot in it and therefore breaks TLS as a subdomain — is
  * addressed with the bucket as the first path segment.
+ *
+ * An endpoint that already names the bucket is taken as meaning the same
+ * place, because that is what several providers show you: Cloudflare calls
+ * `https://<account>.r2.cloudflarestorage.com/<bucket>` the bucket's "S3 API"
+ * URL, and pasting it would otherwise address `/bucket/bucket` and come back
+ * saying no such key.
  */
 export function origin(config: S3Config): string {
   if (!config.endpoint) return `https://${config.bucket}.s3.${config.region}.amazonaws.com`
-  const base = config.endpoint.replace(/\/+$/, '')
-  return `${base}/${config.bucket}`
+
+  const base = config.endpoint.trim().replace(/\/+$/, '')
+  const bucket = config.bucket.trim()
+  return base.toLowerCase().endsWith(`/${bucket.toLowerCase()}`) ? base : `${base}/${bucket}`
 }
 
 export class S3Error extends Error {
@@ -267,7 +275,19 @@ export class S3Client {
       // Addressed to the bucket, not to the prefix: ListObjectsV2 is a query on
       // the bucket root, and the prefix is one of its parameters.
       const response = await this.send('GET', null, query)
-      if (!response.ok) throw await asError(response, 'Could not list the bucket')
+      if (!response.ok) {
+        const error = await asError(response, 'Could not list the bucket')
+        // Nothing about a listing names a key, so a 404 is an address that did
+        // not resolve to a bucket at all — which is worth saying plainly,
+        // because the provider's own wording sends people looking for a file.
+        throw response.status === 404
+          ? new S3Error(
+              `No bucket at ${origin(this.config)} — check the bucket name, and that the ` +
+                `endpoint is the account's S3 URL rather than a path inside it (HTTP 404)`,
+              404
+            )
+          : error
+      }
 
       const xml = await response.text()
       for (const chunk of xml.split('<Contents>').slice(1)) {

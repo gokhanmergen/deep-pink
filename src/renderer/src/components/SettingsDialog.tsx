@@ -680,6 +680,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 value={sync.config.endpoint}
                 onCommit={async (next) => setSync(await window.deepPink.sync.save({ endpoint: next }))}
               />
+              <span className="field__hint">
+                The account's S3 URL. Providers often show one with the bucket already on the end
+                of it — that form works too.
+              </span>
             </div>
 
             <div className="row">
