@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, protocol } from 'electron'
 import type { Attachment, AttachmentKind, PendingAttachment } from '@shared/types'
@@ -188,6 +188,28 @@ export function readText(id: string): string | null {
   } catch {
     return null
   }
+}
+
+/** The name it was stored under, for a save dialog to start from. */
+export function nameOf(id: string): string | null {
+  const row = getDb().prepare('SELECT filename FROM attachments WHERE id = ?').get(id) as
+    | { filename: string }
+    | undefined
+  return row?.filename || null
+}
+
+/**
+ * Copies a stored attachment somewhere the user picked.
+ *
+ * The source is resolved from the database rather than taken from the caller,
+ * so "save this image" can only ever mean an image this app is holding — the
+ * renderer names an id and never a path.
+ */
+export function copyTo(id: string, destination: string): boolean {
+  const path = filePath(id)
+  if (!path) return false
+  copyFileSync(path, destination)
+  return true
 }
 
 /** The bytes as base64, for writing an attachment into an export. */

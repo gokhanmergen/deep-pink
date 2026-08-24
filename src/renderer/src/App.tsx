@@ -15,6 +15,7 @@ import { McpPanel } from './components/McpPanel'
 import { KeybindCheatsheet } from './components/KeybindCheatsheet'
 import { ToolApprovalDialog } from './components/ToolApprovalDialog'
 import { Dialog } from './components/Dialog'
+import { ImageViewer } from './components/ImageViewer'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -161,6 +162,7 @@ export function App(): React.JSX.Element {
 
       <ToolApprovalDialog />
       <Dialog />
+      <ImageViewer />
 
       {toast && (
         <div className="toast" data-tone={toast.tone}>

@@ -2455,3 +2455,161 @@ svg.lucide {
   fill: var(--text-muted);
   font-weight: 550;
 }
+
+/* ------------------------------------------------------------------ *
+ * Image viewer
+ *
+ * Over the conversation rather than away from it: the app is still there
+ * behind the backdrop, and Escape puts you back in it exactly where you were.
+ * ------------------------------------------------------------------ */
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.86);
+  backdrop-filter: blur(3px);
+  animation: viewer-in 0.12s ease-out;
+}
+
+@keyframes viewer-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.viewer__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  flex: none;
+  color: var(--text);
+  background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
+}
+
+.viewer__name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer__meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.viewer__spacer {
+  flex: 1;
+}
+
+.viewer__zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.viewer__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: color 0.12s, background 0.12s;
+}
+
+.viewer__btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.viewer__btn:disabled {
+  opacity: 0.35;
+}
+
+.viewer__percent {
+  min-width: 52px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.viewer__percent:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+/* The frame the picture lives in. Padded, so a mostly-full-screen image still
+   reads as something sitting on top of the app rather than as a new window. */
+.viewer__stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 4px 44px 28px;
+  overflow: hidden;
+}
+
+.viewer__image {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  /* No transition on the transform: it would lag a drag by its duration. */
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.viewer__image[data-panning='true'] {
+  cursor: grab;
+}
+
+.viewer:active .viewer__image[data-panning='true'] {
+  cursor: grabbing;
+}
+
+/* Sat against the edges, out of the picture's way. */
+.viewer__step {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.35);
+  transition: color 0.12s, background 0.12s;
+}
+
+.viewer__step:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.viewer__step--prev {
+  left: 6px;
+}
+
+.viewer__step--next {
+  right: 6px;
+}
+
+/* The transcript's own thumbnails say they can be opened. */
+.attachment {
+  cursor: zoom-in;
+}

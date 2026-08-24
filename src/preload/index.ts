@@ -179,10 +179,14 @@ const api = {
   },
 
   attachments: {
-    /** Opens a stored image at full size in the desktop's image viewer. */
+    /** Hands a stored image to the desktop's own image viewer. */
     open: (id: string): Promise<void> => ipcRenderer.invoke('attachments:open', id),
     /** Full text of a text attachment; null for images. */
-    text: (id: string): Promise<string | null> => ipcRenderer.invoke('attachments:text', id)
+    text: (id: string): Promise<string | null> => ipcRenderer.invoke('attachments:text', id),
+    /** Asks where to put a copy and writes it; returns the path, or null. */
+    save: (id: string): Promise<string | null> => ipcRenderer.invoke('attachments:save', id),
+    /** Puts the image on the clipboard. False if there was nothing to copy. */
+    copy: (id: string): Promise<boolean> => ipcRenderer.invoke('attachments:copy', id)
   },
 
   shell: {

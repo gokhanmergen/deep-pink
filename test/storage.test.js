@@ -1,6 +1,6 @@
 const { suite } = require('./support/harness')
 
-suite('storage — threads, messages, search, stats', async ({ check, section, subject }) => {
+suite('storage — threads, messages, search, stats', async ({ check, section, subject, tmpDir }) => {
   const { getDb, repo } = subject
   getDb()
 
@@ -371,6 +371,21 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
     attachments.toDataUrl(storedImage).startsWith('data:image/png;base64,iVBOR'),
     attachments.toDataUrl(storedImage).slice(0, 40)
   )
+
+  // What the viewer's "save a copy" is built on: the renderer names an id and
+  // the bytes are read from where this module put them, never from a path the
+  // window handed over.
+  section('saving a copy of an image')
+  const copyPath = require('node:path').join(tmpDir, 'saved.png')
+  check('it is copied out under the name it was stored with', attachments.nameOf(storedImage.id) === 'shot.png')
+  check('the copy is written', attachments.copyTo(storedImage.id, copyPath) === true)
+  check(
+    'and it is the same bytes',
+    require('node:fs').readFileSync(copyPath).toString('base64') === PNG,
+    require('node:fs').readFileSync(copyPath).length
+  )
+  check('an id nobody stored copies nothing', attachments.copyTo('not-an-id', copyPath) === false)
+  check('and names nothing', attachments.nameOf('not-an-id') === null)
 
   const refuse = (input) => {
     try { attachments.store(imgThread.id, withImage.id, input); return false } catch { return true }

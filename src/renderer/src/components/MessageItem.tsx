@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Copy, Pencil } from 'lucide-react'
 import { ICON } from '../icons'
-import type { Message, UiSettings } from '@shared/types'
+import type { Attachment, Message, UiSettings } from '@shared/types'
 import { Markdown } from './Markdown'
 import { TextAttachment } from './TextAttachment'
 import { useStore } from '../store'
@@ -21,6 +21,18 @@ export function MessageItem({
   const activeThreadId = useStore((s) => s.activeThreadId)
   const highlightMessageId = useStore((s) => s.highlightMessageId)
   const setHighlight = useStore((s) => s.setHighlight)
+  const openImageViewer = useStore((s) => s.openImageViewer)
+
+  /**
+   * Every image in the conversation, in the order it was said, so the viewer
+   * can be stepped through from wherever it was opened. Read when it is opened
+   * rather than subscribed to: a row that re-rendered on each new picture would
+   * be a row re-rendering on each new picture.
+   */
+  const imagesInThread = (): Attachment[] =>
+    useStore
+      .getState()
+      .messages.flatMap((entry) => entry.attachments.filter((file) => file.kind === 'image'))
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -116,10 +128,11 @@ export function MessageItem({
               className="attachment"
               href={image.url}
               onClick={(event) => {
-                // Open at full size in the default image viewer rather than
-                // navigating the app away from the conversation.
+                // Opens in the app's own viewer, where it can be zoomed, saved
+                // and stepped through — handing it to the desktop's image
+                // program is still offered, from in there.
                 event.preventDefault()
-                void window.deepPink.attachments.open(image.id)
+                openImageViewer(imagesInThread(), image.id)
               }}
               title={`${image.filename} — ${Math.round(image.bytes / 1024)} KB`}
             >

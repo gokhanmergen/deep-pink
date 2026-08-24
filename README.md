@@ -19,6 +19,7 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 
 - Markdown, GitHub-flavoured tables, LaTeX (`$…$` and `$$…$$`) via KaTeX, and syntax-highlighted code blocks with copy buttons — all rendered locally.
 - Streaming replies, with reasoning traces when the model produces them.
+- Click a picture and it opens where you already are, not in whatever the desktop registered for PNGs: a viewer over the conversation with wheel-to-zoom about the pointer, drag to pan, double-click between fitted and actual size, `+` `−` `0` `1` on the keyboard, and the arrow keys stepping through every image in the thread. Save a copy or put it on the clipboard from the same bar; the desktop's own viewer is still one button away. Escape puts you back exactly where you were.
 - Edit any message, regenerate any reply, branch a thread from any point.
 - Threads name themselves from the first exchange, and keep trying until one sticks: stopping a reply, a failed request or closing the app mid-turn used to leave a thread called "Untitled" for good. Anything still unnamed is named on the next reply, or at the next start. Ask for a fresh name at any time with `⇧ F2`, from the command palette, or by right-clicking the thread.
 - Open a thread, say nothing, go elsewhere and it is gone — an unnamed thread with no messages in it is not worth a row in the list. Pin it, file it in a folder or say something and it stays.

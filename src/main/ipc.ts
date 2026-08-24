@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from 'electron'
 import type {
   ExportFormat,
   Folder,
@@ -353,6 +353,41 @@ export function registerIpc(): void {
 
   // Full text of a text attachment, fetched only when the reader expands it.
   ipcMain.handle('attachments:text', (_e, id: string) => attachments.readText(id))
+
+  /**
+   * Saves a copy of an attachment wherever the user says.
+   *
+   * The renderer passes an id, never a path: the only file this can read is one
+   * the app already stored, and the only one it can write is the one chosen in
+   * the dialog below.
+   */
+  ipcMain.handle(
+    'attachments:save',
+    async (event, id: string): Promise<string | null> => {
+      const source = attachments.filePath(id)
+      if (!source) return null
+
+      const window = BrowserWindow.fromWebContents(event.sender)
+      const result = await dialog.showSaveDialog(window ?? BrowserWindow.getAllWindows()[0], {
+        title: 'Save image',
+        defaultPath: join(app.getPath('downloads'), attachments.nameOf(id) || basename(source))
+      })
+      if (result.canceled || !result.filePath) return null
+
+      return attachments.copyTo(id, result.filePath) ? result.filePath : null
+    }
+  )
+
+  // Onto the system clipboard as an image, so it can be pasted into anything
+  // that takes one rather than only into a file manager.
+  ipcMain.handle('attachments:copy', (_e, id: string): boolean => {
+    const path = attachments.filePath(id)
+    if (!path) return false
+    const image = nativeImage.createFromPath(path)
+    if (image.isEmpty()) return false
+    clipboard.writeImage(image)
+    return true
+  })
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
     const parsed = new URL(url)

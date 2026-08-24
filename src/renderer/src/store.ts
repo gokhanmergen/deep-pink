@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type {
+  Attachment,
   Folder,
   McpServerStatus,
   Message,
@@ -112,6 +113,12 @@ interface State {
   dialog: DialogRequest | null
   /** Message id the transcript should scroll to and flash. */
   highlightMessageId: string | null
+  /**
+   * The image being looked at, and everything else in the thread it can be
+   * stepped through. Held here rather than in the transcript so the viewer
+   * outlives the row that opened it — a re-render mid-stream must not close it.
+   */
+  imageViewer: { images: Attachment[]; index: number } | null
 
   init: () => Promise<void>
   refreshThreads: () => Promise<void>
@@ -160,6 +167,11 @@ interface State {
   showToast: (message: string, tone?: Toast['tone']) => void
   approveTool: (approved: boolean) => Promise<void>
   setHighlight: (messageId: string | null) => void
+  /** Opens the image viewer on `id`, stepping through every image given. */
+  openImageViewer: (images: Attachment[], id: string) => void
+  closeImageViewer: () => void
+  /** Moves to the next image along, wrapping at either end. */
+  stepImageViewer: (delta: number) => void
   /** Resolves true if the user confirms. */
   askConfirm: (options: ConfirmOptions) => Promise<boolean>
   /** Resolves the entered text, or null if cancelled. */
@@ -211,6 +223,7 @@ export const useStore = create<State>((set, get) => ({
   toast: null,
   dialog: null,
   highlightMessageId: null,
+  imageViewer: null,
 
   async init() {
     if (initialised) return
@@ -589,6 +602,25 @@ export const useStore = create<State>((set, get) => ({
 
   setHighlight(messageId) {
     set({ highlightMessageId: messageId })
+  },
+
+  openImageViewer(images, id) {
+    const index = images.findIndex((image) => image.id === id)
+    if (index < 0) return
+    set({ imageViewer: { images, index } })
+  },
+
+  closeImageViewer() {
+    set({ imageViewer: null })
+  },
+
+  stepImageViewer(delta) {
+    const viewer = get().imageViewer
+    if (!viewer || viewer.images.length < 2) return
+    const count = viewer.images.length
+    set({
+      imageViewer: { ...viewer, index: (viewer.index + delta + count) % count }
+    })
   },
 
   askConfirm(options) {
