@@ -34,7 +34,26 @@ function bucket(name = 'deep-pink-test') {
     const method = init.method
     calls.push(`${method} ${keyOf(parsed.pathname)}`)
 
+    // A real bucket answers 403 when the signature does not cover the request
+    // it arrived on, and 404 when the address is not one of its own. Both are
+    // checked here because neither used to be, and both were wrong.
+    if (!parsed.pathname.startsWith(`/${name}/`) && parsed.pathname !== `/${name}/`) {
+      return new Response('<Error><Message>no such bucket</Message></Error>', { status: 404 })
+    }
+    const auth = init.headers.Authorization ?? ''
+    const signed = /SignedHeaders=([^,]+)/.exec(auth)?.[1] ?? ''
+    if (!auth.startsWith('AWS4-HMAC-SHA256 ') || !signed.includes('x-amz-content-sha256')) {
+      return new Response('<Error><Message>bad signature</Message></Error>', { status: 403 })
+    }
+
     if (method === 'GET' && parsed.searchParams.get('list-type') === '2') {
+      // ListObjectsV2 is a question about the bucket; asking it of a key is
+      // asking the wrong URL, and a real S3 would answer something else.
+      if (parsed.pathname !== `/${name}/` && parsed.pathname !== `/${name}`) {
+        return new Response('<Error><Message>listing must address the bucket</Message></Error>', {
+          status: 400
+        })
+      }
       const prefix = parsed.searchParams.get('prefix') ?? ''
       const contents = [...objects.entries()]
         .filter(([key]) => key.startsWith(`/${prefix}`))
@@ -194,6 +213,61 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
     'and the signed headers in order',
     vector.headers.Authorization.includes('SignedHeaders=host;range;x-amz-content-sha256;x-amz-date'),
     vector.headers.Authorization
+  )
+
+  // The second published example: a PUT, so the body is part of what is signed.
+  const putVector = s3.sign(
+    {
+      endpoint: '',
+      region: 'us-east-1',
+      bucket: 'examplebucket',
+      accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+      secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      prefix: ''
+    },
+    'PUT',
+    'https://examplebucket.s3.amazonaws.com',
+    '/test$file.text',
+    {},
+    '44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072',
+    new Date('2013-05-24T00:00:00Z'),
+    { date: 'Fri, 24 May 2013 00:00:00 GMT', 'x-amz-storage-class': 'REDUCED_REDUNDANCY' }
+  )
+  check(
+    'a signed body matches its vector too',
+    putVector.headers.Authorization.includes(
+      'Signature=98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd'
+    ),
+    putVector.canonical
+  )
+
+  // The bug that made every request to R2 and MinIO come back 403: with the
+  // bucket in the path rather than the host, it has to be in the signature.
+  const pathStyle = s3.sign(
+    {
+      endpoint: 'https://s3.example.com',
+      region: 'auto',
+      bucket: 'mybucket',
+      accessKeyId: 'K',
+      secretAccessKey: 'S',
+      prefix: 'dp'
+    },
+    'PUT',
+    'https://s3.example.com/mybucket',
+    '/dp/r/abc',
+    {},
+    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    new Date('2026-08-24T00:00:00Z')
+  )
+  check(
+    'a path-style request signs the bucket segment',
+    pathStyle.canonical.split('\n')[1] === '/mybucket/dp/r/abc',
+    pathStyle.canonical.split('\n')[1]
+  )
+  check(
+    'and asks for the same path it signed',
+    new URL(pathStyle.url).pathname === pathStyle.canonical.split('\n')[1],
+    pathStyle.url
   )
 
   check(

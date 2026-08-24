@@ -70,6 +70,12 @@ function stamps(now: Date): { amzDate: string; day: string } {
 export interface SignedRequest {
   url: string
   headers: Record<string, string>
+  /**
+   * The canonical request the signature was computed over. Returned because it
+   * is the only way to see what was actually signed: a mismatch here reaches
+   * the user as an unexplained 403, so the tests assert on it directly.
+   */
+  canonical: string
 }
 
 /**
@@ -91,7 +97,16 @@ export function sign(
   extraHeaders: Record<string, string> = {}
 ): SignedRequest {
   const { amzDate, day } = stamps(now)
-  const host = new URL(base).host
+  const origin = new URL(base)
+  const host = origin.host
+
+  /*
+   * The canonical URI is the whole path of the request, and for a
+   * path-style endpoint that includes the bucket. Signing only the key —
+   * which is what this did at first — produces a signature the server cannot
+   * reproduce, and every request to R2, MinIO or B2 comes back 403.
+   */
+  const fullPath = `${origin.pathname.replace(/\/+$/, '')}${path}`
 
   const headers: Record<string, string> = {
     ...extraHeaders,
@@ -116,7 +131,7 @@ export function sign(
 
   const canonicalRequest = [
     method,
-    encodePath(path),
+    encodePath(fullPath),
     canonicalQuery,
     canonicalHeaders,
     names.join(';'),
@@ -133,7 +148,8 @@ export function sign(
   const signature = createHmac('sha256', signingKey).update(toSign, 'utf8').digest('hex')
 
   return {
-    url: `${base}${encodePath(path)}${canonicalQuery ? `?${canonicalQuery}` : ''}`,
+    canonical: canonicalRequest,
+    url: `${origin.origin}${encodePath(fullPath)}${canonicalQuery ? `?${canonicalQuery}` : ''}`,
     headers: {
       ...headers,
       Authorization:
@@ -186,11 +202,12 @@ export class S3Client {
 
   private async send(
     method: string,
-    key: string,
+    /** An object key, or null for the bucket itself — which is where a listing goes. */
+    key: string | null,
     query: Record<string, string>,
     body?: Buffer
   ): Promise<Response> {
-    const path = key === '' ? this.full('') : this.full(key)
+    const path = key === null ? '/' : this.full(key)
     const payloadHash = body ? sha256(body) : sha256('')
     const signed = sign(
       this.config,
@@ -247,7 +264,9 @@ export class S3Client {
       const query: Record<string, string> = { 'list-type': '2', prefix: under, 'max-keys': '1000' }
       if (token) query['continuation-token'] = token
 
-      const response = await this.send('GET', '', query)
+      // Addressed to the bucket, not to the prefix: ListObjectsV2 is a query on
+      // the bucket root, and the prefix is one of its parameters.
+      const response = await this.send('GET', null, query)
       if (!response.ok) throw await asError(response, 'Could not list the bucket')
 
       const xml = await response.text()
