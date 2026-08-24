@@ -464,8 +464,9 @@ suite(
 
     check('right-clicking opens a menu', opened && menuShown.open, menuShown)
     check(
-      'with pin, regenerate name and delete',
-      JSON.stringify(menuShown.items) === '["Pin","Regenerate name","Delete"]',
+      'offering everything that acts on one thread, in order',
+      JSON.stringify(menuShown.items) ===
+        '["Pin","Regenerate name","Export as Markdown","Export as an archive","Delete"]',
       menuShown.items
     )
     check('positioned on screen', menuShown.onScreen === true, menuShown)
