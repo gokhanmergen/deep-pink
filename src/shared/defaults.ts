@@ -57,7 +57,7 @@ Rules:
 Reply with the title and nothing else.`
 
 export const DEFAULT_UI: UiSettings = {
-  accent: '#ff1493',
+  accent: '#8a8eff',
   fontSize: 14,
   // Around 90 characters at the default size — a comfortable measure for prose,
   // and the width the app was designed at.

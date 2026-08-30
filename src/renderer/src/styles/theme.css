@@ -2,15 +2,15 @@
    One accent, a narrow neutral ramp, and nothing that glows for no reason. */
 
 :root {
-  /* The name is the colour. Clears 3:1 against this surface, so the same value
-     can carry a chart mark and a button without being re-picked for either. */
-  --accent: #ff1493;
-  --accent-hover: #ff47a9;
-  --accent-dim: rgba(255, 20, 147, 0.16);
-  --accent-line: rgba(255, 20, 147, 0.38);
+  /* Periwinkle. Clears 3:1 against this surface, so the same value can carry
+     a chart mark and a button without being re-picked for either. */
+  --accent: #8a8eff;
+  --accent-hover: #a8b6ff;
+  --accent-dim: rgba(138, 142, 255, 0.16);
+  --accent-line: rgba(138, 142, 255, 0.38);
   /* The area-fill wash: the accent at ~10%, which is a tint of the surface
      rather than a block of colour. */
-  --accent-wash: rgba(255, 20, 147, 0.1);
+  --accent-wash: rgba(138, 142, 255, 0.1);
 
   --bg: #0a0a0a;
   /* The sidebar sits a step below the content it is beside, not above it: the

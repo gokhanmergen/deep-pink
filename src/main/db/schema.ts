@@ -217,10 +217,11 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_threads_folder ON threads (folder_id);
   `,
 
-  /* 11 — the accent was briefly re-defaulted, then put back. Kept because a
-     database records how far through this list it has got; clearing a stored
-     accent that equals the default is a no-op now that the default is that
-     colour again, and an accent someone chose was never touched. */ `
+  /* 11 — the accent was briefly re-defaulted, put back, and has since moved
+     to periwinkle. Kept because a database records how far through this list
+     it has got; this clears a stored accent that was only ever the old pink
+     default so the current default applies, and an accent someone chose was
+     never touched. */ `
   UPDATE settings
      SET value = json_remove(value, '$.ui.accent')
    WHERE key = 'settings'
