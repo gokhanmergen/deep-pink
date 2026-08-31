@@ -30,6 +30,13 @@ export function formatNumber(n: number): string {
   return n.toLocaleString()
 }
 
+/** Sizes as a reader wants them: bytes, whole kilobytes, then one decimal. */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
 export function formatRelative(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000)
   if (seconds < 60) return 'just now'

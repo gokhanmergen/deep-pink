@@ -11,6 +11,7 @@ import {
   X
 } from 'lucide-react'
 import { ICON } from '../icons'
+import { formatBytes } from '../format'
 import { useStore } from '../store'
 
 /**
@@ -41,12 +42,6 @@ const ORIGIN: Point = { x: 0, y: 0 }
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high)
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export function ImageViewer(): React.JSX.Element | null {

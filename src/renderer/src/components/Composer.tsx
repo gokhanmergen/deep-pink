@@ -2,11 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   MAX_COUNT,
   attachableFilesFrom,
-  formatBytes,
   stageFiles,
   stageText,
   type StagedFile
 } from './attachFiles'
+import { formatBytes } from '../format'
 import type { AttachedRepo } from '@shared/types'
 import { useStore } from '../store'
 import {

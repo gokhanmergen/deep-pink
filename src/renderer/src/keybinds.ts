@@ -186,7 +186,3 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     ]
   }
 ]
-
-export const ACTION_LABELS: Record<string, string> = Object.fromEntries(
-  KEYBIND_GROUPS.flatMap((group) => group.actions.map((action) => [action.id, action.label]))
-)

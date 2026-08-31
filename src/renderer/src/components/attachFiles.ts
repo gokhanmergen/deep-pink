@@ -66,11 +66,6 @@ export function attachableFilesFrom(transfer: DataTransfer | null): File[] {
   return files.filter((file) => file.type.startsWith('image/') || isTextFile(file))
 }
 
-/** Kept for the drag-over check, which should only light up for real payloads. */
-export function imageFilesFrom(transfer: DataTransfer | null): File[] {
-  return attachableFilesFrom(transfer).filter((f) => f.type.startsWith('image/'))
-}
-
 function toBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -170,10 +165,4 @@ export async function stageFiles(files: File[], alreadyStaged: number): Promise<
   }
 
   return { staged, rejected }
-}
-
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
