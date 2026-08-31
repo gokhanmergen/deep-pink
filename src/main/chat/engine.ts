@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import type {
   Message,
   SendMessageRequest,
@@ -287,11 +286,29 @@ export async function shouldCompact(
   const messages = repo.getMessages(thread.id)
   const { estimatedTokens } = assembleContext(thread, settings)
 
-  // Prefer the real prompt token count from the last request when we have one.
-  const last = [...messages].reverse().find((m) => m.usage)
-  const used = last?.usage
-    ? last.usage.promptTokens + last.usage.completionTokens
-    : estimateContextTokens(messages, estimatedTokens)
+  // The last turn the provider itself counted, which beats any estimate — but
+  // not every usage row is a measurement of this conversation. A compaction
+  // summary's is what summarising cost, over a transcript that is no longer
+  // being sent, and a title marker is not a turn at all.
+  const index = messages.findLastIndex(
+    (m) => m.usage != null && !m.isCompactionSummary && m.role === 'assistant'
+  )
+  const measured = index >= 0 ? messages[index] : null
+
+  // A compaction since that measurement means it describes messages that have
+  // been replaced by a summary, so it now reads as full forever — which is
+  // exactly the loop that compacts a thread again on every turn.
+  const compactedSince =
+    measured != null &&
+    messages.some((m) => m.isCompactionSummary && m.createdAt >= measured.createdAt)
+
+  const used =
+    measured?.usage && !compactedSince
+      ? measured.usage.promptTokens +
+        measured.usage.completionTokens +
+        // Whatever has been said since it was counted.
+        estimateContextTokens(messages.slice(index + 1), 0)
+      : estimateContextTokens(messages, estimatedTokens)
 
   if (!settings.compaction.enabled || !limit) return { needed: false, used, limit }
   return { needed: used > limit * settings.compaction.triggerRatio, used, limit }
@@ -830,8 +847,4 @@ const TITLE_SWEEP_LIMIT = 25
 /** Used by the UI when the user asks for a fresh title on demand. */
 export async function retitle(threadId: string, emit: Emit): Promise<string | null> {
   return generateTitle(threadId, emit)
-}
-
-export function newThreadId(): string {
-  return randomUUID()
 }

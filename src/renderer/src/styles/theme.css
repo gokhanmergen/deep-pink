@@ -640,6 +640,13 @@ svg.lucide {
   border-color: transparent;
 }
 
+/* For a button that sits inside a line of information rather than in a bar of
+   its own — the context gauge's, which must not out-shout the reading. */
+.btn--small {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
 .btn--danger:hover {
   color: var(--red);
   border-color: var(--red);

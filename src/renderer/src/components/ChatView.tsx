@@ -21,6 +21,7 @@ export function ChatView(): React.JSX.Element {
   const updateThread = useStore((s) => s.updateThread)
   const toggleSidebar = useStore((s) => s.toggleSidebar)
   const createThread = useStore((s) => s.createThread)
+  const compact = useStore((s) => s.compact)
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
 
@@ -183,6 +184,22 @@ export function ChatView(): React.JSX.Element {
           <span className="context-gauge__label">
             {Math.round(usedRatio * 100)}% of context
           </span>
+          {/* Compaction asks first unless it has been told not to — and asking
+              has to happen somewhere. Here, where the gauge that says why is
+              already on screen, rather than as a dialog over a reply. */}
+          {context.needed && settings.compaction.requireConfirmation && !compacting && (
+            <button
+              className="btn btn--small"
+              disabled={generating}
+              onClick={() => void compact()}
+              title={`Replace the older part of this thread with a summary — ${formatBinding(
+                keybinds['context.compact']
+              )}`}
+              type="button"
+            >
+              Compact now
+            </button>
+          )}
         </div>
       ) : null}
 

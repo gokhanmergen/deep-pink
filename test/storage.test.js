@@ -1,7 +1,7 @@
 const { suite } = require('./support/harness')
 
 suite('storage — threads, messages, search, stats', async ({ check, section, subject, tmpDir }) => {
-  const { getDb, repo } = subject
+  const { getDb, repo, shouldCompact, DEFAULT_SETTINGS } = subject
   getDb()
 
   section('threads and messages')
@@ -454,4 +454,69 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   repo.setSetting('probe', { nested: { value: 7 } })
   check('settings survive a round trip', repo.getSetting('probe', null).nested.value === 7)
   check('missing settings fall back', repo.getSetting('absent', 'fallback') === 'fallback')
+
+  section('how full the context is, and when that means compacting')
+  /*
+   * The gauge and the automatic compaction both read this number, and getting
+   * it wrong is not a cosmetic matter: a thread that still measures as full
+   * after being compacted is one that compacts itself again on every turn,
+   * summarising a summary until there is nothing left of the conversation.
+   */
+  repo.setCache('models', [
+    {
+      id: 'test/ctx',
+      name: 'ctx',
+      description: '',
+      contextLength: 1000,
+      pricing: {},
+      supportedParameters: [],
+      inputModalities: ['text'],
+      supportsTools: false,
+      supportsReasoning: false,
+      created: 0
+    }
+  ])
+  const compactionSettings = {
+    ...DEFAULT_SETTINGS,
+    defaultModel: 'test/ctx',
+    compaction: { ...DEFAULT_SETTINGS.compaction, enabled: true, triggerRatio: 0.75 }
+  }
+
+  const ctx = repo.createThread('Context', { model: 'test/ctx' })
+  repo.insertMessage({ threadId: ctx.id, role: 'user', content: 'a question' })
+  const answered = repo.insertMessage({
+    threadId: ctx.id, role: 'assistant', content: 'an answer', model: 'test/ctx'
+  })
+  const counted = {
+    promptTokens: 800, completionTokens: 20, reasoningTokens: 0, cachedTokens: 0,
+    totalTokens: 820, costUsd: 0, latencyMs: 0, timeToFirstTokenMs: null,
+    tokensPerSecond: null, generationId: null
+  }
+  repo.recordUsage(ctx.id, answered.id, 'test/ctx', 'test', counted)
+
+  const full = await shouldCompact(repo.getThread(ctx.id), compactionSettings)
+  check('what the provider counted is what is used', full.used >= 820, full)
+  check('and past the threshold it asks to be compacted', full.needed === true, full)
+
+  // A compaction leaves a summary behind, and that summary carries the cost of
+  // the summarising request — a measurement of a transcript that is no longer
+  // being sent, taken after the last turn that was.
+  const stoodIn = repo.insertMessage({
+    threadId: ctx.id,
+    role: 'system',
+    content: 'Summary of the earlier part of this conversation.',
+    model: 'test/ctx',
+    isCompactionSummary: true
+  })
+  repo.recordUsage(ctx.id, stoodIn.id, 'test/ctx', 'test', {
+    ...counted, promptTokens: 900, completionTokens: 90, totalTokens: 990
+  })
+
+  const after = await shouldCompact(repo.getThread(ctx.id), compactionSettings)
+  check('a thread that has just been compacted is not still full', after.needed === false, after)
+  check(
+    'because neither the summary nor the turn before it is the conversation now',
+    after.used < 820,
+    after
+  )
 })
