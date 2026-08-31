@@ -1,6 +1,6 @@
 {
   "name": "deep-pink",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Deep Pink — a local-first, open-source desktop AI chat app for OpenRouter",
   "main": "./out/main/index.js",
   "desktopName": "dev.deeppink.app.desktop",
