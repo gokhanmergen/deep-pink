@@ -275,7 +275,12 @@ export function deleteFolder(id: string): void {
  */
 export function setThreadFolder(threadId: string, folderId: string | null): Thread | null {
   if (folderId !== null && !getFolder(folderId)) return null
-  getDb().prepare('UPDATE threads SET folder_id = ? WHERE id = ?').run(folderId, threadId)
+  // `filed_at` rather than `updated_at`, for the ordering reason above — but
+  // stamped all the same, because a thread whose revision never moved is one
+  // sync would never carry to the other machines.
+  getDb()
+    .prepare('UPDATE threads SET folder_id = ?, filed_at = ? WHERE id = ?')
+    .run(folderId, Date.now(), threadId)
   return getThread(threadId)
 }
 

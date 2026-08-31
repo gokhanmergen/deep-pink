@@ -1,5 +1,5 @@
 import { existsSync, writeFileSync } from 'node:fs'
-import type { SyncScopes } from '@shared/types'
+import type { SyncDirection, SyncScopes } from '@shared/types'
 import * as attachments from '../attachments'
 import { getDb } from '../db/index'
 
@@ -16,7 +16,10 @@ import { getDb } from '../db/index'
 
 export type RecordKind = 'thread' | 'message' | 'folder' | 'attachment' | 'setting' | 'mcp'
 
-export const KINDS_BY_SCOPE: Record<keyof SyncScopes, RecordKind[]> = {
+/** The two halves of the library a person can choose between. */
+export type ScopeName = 'conversations' | 'settings'
+
+export const KINDS_BY_SCOPE: Record<ScopeName, RecordKind[]> = {
   conversations: ['thread', 'message', 'folder', 'attachment'],
   settings: ['setting', 'mcp']
 }
@@ -40,10 +43,23 @@ export function logicalKey(kind: RecordKind, id: string): string {
   return `${kind}:${id}`
 }
 
-export function kindsFor(scopes: SyncScopes): RecordKind[] {
+/**
+ * The kinds a scope covers, when it is on and travelling the way asked about.
+ *
+ * `any` is "everything this machine is willing to exchange at all", which is
+ * what deciding whether there is anything to do is about; `push` and `pull`
+ * are the two halves of a run, and a scope set to one direction takes no part
+ * in the other.
+ */
+export function kindsFor(scopes: SyncScopes, way: 'any' | 'push' | 'pull' = 'any'): RecordKind[] {
+  const travels = (direction: SyncDirection): boolean =>
+    way === 'any' || direction === 'two-way' || direction === way
+
   return [
-    ...(scopes.conversations ? KINDS_BY_SCOPE.conversations : []),
-    ...(scopes.settings ? KINDS_BY_SCOPE.settings : [])
+    ...(scopes.conversations && travels(scopes.conversationsDirection)
+      ? KINDS_BY_SCOPE.conversations
+      : []),
+    ...(scopes.settings && travels(scopes.settingsDirection) ? KINDS_BY_SCOPE.settings : [])
   ]
 }
 
@@ -63,7 +79,7 @@ const UNSYNCED_SETTINGS = new Set(['sync'])
  * ------------------------------------------------------------------ */
 
 const REVISION_QUERIES: Record<RecordKind, string> = {
-  thread: 'SELECT id, updated_at AS rev FROM threads',
+  thread: 'SELECT id, MAX(updated_at, filed_at) AS rev FROM threads',
   message: 'SELECT id, updated_at AS rev FROM messages',
   folder: 'SELECT id, updated_at AS rev FROM folders',
   attachment: 'SELECT id, updated_at AS rev FROM attachments',
@@ -104,7 +120,11 @@ export function readRecord(kind: RecordKind, id: string): SyncRecord | null {
       const row = db.prepare('SELECT * FROM threads WHERE id = ?').get(id) as
         | Record<string, unknown>
         | undefined
-      return row ? { kind, id, rev: Number(row['updated_at']), data: row } : null
+      // The later of "last edited" and "last filed": moving a conversation into
+      // a folder does not stamp it as edited, and would otherwise never travel.
+      if (!row) return null
+      const rev = Math.max(Number(row['updated_at']), Number(row['filed_at'] ?? 0))
+      return { kind, id, rev, data: row }
     }
     case 'message': {
       const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as
@@ -178,13 +198,14 @@ export function applyRecord(record: SyncRecord): void {
   switch (record.kind) {
     case 'thread':
       db.prepare(
-        `INSERT INTO threads (id, title, created_at, updated_at, pinned, archived, config,
+        `INSERT INTO threads (id, title, created_at, updated_at, filed_at, pinned, archived, config,
                               source, source_id, folder_id)
-         VALUES (@id, @title, @created_at, @updated_at, @pinned, @archived, @config,
+         VALUES (@id, @title, @created_at, @updated_at, @filed_at, @pinned, @archived, @config,
                  @source, @source_id, @folder_id)
          ON CONFLICT (id) DO UPDATE SET
            title = excluded.title, created_at = excluded.created_at,
-           updated_at = excluded.updated_at, pinned = excluded.pinned,
+           updated_at = excluded.updated_at, filed_at = excluded.filed_at,
+           pinned = excluded.pinned,
            archived = excluded.archived, config = excluded.config,
            source = excluded.source, source_id = excluded.source_id,
            folder_id = excluded.folder_id`
@@ -192,7 +213,12 @@ export function applyRecord(record: SyncRecord): void {
         id: record.id,
         title: text(row['title']) ?? '',
         created_at: int(row['created_at']),
-        updated_at: record.rev,
+        // Both halves of the revision are taken as they were written, so this
+        // copy computes the same revision the machine that sent it did and the
+        // two do not hand the row back and forth. Neither may exceed the
+        // revision the manifest names, which is the one both sides agreed on.
+        updated_at: Math.min(int(row['updated_at'], record.rev), record.rev),
+        filed_at: Math.min(int(row['filed_at']), record.rev),
         pinned: int(row['pinned']),
         archived: int(row['archived']),
         config: text(row['config']) ?? '{}',
@@ -307,7 +333,7 @@ export function applyRecord(record: SyncRecord): void {
          ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
       ).run({
         key: record.id,
-        value: text(row['value']) ?? '{}',
+        value: keepingMachineSettings(record.id, text(row['value']) ?? '{}'),
         updated_at: record.rev
       })
       break
@@ -325,6 +351,45 @@ export function applyRecord(record: SyncRecord): void {
         updated_at: record.rev
       })
       break
+  }
+}
+
+/**
+ * Settings that describe this machine rather than a preference.
+ *
+ * Settings travel as one row, which is what makes "last write wins" honest for
+ * them — but the window's zoom level is not an opinion, it is a fact about the
+ * screen in front of you, and a 27-inch desktop should not be able to shrink a
+ * laptop's window by having been used more recently.
+ */
+const MACHINE_SETTINGS = ['ui.zoomLevel']
+
+function keepingMachineSettings(key: string, incoming: string): string {
+  if (key !== 'settings') return incoming
+
+  const mine = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined
+  if (!mine) return incoming
+
+  try {
+    const local = JSON.parse(mine.value) as Record<string, unknown>
+    const next = JSON.parse(incoming) as Record<string, unknown>
+
+    for (const path of MACHINE_SETTINGS) {
+      const [group, name] = path.split('.')
+      const held = (local[group] as Record<string, unknown> | undefined)?.[name]
+      const merged = { ...(next[group] as Record<string, unknown> | undefined) }
+      // Nothing set here means this machine has never said: leave it unsaid,
+      // so its own default applies rather than another machine's answer.
+      if (held === undefined) delete merged[name]
+      else merged[name] = held
+      next[group] = merged
+    }
+    return JSON.stringify(next)
+  } catch {
+    // Not JSON either side: take what arrived rather than lose the update.
+    return incoming
   }
 }
 

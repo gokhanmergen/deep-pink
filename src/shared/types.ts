@@ -608,12 +608,27 @@ export interface ImportResult extends ImportPreview {
  * Sync
  * ------------------------------------------------------------------ */
 
+/**
+ * Which way a scope travels.
+ *
+ * Two-way is what most people want and what everything defaults to. The other
+ * two exist because "sync my settings" is not one wish: a machine can be the
+ * one that decides how the app is set up (`push`), or the one that follows
+ * whatever the others decided (`pull`), and leaving that unsaid means a laptop
+ * can quietly overwrite a desktop's shortcuts by being edited last.
+ */
+export type SyncDirection = 'two-way' | 'push' | 'pull'
+
 /** What a machine is willing to put in the bucket, and take out of it. */
 export interface SyncScopes {
   /** Threads, messages, folders and attachments. */
   conversations: boolean
   /** App settings and MCP servers. Never the OpenRouter key. */
   settings: boolean
+  /** Which way conversations travel when they are on. */
+  conversationsDirection: SyncDirection
+  /** Which way settings and MCP servers travel when they are on. */
+  settingsDirection: SyncDirection
 }
 
 /**

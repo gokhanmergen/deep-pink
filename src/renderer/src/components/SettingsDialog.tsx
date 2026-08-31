@@ -19,10 +19,15 @@ import { useStore } from '../store'
 import { Overlay } from './Overlay'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS, DEFAULT_UI } from '@shared/defaults'
-import { modelShortName } from '../format'
+import { formatRelative, modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
-import type { AppInfo, ImportPreview, ImportResult } from '@shared/types'
-import { formatRelative } from '../format'
+import type {
+  AppInfo,
+  ImportPreview,
+  ImportResult,
+  SyncDirection,
+  SyncScopes
+} from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
 
 type Tab =
@@ -82,6 +87,49 @@ function tomorrowMorning(): number {
   at.setDate(at.getDate() + 1)
   at.setHours(9, 0, 0, 0)
   return at.getTime()
+}
+
+/**
+ * Which way one scope travels.
+ *
+ * Sync used to be two-way and say nothing about it, which is fine until two
+ * machines disagree: the one edited last silently won, and there was no way to
+ * say "this desktop decides" or "this laptop only follows". Last-write-wins is
+ * still what happens inside a direction — this chooses whether this machine is
+ * writing at all.
+ */
+function DirectionField({
+  what,
+  value,
+  onChange
+}: {
+  what: 'conversations' | 'settings'
+  value: SyncDirection
+  onChange: (direction: SyncDirection) => void
+}): React.JSX.Element {
+  const noun = what === 'conversations' ? 'Conversations' : 'Settings'
+  return (
+    <div className="field field--indent">
+      <span className="field__label">Which way {what} travel</span>
+      <select
+        className="select"
+        value={value}
+        onChange={(event) => onChange(event.target.value as SyncDirection)}
+      >
+        <option value="two-way">Both ways</option>
+        <option value="push">Only send from this machine</option>
+        <option value="pull">Only receive onto this machine</option>
+      </select>
+      <span className="field__hint">
+        {value === 'two-way' &&
+          `${noun} changed anywhere reach every machine, and the most recent change to a given record is the one that stands.`}
+        {value === 'push' &&
+          `${noun} go up from this machine and nothing comes back down: this is the machine that decides.`}
+        {value === 'pull' &&
+          `${noun} come down onto this machine and nothing goes up: this machine follows the others.`}
+      </span>
+    </div>
+  )
 }
 
 export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
@@ -165,6 +213,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
     await refreshSettings()
     await useStore.getState().refreshModels(true)
     showToast('API key saved')
+  }
+
+  /** Patches one part of what travels, leaving the rest of the choices alone. */
+  const saveScopes = async (patch: Partial<SyncScopes>): Promise<void> => {
+    if (!sync) return
+    useStore.setState({
+      sync: await window.deepPink.sync.save({ scopes: { ...sync.config.scopes, ...patch } })
+    })
   }
 
   return (
@@ -850,11 +906,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <input
                 type="checkbox"
                 checked={sync.config.scopes.conversations}
-                onChange={async (event) =>
-                  useStore.setState({ sync: await window.deepPink.sync.save({
-                      scopes: { ...sync.config.scopes, conversations: event.target.checked }
-                    }) })
-                }
+                onChange={(event) => void saveScopes({ conversations: event.target.checked })}
               />
               <span>
                 Conversations
@@ -863,16 +915,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </span>
               </span>
             </label>
+            {sync.config.scopes.conversations && (
+              <DirectionField
+                what="conversations"
+                value={sync.config.scopes.conversationsDirection}
+                onChange={(direction) => void saveScopes({ conversationsDirection: direction })}
+              />
+            )}
 
             <label className="switch">
               <input
                 type="checkbox"
                 checked={sync.config.scopes.settings}
-                onChange={async (event) =>
-                  useStore.setState({ sync: await window.deepPink.sync.save({
-                      scopes: { ...sync.config.scopes, settings: event.target.checked }
-                    }) })
-                }
+                onChange={(event) => void saveScopes({ settings: event.target.checked })}
               />
               <span>
                 Settings and MCP servers
@@ -882,6 +937,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </span>
               </span>
             </label>
+            {sync.config.scopes.settings && (
+              <DirectionField
+                what="settings"
+                value={sync.config.scopes.settingsDirection}
+                onChange={(direction) => void saveScopes({ settingsDirection: direction })}
+              />
+            )}
 
             <div className="field" style={{ marginTop: 14 }}>
               <span className="field__label">This machine is called</span>

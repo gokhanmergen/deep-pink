@@ -170,30 +170,47 @@ export function registerIpc(): void {
       patch: Partial<Pick<Thread, 'title' | 'pinned' | 'archived'>> & {
         config?: Partial<ThreadConfig>
       }
-    ) => repo.updateThread(id, patch)
+    ) => {
+      const next = repo.updateThread(id, patch)
+      syncSoon()
+      return next
+    }
   )
   ipcMain.handle('threads:delete', (_e, id: string) => {
     engine.abortThread(id)
     repo.deleteThread(id)
     syncSoon()
   })
-  ipcMain.handle('threads:branch', (_e, id: string, messageId: string) =>
-    repo.branchThread(id, messageId)
-  )
+  ipcMain.handle('threads:branch', (_e, id: string, messageId: string) => {
+    const branched = repo.branchThread(id, messageId)
+    syncSoon()
+    return branched
+  })
   // Filing a thread is its own call rather than part of `threads:update`, which
   // would stamp it as edited and reorder the list under the cursor.
-  ipcMain.handle('threads:setFolder', (_e, id: string, folderId: string | null) =>
-    repo.setThreadFolder(id, folderId)
-  )
+  ipcMain.handle('threads:setFolder', (_e, id: string, folderId: string | null) => {
+    const filed = repo.setThreadFolder(id, folderId)
+    syncSoon()
+    return filed
+  })
 
   /* ---------------- folders ---------------- */
 
   ipcMain.handle('folders:list', (): Folder[] => repo.listFolders())
-  ipcMain.handle('folders:create', (_e, name: string) => repo.createFolder(name))
-  ipcMain.handle('folders:update', (_e, id: string, patch: { name?: string; pinned?: boolean }) =>
-    repo.updateFolder(id, patch)
-  )
-  ipcMain.handle('folders:delete', (_e, id: string) => repo.deleteFolder(id))
+  ipcMain.handle('folders:create', (_e, name: string) => {
+    const folder = repo.createFolder(name)
+    syncSoon()
+    return folder
+  })
+  ipcMain.handle('folders:update', (_e, id: string, patch: { name?: string; pinned?: boolean }) => {
+    const folder = repo.updateFolder(id, patch)
+    syncSoon()
+    return folder
+  })
+  ipcMain.handle('folders:delete', (_e, id: string) => {
+    repo.deleteFolder(id)
+    syncSoon()
+  })
 
   /* ---------------- messages ---------------- */
 
@@ -204,9 +221,10 @@ export function registerIpc(): void {
     repo.deleteMessage(id)
     syncSoon()
   })
-  ipcMain.handle('messages:deleteAfter', (_e, threadId: string, messageId: string) =>
+  ipcMain.handle('messages:deleteAfter', (_e, threadId: string, messageId: string) => {
     repo.deleteMessagesAfter(threadId, messageId)
-  )
+    syncSoon()
+  })
   ipcMain.handle('messages:update', (_e, id: string, patch: Partial<Message>) => {
     const next = repo.updateMessage(id, patch)
     syncSoon()
@@ -281,11 +299,20 @@ export function registerIpc(): void {
 
   ipcMain.handle('mcp:statuses', () => mcp.getStatuses())
   ipcMain.handle('mcp:configs', () => mcp.getConfigs())
-  ipcMain.handle('mcp:create', (_e, input: Partial<McpServerConfig>) => mcp.createServer(input))
-  ipcMain.handle('mcp:update', (_e, id: string, patch: Partial<McpServerConfig>) =>
-    mcp.updateServer(id, patch)
-  )
-  ipcMain.handle('mcp:delete', (_e, id: string) => mcp.removeServer(id))
+  ipcMain.handle('mcp:create', (_e, input: Partial<McpServerConfig>) => {
+    const server = mcp.createServer(input)
+    syncSoon()
+    return server
+  })
+  ipcMain.handle('mcp:update', async (_e, id: string, patch: Partial<McpServerConfig>) => {
+    const server = await mcp.updateServer(id, patch)
+    syncSoon()
+    return server
+  })
+  ipcMain.handle('mcp:delete', async (_e, id: string) => {
+    await mcp.removeServer(id)
+    syncSoon()
+  })
   ipcMain.handle('mcp:connect', (_e, id: string) => mcp.connect(id))
   ipcMain.handle('mcp:disconnect', (_e, id: string) => mcp.disconnect(id))
 
@@ -397,9 +424,13 @@ export function registerIpc(): void {
   ipcMain.handle('import:preview', async (_e, path: string) =>
     importer.preview(path, await knownModels())
   )
-  ipcMain.handle('import:run', async (_e, path: string) =>
-    importer.importFile(path, await knownModels())
-  )
+  ipcMain.handle('import:run', async (_e, path: string) => {
+    const result = await importer.importFile(path, await knownModels())
+    // A library that has just arrived is the biggest thing sync will ever be
+    // asked to carry; there is no reason to make it wait for the slow timer.
+    syncSoon()
+    return result
+  })
 
   /* ---------------- sync ---------------- */
 

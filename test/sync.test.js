@@ -104,7 +104,7 @@ function leaks(store, text) {
 }
 
 suite('sync — a bucket that is told nothing', async ({ check, section, subject }) => {
-  const { getDb, repo, attachments, syncCrypto, s3, syncEngine, secrets } = subject
+  const { getDb, repo, attachments, syncCrypto, s3, syncEngine, syncRecords, secrets } = subject
   getDb()
 
   /* ---------------------------------------------------------------- */
@@ -549,6 +549,104 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   await syncEngine.run({ fetcher: store.fetcher })
   const onE = repo.listThreads()
   check('a later edit is the one that survives', onE[0]?.title === 'Renamed on D', onE)
+
+  /* ---------------------------------------------------------------- */
+  section('which way each half travels')
+
+  // Two-way is the default and is what everything above exercises. These are
+  // the other two: a machine that decides, and a machine that follows.
+  const twoWay = { conversations: true, settings: true, conversationsDirection: 'two-way', settingsDirection: 'two-way' }
+
+  becomeFreshMachine('device-F')
+  syncEngine.saveConfig({ scopes: { ...twoWay, conversationsDirection: 'push', settingsDirection: 'push' } })
+  repo.createThread('Written on F')
+
+  const sender = await syncEngine.run({ fetcher: store.fetcher })
+  check('a send-only machine runs', sender.error === null, sender.error)
+  check('and hands over what it wrote', sender.pushed > 0, sender)
+  check('but takes nothing down', sender.pulled === 0, sender)
+  check(
+    'so the library it never asked for is not here',
+    repo.listThreads().length === 1,
+    repo.listThreads()
+  )
+
+  becomeFreshMachine('device-G')
+  syncEngine.saveConfig({ scopes: { ...twoWay, conversationsDirection: 'pull', settingsDirection: 'pull' } })
+  repo.createThread('Kept on G')
+
+  const receiver = await syncEngine.run({ fetcher: store.fetcher })
+  check('a receive-only machine takes the library', receiver.pulled > 0, receiver)
+  check('and offers nothing of its own', receiver.pushed === 0, receiver)
+  check(
+    'what it wrote is still here, it simply did not travel',
+    repo.listThreads().some((t) => t.title === 'Kept on G'),
+    repo.listThreads()
+  )
+
+  becomeFreshMachine('device-H')
+  syncEngine.saveConfig({ scopes: { ...twoWay } })
+  await syncEngine.run({ fetcher: store.fetcher })
+  const seenByH = repo.listThreads().map((t) => t.title)
+  check('nothing a receive-only machine wrote reached the bucket', !seenByH.includes('Kept on G'), seenByH)
+  check('while what a send-only machine wrote did', seenByH.includes('Written on F'), seenByH)
+
+  /* ---------------------------------------------------------------- */
+  section('filing a thread travels, even though filing is not editing')
+
+  const shelf = repo.createFolder('Shelf')
+  const toFile = repo.listThreads().find((t) => t.title === 'Written on F')
+  const editedAt = toFile.updatedAt
+  repo.setThreadFolder(toFile.id, shelf.id)
+  check(
+    'filing does not stamp the thread as edited',
+    repo.getThread(toFile.id).updatedAt === editedAt,
+    { editedAt, now: repo.getThread(toFile.id).updatedAt }
+  )
+
+  const filedRun = await syncEngine.run({ fetcher: store.fetcher })
+  check('the move is something to send all the same', filedRun.pushed > 0, filedRun)
+
+  becomeFreshMachine('device-K')
+  syncEngine.saveConfig({ scopes: { ...twoWay } })
+  await syncEngine.run({ fetcher: store.fetcher })
+  const arrived = repo.listThreads().find((t) => t.title === 'Written on F')
+  check(
+    'and the other machine learns where it was put',
+    repo.getFolder(arrived.folderId)?.name === 'Shelf',
+    arrived
+  )
+  check(
+    'without the move reading as an edit there either',
+    repo.getThread(arrived.id).updatedAt === editedAt,
+    repo.getThread(arrived.id).updatedAt
+  )
+
+  // Nothing after this section is about directions.
+  syncEngine.saveConfig({ scopes: { ...twoWay } })
+
+  /* ---------------------------------------------------------------- */
+  section('what the screen in front of you decides stays here')
+
+  // Settings travel as one row, which is what makes last-write-wins honest for
+  // them — but the window's zoom is a fact about a monitor, not a preference,
+  // and a desktop must not be able to shrink a laptop by having been used more
+  // recently.
+  repo.setSetting('settings', { temperature: 0.9, ui: { zoomLevel: 2, fontSize: 14 } })
+  syncRecords.applyRecord({
+    kind: 'setting',
+    id: 'settings',
+    rev: Date.now() + 60_000,
+    data: {
+      key: 'settings',
+      value: JSON.stringify({ temperature: 0.2, ui: { zoomLevel: -1, fontSize: 18 } })
+    }
+  })
+
+  const merged = repo.getSetting('settings', {})
+  check('the settings that arrived are taken', merged.temperature === 0.2, merged)
+  check('all of them, not only the ones already here', merged.ui.fontSize === 18, merged.ui)
+  check('but this window keeps its own zoom', merged.ui.zoomLevel === 2, merged.ui)
 
   /* ---------------------------------------------------------------- */
   section('pausing')

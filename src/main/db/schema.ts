@@ -297,5 +297,20 @@ export const MIGRATIONS: string[] = [
     INSERT OR REPLACE INTO sync_deletions (kind, id, deleted_at)
     VALUES ('mcp', old.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER));
   END;
+  `,
+
+  /* 14 — filing a thread is a change sync has to see, and not an edit */ `
+  /*
+   * Dragging a thread into a folder deliberately leaves 'updated_at' alone:
+   * the sidebar is ordered by it, and a folder sits at the time its most
+   * recently edited thread was edited, so stamping it here would reorder the
+   * list under the cursor on every drag.
+   *
+   * Sync, meanwhile, decides what is newer by exactly that stamp — so filing
+   * travelled nowhere until the thread was next spoken in. A thread's revision
+   * is now the later of the two columns: the list keeps its order, and the
+   * other machines learn where the conversation was put.
+   */
+  ALTER TABLE threads ADD COLUMN filed_at INTEGER NOT NULL DEFAULT 0;
   `
 ]

@@ -733,6 +733,14 @@ svg.lucide {
   color: var(--text);
 }
 
+/* A field that belongs to the switch above it — indented so it reads as part
+   of that choice rather than as the next one. */
+.field--indent {
+  margin-left: 30px;
+  margin-top: 8px;
+  max-width: 420px;
+}
+
 /* A hint explains the thing above it, so it takes its own line and its own
    air. Inline it ran straight into the end of the label — "…date and timeAdds
    one line to the system prompt" — which reads as one broken sentence. */

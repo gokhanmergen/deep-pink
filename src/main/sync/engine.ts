@@ -79,7 +79,15 @@ interface StoredSync extends SyncConfig {
   lastResult: SyncResult | null
 }
 
-export const DEFAULT_SCOPES: SyncScopes = { conversations: true, settings: true }
+export const DEFAULT_SCOPES: SyncScopes = {
+  conversations: true,
+  settings: true,
+  // Two-way is what "sync" means to most people, and it is what this did before
+  // the direction could be said out loud. The other two are for the machine
+  // that should decide, or the one that should follow.
+  conversationsDirection: 'two-way',
+  settingsDirection: 'two-way'
+}
 
 function defaults(): StoredSync {
   return {
@@ -334,7 +342,12 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
   if (!key) return { ...empty, error: 'No sync key on this machine yet' }
   if (!credentials) return { ...empty, error: 'The bucket is not fully configured' }
 
+  // What this machine will exchange at all, and the two halves of it: a scope
+  // set to one direction takes no part in the other, so a push-only machine
+  // reads the bucket without letting it write over anything here.
   const kinds = records.kindsFor(config.scopes)
+  const pulling = new Set<records.RecordKind>(records.kindsFor(config.scopes, 'pull'))
+  const pushing = new Set<records.RecordKind>(records.kindsFor(config.scopes, 'push'))
   if (!kinds.length) return { ...empty, error: 'Nothing is selected to sync' }
 
   running = true
@@ -389,7 +402,6 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     /* ---- what is here ---- */
 
     const local = records.localRevisions(kinds)
-    const wanted = new Set<string>(kinds)
 
     /* ---- what is out there, best copy per record ---- */
 
@@ -400,7 +412,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
 
     for (const manifest of theirs) {
       for (const [logical, entry] of Object.entries(manifest.entries)) {
-        if (!wanted.has(logical.slice(0, logical.indexOf(':')))) continue
+        if (!pulling.has(kindOf(logical))) continue
         const held = best.get(logical)
         // Later revision wins; at the same revision a deletion does, because a
         // record that has been deleted somewhere is not one to hand back.
@@ -482,9 +494,13 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
     let sent = 0
     const sending =
       [...local.records].filter(([logical, rev]) => {
+        if (!pushing.has(kindOf(logical))) return false
         const known = entries[logical]
         return !known || known.deleted || known.rev < rev
-      }).length + [...local.deletions].filter(([logical]) => !entries[logical]?.deleted).length
+      }).length +
+      [...local.deletions].filter(
+        ([logical]) => pushing.has(kindOf(logical)) && !entries[logical]?.deleted
+      ).length
     // An idle machine should cost one listing and nothing else; re-uploading an
     // unchanged manifest every five minutes is a write per machine per run,
     // forever, for no information.
@@ -492,6 +508,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
 
     for (const [logical, rev] of local.records) {
       if (stopRequested) break
+      if (!pushing.has(kindOf(logical))) continue
       const known = entries[logical]
       if (known && !known.deleted && known.rev >= rev) continue
       report('sending', 'handing over what is newer here', sent++, sending)
@@ -518,6 +535,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
 
     for (const [logical, deletedAt] of local.deletions) {
       if (stopRequested) break
+      if (!pushing.has(kindOf(logical))) continue
       const known = entries[logical]
       if (known?.deleted) continue
       report('sending', 'passing on what was deleted', sent++, sending)

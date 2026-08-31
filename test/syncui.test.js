@@ -111,6 +111,23 @@ suite(
       scopes
     )
 
+    // Which way it goes used to be nowhere on screen and nowhere in the
+    // settings either: it was two-way because that is what the code did.
+    const directions = await run(`(() => {
+      const panel = document.querySelector('.panel__body')
+      return [...panel.querySelectorAll('.field--indent select')].map((s) => ({
+        value: s.value,
+        options: [...s.options].map((o) => o.value)
+      }))
+    })()`)
+    check('each half says which way it travels', directions.length === 2, directions)
+    check('both ways to begin with', directions.every((d) => d.value === 'two-way'), directions)
+    check(
+      'and either direction on its own is a choice',
+      directions.every((d) => d.options.includes('push') && d.options.includes('pull')),
+      directions
+    )
+
     section('the line in the sidebar')
     /*
      * Configured through the window's own bridge rather than through the copy
