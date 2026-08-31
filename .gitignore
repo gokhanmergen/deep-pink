@@ -13,3 +13,7 @@ npm-debug.log*
 !.env.example
 
 .test-build/
+
+# `nix build` leaves its output symlinked here.
+result
+result-*

@@ -98,6 +98,81 @@ curl -s https://api.github.com/repos/gokhanmergen/deep-pink/releases/latest \
 chmod +x 'Deep Pink-0.1.0-arm64.AppImage' && ./'Deep Pink-0.1.0-arm64.AppImage'
 ```
 
+### NixOS, or anywhere with Nix
+
+This repository is a flake. To try it once, without installing anything:
+
+```bash
+nix run github:gokhanmergen/deep-pink
+```
+
+To keep it, add the flake as an input and put the package where you put your
+other packages:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    deep-pink = {
+      url = "github:gokhanmergen/deep-pink";
+      # Worth setting: without it you build against a second copy of nixpkgs,
+      # and get a second Electron in the store to go with it.
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs =
+    { nixpkgs, deep-pink, ... }:
+    {
+      nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          ./configuration.nix
+          (
+            { pkgs, ... }:
+            {
+              environment.systemPackages = [
+                deep-pink.packages.${pkgs.stdenv.hostPlatform.system}.default
+              ];
+            }
+          )
+        ];
+      };
+    };
+}
+```
+
+Then `sudo nixos-rebuild switch`. Home Manager is the same line under
+`home.packages`, and there is an overlay if you would rather write
+`pkgs.deep-pink` and forget where it came from:
+
+```nix
+{ nixpkgs.overlays = [ deep-pink.overlays.default ]; }
+```
+
+x86-64 and aarch64 Linux. What gets built is this app's own bundle and the
+three libraries it uses at runtime, started with the Electron from nixpkgs
+rather than one downloaded during the build — so the browser engine on your
+machine is patched by the same thing that patches everything else on it, which
+is the whole reason to install software this way.
+
+**Give it a keyring.** The OpenRouter key is encrypted through the Secret
+Service API, so something has to be answering on it:
+
+```nix
+{ services.gnome.gnome-keyring.enable = true; }
+```
+
+Without one the app still runs, and says on the Account page that the key is
+stored as a permission-restricted file instead.
+
+**Wayland** works as described below: the launcher asks for it when
+`NIXOS_OZONE_WL` is set in your session, and stays on XWayland when it is not.
+
+Nothing else is needed — no unfree packages, no udev rules, no service. Your
+threads stay where the rest of this README says they do, in
+`~/.config/deep-pink`, and survive a rebuild or a rollback untouched.
+
 ### From source
 
 ```bash
@@ -232,6 +307,23 @@ git push --follow-tags
 ```
 
 The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum pnpm test`.
+
+### With Nix
+
+```bash
+nix develop      # node, pnpm, Electron, libsecret and xvfb-run
+pnpm install
+pnpm dev
+```
+
+The shell points the `electron` package at the Electron from nixpkgs
+(`ELECTRON_OVERRIDE_DIST_PATH`), so `pnpm install` does not download a second
+copy of it.
+
+`nix/package.nix` pins the hash of every dependency in `pnpm-lock.yaml`, which
+is what lets the build run with no network at all. **Change the lockfile and
+that hash has to change with it**: set `hash = ""`, run `nix build`, and paste
+back the one the mismatch prints.
 
 To change the app icon, point the generator at one square image and rebuild:
 
