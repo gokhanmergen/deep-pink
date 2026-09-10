@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Copy, Pencil } from 'lucide-react'
 import { ICON } from '../icons'
 import type { Attachment, Message, UiSettings } from '@shared/types'
@@ -9,8 +9,14 @@ import { useStore } from '../store'
 /**
  * A message the user wrote, or a compaction summary. Assistant replies and the
  * tool work that goes with them are rendered together by AssistantTurn.
+ *
+ * Memoised, and every store read below is of a value rather than of the store.
+ * A transcript is hundreds of these; a row that woke up because some other row
+ * was highlighted, or because a reply three screens down grew by a word, is a
+ * row re-rendering for no reason — multiplied by however long the conversation
+ * is, which is exactly when it matters.
  */
-export function MessageItem({
+export const MessageItem = memo(function MessageItem({
   message,
   ui
 }: {
@@ -18,18 +24,21 @@ export function MessageItem({
   ui: UiSettings
 }): React.JSX.Element | null {
   const showToast = useStore((s) => s.showToast)
-  const activeThreadId = useStore((s) => s.activeThreadId)
-  const highlightMessageId = useStore((s) => s.highlightMessageId)
   const setHighlight = useStore((s) => s.setHighlight)
   const openImageViewer = useStore((s) => s.openImageViewer)
+  // The answer, not the id: only the row that is or was highlighted re-renders.
+  const highlighted = useStore((s) => s.highlightMessageId === message.id)
 
   /**
-   * Every image in the conversation, in the order it was said, so the viewer
-   * can be stepped through from wherever it was opened. Read when it is opened
-   * rather than subscribed to: a row that re-rendered on each new picture would
-   * be a row re-rendering on each new picture.
+   * The pictures the viewer opens on, in the order they were said.
+   *
+   * What is on screen, which since the transcript arrives a page at a time is
+   * no longer all of them — the viewer widens the list to the whole thread
+   * itself, once it is open. Read at the moment of the click rather than
+   * subscribed to: a row that re-rendered on each new picture would be a row
+   * re-rendering on each new picture.
    */
-  const imagesInThread = (): Attachment[] =>
+  const imagesOnScreen = (): Attachment[] =>
     useStore
       .getState()
       .messages.flatMap((entry) => entry.attachments.filter((file) => file.kind === 'image'))
@@ -37,8 +46,6 @@ export function MessageItem({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
   const ref = useRef<HTMLDivElement>(null)
-
-  const highlighted = highlightMessageId === message.id
 
   useEffect(() => {
     if (!highlighted) return
@@ -50,7 +57,13 @@ export function MessageItem({
   if (message.role === 'system') {
     if (!message.isCompactionSummary) return null
     return (
-      <div className="message" data-role="system" data-density={ui.messageDensity} ref={ref}>
+      <div
+        className="message"
+        data-role="system"
+        data-density={ui.messageDensity}
+        data-message-id={message.id}
+        ref={ref}
+      >
         <details className="disclosure">
           <summary className="disclosure__summary">
             <span className="chip chip--accent">compacted</span>
@@ -67,7 +80,9 @@ export function MessageItem({
   const saveEdit = async (): Promise<void> => {
     await window.deepPink.messages.update(message.id, { content: draft })
     setEditing(false)
-    if (activeThreadId) await useStore.getState().selectThread(activeThreadId)
+    // Re-reads the loaded range in place rather than reopening the thread,
+    // which would throw away everything scrolled back to.
+    await useStore.getState().refreshTranscript()
   }
 
   return (
@@ -75,6 +90,8 @@ export function MessageItem({
       className="message"
       data-role={message.role}
       data-density={ui.messageDensity}
+      // What the transcript holds onto while a page is read in above it.
+      data-message-id={message.id}
       ref={ref}
       style={highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : undefined}
     >
@@ -132,7 +149,7 @@ export function MessageItem({
                 // and stepped through — handing it to the desktop's image
                 // program is still offered, from in there.
                 event.preventDefault()
-                openImageViewer(imagesInThread(), image.id)
+                openImageViewer(imagesOnScreen(), image.id)
               }}
               title={`${image.filename} — ${Math.round(image.bytes / 1024)} KB`}
             >
@@ -173,4 +190,4 @@ export function MessageItem({
       </div>
     </div>
   )
-}
+})

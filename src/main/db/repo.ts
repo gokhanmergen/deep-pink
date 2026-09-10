@@ -9,8 +9,10 @@ import type {
   Message,
   ModelUsageRollup,
   Role,
+  MessagePage,
   SearchHit,
   Thread,
+  ThreadTotals,
   ThreadConfig,
   ThreadStats,
   ToolUsageRollup,
@@ -31,6 +33,7 @@ interface ThreadRow {
   pinned: number
   archived: number
   folder_id: string | null
+  temporary: number
   config: string
 }
 
@@ -132,6 +135,7 @@ function toThread(row: ThreadRow, messageCount?: number): Thread {
     pinned: row.pinned === 1,
     archived: row.archived === 1,
     folderId: row.folder_id,
+    temporary: row.temporary === 1,
     messageCount: messageCount ?? countMessages(row.id),
     config: { ...EMPTY_THREAD_CONFIG, ...parseJson<Partial<ThreadConfig>>(row.config, {}) }
   }
@@ -278,9 +282,16 @@ export function setThreadFolder(threadId: string, folderId: string | null): Thre
   // `filed_at` rather than `updated_at`, for the ordering reason above — but
   // stamped all the same, because a thread whose revision never moved is one
   // sync would never carry to the other machines.
+  //
+  // Filing a temporary chat keeps it, for the reason `updateThread` gives:
+  // putting something away is asking to find it later.
   getDb()
-    .prepare('UPDATE threads SET folder_id = ?, filed_at = ? WHERE id = ?')
-    .run(folderId, Date.now(), threadId)
+    .prepare(
+      `UPDATE threads
+          SET folder_id = ?, filed_at = ?, temporary = CASE WHEN ? IS NULL THEN temporary ELSE 0 END
+        WHERE id = ?`
+    )
+    .run(folderId, Date.now(), folderId, threadId)
   return getThread(threadId)
 }
 
@@ -322,15 +333,26 @@ function countMessagesByThread(): Map<string, number> {
   return new Map(rows.map((row) => [row.id, row.n]))
 }
 
-export function createThread(title = '', config: Partial<ThreadConfig> = {}): Thread {
+export function createThread(
+  title = '',
+  config: Partial<ThreadConfig> = {},
+  temporary = false
+): Thread {
   const now = Date.now()
   const id = randomUUID()
   getDb()
     .prepare(
-      `INSERT INTO threads (id, title, created_at, updated_at, config)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO threads (id, title, created_at, updated_at, config, temporary)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(id, title, now, now, JSON.stringify({ ...EMPTY_THREAD_CONFIG, ...config }))
+    .run(
+      id,
+      title,
+      now,
+      now,
+      JSON.stringify({ ...EMPTY_THREAD_CONFIG, ...config }),
+      temporary ? 1 : 0
+    )
   return getThread(id)!
 }
 
@@ -366,6 +388,9 @@ export function listUntitledThreadIds(limit: number): string[] {
         `SELECT t.id AS id
            FROM threads t
           WHERE t.title = ''
+            -- A chat that will not outlive the session is not worth a request:
+            -- it is labelled "Temporary chat" on screen and then it is gone.
+            AND t.temporary = 0
             AND EXISTS (
                   SELECT 1 FROM messages m
                    WHERE m.thread_id = t.id
@@ -396,6 +421,10 @@ export function deleteEmptyThreads(): number {
         WHERE title = ''
           AND pinned = 0
           AND folder_id IS NULL
+          -- Left to deleteTemporaryThreads, which runs a moment later and
+          -- takes the tombstone with it. Swept here it would go the ordinary
+          -- way, and an empty temporary chat would be the one that left a mark.
+          AND temporary = 0
           AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = threads.id)`
     )
     .run().changes
@@ -409,21 +438,43 @@ export function updateThread(
   if (!existing) return null
 
   const config = patch.config ? { ...existing.config, ...patch.config } : existing.config
+  const pinned = patch.pinned ?? existing.pinned
+  const archived = patch.archived ?? existing.archived
 
   getDb()
     .prepare(
       `UPDATE threads
-          SET title = ?, pinned = ?, archived = ?, config = ?, updated_at = ?
+          SET title = ?, pinned = ?, archived = ?, config = ?, updated_at = ?,
+              temporary = ?
         WHERE id = ?`
     )
     .run(
       patch.title ?? existing.title,
-      (patch.pinned ?? existing.pinned) ? 1 : 0,
-      (patch.archived ?? existing.archived) ? 1 : 0,
+      pinned ? 1 : 0,
+      archived ? 1 : 0,
       JSON.stringify(config),
       Date.now(),
+      // Pinning a chat to the top of a list it will never appear in, or
+      // archiving one that is about to be deleted anyway, are not things
+      // anybody means. Both gestures say "keep this", so both do — as does
+      // filing it in a folder, in `setThreadFolder`, and as does asking
+      // outright, in `keepThread`.
+      existing.temporary && !pinned && !archived ? 1 : 0,
       id
     )
+  return getThread(id)
+}
+
+/**
+ * Turns a temporary chat into an ordinary one.
+ *
+ * The one thing that cannot be undone about a temporary chat is losing it, so
+ * changing your mind has to be possible right up until it goes. Nothing else
+ * about the conversation changes: same id, same messages, same costs — it
+ * simply stops being on its way out.
+ */
+export function keepThread(id: string): Thread | null {
+  getDb().prepare('UPDATE threads SET temporary = 0 WHERE id = ?').run(id)
   return getThread(id)
 }
 
@@ -432,7 +483,68 @@ export function touchThread(id: string): void {
 }
 
 export function deleteThread(id: string): void {
+  const thread = getThread(id)
+  if (!thread) return
+  if (thread.temporary) {
+    deleteLeavingNoTrace([id])
+    return
+  }
   getDb().prepare('DELETE FROM threads WHERE id = ?').run(id)
+}
+
+/**
+ * Deletes threads and then the record that they were ever deleted.
+ *
+ * Every row that goes leaves a tombstone behind, by trigger, so that a deletion
+ * can travel to the other machines. A temporary chat never travelled anywhere
+ * in the first place — so a tombstone for it would tell a bucket the one thing
+ * the chat was supposed not to say: that on this day, this machine had a
+ * conversation of this many messages. The trigger still fires, because it must
+ * fire for everything; the marks are swept up immediately afterwards, in the
+ * same transaction, so nothing in between can read them.
+ *
+ * The message and attachment ids have to be collected first: by the time the
+ * thread is gone the cascade has taken them, and a tombstone naming a row
+ * nothing can look up is one nothing could match.
+ */
+function deleteLeavingNoTrace(ids: string[]): number {
+  if (!ids.length) return 0
+  const db = getDb()
+  const marks = ids.map(() => '?').join(',')
+
+  const idsOf = (table: string): string[] =>
+    (
+      db.prepare(`SELECT id FROM ${table} WHERE thread_id IN (${marks})`).all(...ids) as {
+        id: string
+      }[]
+    ).map((row) => row.id)
+
+  const messageIds = idsOf('messages')
+  const attachmentIds = idsOf('attachments')
+
+  return db.transaction(() => {
+    const removed = db.prepare(`DELETE FROM threads WHERE id IN (${marks})`).run(...ids).changes
+    const forget = db.prepare('DELETE FROM sync_deletions WHERE kind = ? AND id = ?')
+    for (const id of ids) forget.run('thread', id)
+    for (const id of messageIds) forget.run('message', id)
+    for (const id of attachmentIds) forget.run('attachment', id)
+    return removed
+  })()
+}
+
+/**
+ * Removes every temporary chat.
+ *
+ * Run at startup and again as the app quits, which between them cover both
+ * ways a session can end. The renderer deletes one the moment you leave it;
+ * this is for the one you were still in — and, because a crash is a way of
+ * closing an app too, it is the guarantee rather than the courtesy.
+ */
+export function deleteTemporaryThreads(): number {
+  const ids = (
+    getDb().prepare('SELECT id FROM threads WHERE temporary = 1').all() as { id: string }[]
+  ).map((row) => row.id)
+  return deleteLeavingNoTrace(ids)
 }
 
 /** Copies a thread and its messages up to and including `throughMessageId`. */
@@ -446,7 +558,14 @@ export function branchThread(threadId: string, throughMessageId: string): Thread
     | undefined
   if (!pivot) return null
 
-  const clone = createThread(source.title ? `${source.title} (branch)` : '', source.config)
+  // A copy of a conversation that is on its way out is on its way out too:
+  // branching is for trying another line inside the same sitting, and one half
+  // of a temporary chat quietly outliving the other would be a surprise.
+  const clone = createThread(
+    source.title ? `${source.title} (branch)` : '',
+    source.config,
+    source.temporary
+  )
   // A branch belongs beside what it came from, so it is filed where that was.
   if (source.folderId) setThreadFolder(clone.id, source.folderId)
   const rows = db
@@ -568,16 +687,16 @@ export function getMessage(id: string): Message | null {
  * Messages for display. Compacted-away messages are excluded but never deleted —
  * `includeCompacted` brings them back for the "show original context" view.
  */
-export function getMessages(threadId: string, includeCompacted = false): Message[] {
+/**
+ * Turns rows into messages, with what each turn cost and whatever was attached
+ * to it.
+ *
+ * Usage and attachments are read for the whole thread rather than for the rows
+ * in hand: both are one indexed lookup either way, and the alternative is an
+ * `IN` clause built from however many ids a page happens to have.
+ */
+function hydrate(threadId: string, rows: MessageRow[]): Message[] {
   const db = getDb()
-  const rows = db
-    .prepare(
-      `SELECT * FROM messages
-        WHERE thread_id = ? AND (? = 1 OR compacted_into IS NULL)
-        ORDER BY seq`
-    )
-    .all(threadId, includeCompacted ? 1 : 0) as MessageRow[]
-
   const usageRows = db.prepare('SELECT * FROM usage WHERE thread_id = ?').all(threadId) as (
     UsageRow & { thread_id: string }
   )[]
@@ -588,6 +707,174 @@ export function getMessages(threadId: string, includeCompacted = false): Message
   return rows.map((row) =>
     toMessage(row, usageByMessage.get(row.id) ?? null, attachmentsByMessage.get(row.id) ?? [])
   )
+}
+
+export function getMessages(threadId: string, includeCompacted = false): Message[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM messages
+        WHERE thread_id = ? AND (? = 1 OR compacted_into IS NULL)
+        ORDER BY seq`
+    )
+    .all(threadId, includeCompacted ? 1 : 0) as MessageRow[]
+
+  return hydrate(threadId, rows)
+}
+
+/* ------------------------------------------------------------------ *
+ * Reading a transcript a page at a time
+ * ------------------------------------------------------------------ */
+
+/**
+ * How far back a page may reach to start on a turn boundary.
+ *
+ * A turn is several rows — the reply that called a tool, the result, and the
+ * reply after it — and `groupIntoTurns` reads a run of them as one answer. A
+ * page that began in the middle of such a run would draw the tail of a turn as
+ * a turn of its own, and then redraw it the moment the rest arrived. So a page
+ * grows backwards to the nearest thing that starts a turn. Bounded, because a
+ * conversation of nothing but tool calls would otherwise be one page.
+ */
+const TURN_LOOKBACK = 40
+
+/** Where a page beginning at `roughStart` should really begin. */
+function alignToTurn(threadId: string, roughStart: number): number {
+  const row = getDb()
+    .prepare(
+      `SELECT seq FROM messages
+        WHERE thread_id = ? AND ${VISIBLE_MESSAGES}
+          AND seq <= ? AND seq >= ?
+          AND role NOT IN ('assistant', 'tool')
+        ORDER BY seq DESC
+        LIMIT 1`
+    )
+    .get(threadId, roughStart, roughStart - TURN_LOOKBACK) as { seq: number } | undefined
+
+  return row?.seq ?? roughStart
+}
+
+function pageFrom(threadId: string, startSeq: number | null, before: number | null): MessagePage {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      `SELECT * FROM messages
+        WHERE thread_id = ? AND ${VISIBLE_MESSAGES}
+          AND (? IS NULL OR seq >= ?)
+          AND (? IS NULL OR seq < ?)
+        ORDER BY seq`
+    )
+    .all(threadId, startSeq, startSeq, before, before) as MessageRow[]
+
+  const hasOlder =
+    startSeq === null
+      ? false
+      : Boolean(
+          db
+            .prepare(`SELECT 1 FROM messages WHERE thread_id = ? AND ${VISIBLE_MESSAGES} AND seq < ? LIMIT 1`)
+            .get(threadId, startSeq)
+        )
+
+  return { messages: hydrate(threadId, rows), startSeq, hasOlder }
+}
+
+/**
+ * The newest `limit` messages, or the `limit` before a page already held.
+ *
+ * `before` is the `startSeq` of the page the caller already has; null asks for
+ * the end of the conversation, which is where a thread opens.
+ */
+export function getMessagePage(
+  threadId: string,
+  limit: number,
+  before: number | null = null
+): MessagePage {
+  const edge = getDb()
+    .prepare(
+      `SELECT seq FROM messages
+        WHERE thread_id = ? AND ${VISIBLE_MESSAGES} AND (? IS NULL OR seq < ?)
+        ORDER BY seq DESC
+        LIMIT 1 OFFSET ?`
+    )
+    .get(threadId, before, before, Math.max(limit - 1, 0)) as { seq: number } | undefined
+
+  // No row that far back means the rest of the conversation is shorter than a
+  // page, so this one starts at its beginning and there is nothing before it.
+  const startSeq = edge ? alignToTurn(threadId, edge.seq) : null
+  return pageFrom(threadId, startSeq, before)
+}
+
+/**
+ * Everything from `startSeq` to the end of the thread.
+ *
+ * How a transcript already on screen is re-read after an edit, a tool result or
+ * a deletion: asking for a page again would collapse the window back to its
+ * last screenful and take the reader's place in the conversation with it.
+ */
+export function getMessagesFrom(threadId: string, startSeq: number | null): MessagePage {
+  return pageFrom(threadId, startSeq, null)
+}
+
+/**
+ * The range that contains a particular message, and everything after it.
+ *
+ * What a search result opens. A hit can be anywhere in a conversation, and a
+ * transcript that only ever holds the end of one would otherwise be asked to
+ * highlight a message it has never read in — which looks exactly like the
+ * search having found nothing.
+ *
+ * The range still runs to the end of the thread rather than being a window
+ * floating in the middle of it, because "what is loaded is contiguous with the
+ * end" is the assumption that lets a reply still arriving be appended to it.
+ * Jumping a long way back therefore reads in a long way back, which is the
+ * honest cost of having asked to go there.
+ */
+export function getMessagesIncluding(threadId: string, messageId: string): MessagePage {
+  const db = getDb()
+  const target = db
+    .prepare(`SELECT seq FROM messages WHERE id = ? AND thread_id = ? AND ${VISIBLE_MESSAGES}`)
+    .get(messageId, threadId) as { seq: number } | undefined
+
+  // Not there, or compacted away since the index last saw it. The end of the
+  // conversation is a better answer than nothing.
+  if (!target) return getMessagePage(threadId, DEFAULT_PAGE, null)
+
+  // A few turns above it, so the message lands in a conversation rather than
+  // at the very top of the transcript with no idea what it was answering.
+  const above = db
+    .prepare(
+      `SELECT seq FROM messages
+        WHERE thread_id = ? AND ${VISIBLE_MESSAGES} AND seq <= ?
+        ORDER BY seq DESC
+        LIMIT 1 OFFSET ?`
+    )
+    .get(threadId, target.seq, CONTEXT_ABOVE_A_HIT) as { seq: number } | undefined
+
+  return pageFrom(threadId, alignToTurn(threadId, (above ?? target).seq), null)
+}
+
+/** How much of the conversation before a search hit comes with it. */
+const CONTEXT_ABOVE_A_HIT = 8
+
+/** The page size the main process falls back to when nobody names one. */
+const DEFAULT_PAGE = 40
+
+/**
+ * What a thread has cost, over all of it.
+ *
+ * The header showed the sum of what was on screen, which was every message
+ * while every message was loaded. It no longer is, and a total that grew as you
+ * scrolled up would be worse than no total at all — so it is asked of the
+ * database, which has always known the answer.
+ */
+export function getThreadTotals(threadId: string): ThreadTotals {
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(cost_usd), 0) AS cost, COALESCE(SUM(total_tokens), 0) AS tokens
+         FROM usage WHERE thread_id = ?`
+    )
+    .get(threadId) as { cost: number; tokens: number }
+
+  return { costUsd: row.cost, totalTokens: row.tokens }
 }
 
 export function deleteMessage(id: string): void {
@@ -1139,11 +1426,16 @@ export function search(query: string, limit = 50): SearchHit[] {
   // likely thing a user is jumping to.
   const titleRows = db
     .prepare(
-      `SELECT id, title, updated_at FROM threads
+      `SELECT id, title, updated_at, temporary FROM threads
         WHERE title LIKE ? COLLATE NOCASE
         ORDER BY pinned DESC, updated_at DESC LIMIT ?`
     )
-    .all(`%${text}%`, limit) as { id: string; title: string; updated_at: number }[]
+    .all(`%${text}%`, limit) as {
+    id: string
+    title: string
+    updated_at: number
+    temporary: number
+  }[]
 
   for (const row of titleRows) {
     hits.push({
@@ -1154,7 +1446,8 @@ export function search(query: string, limit = 50): SearchHit[] {
       snippet: escapeHtml(row.title),
       createdAt: row.updated_at,
       score: 1000,
-      kind: 'title'
+      kind: 'title',
+      temporary: row.temporary === 1
     })
   }
 
@@ -1167,6 +1460,7 @@ export function search(query: string, limit = 50): SearchHit[] {
                 m.role         AS role,
                 m.created_at   AS created_at,
                 t.title        AS thread_title,
+                t.temporary    AS temporary,
                 snippet(messages_fts, 0, ?, ?, '…', 12) AS snippet,
                 bm25(messages_fts) AS score
            FROM messages_fts
@@ -1182,6 +1476,7 @@ export function search(query: string, limit = 50): SearchHit[] {
       role: string
       created_at: number
       thread_title: string
+      temporary: number
       snippet: string
       score: number
     }[]
@@ -1196,7 +1491,8 @@ export function search(query: string, limit = 50): SearchHit[] {
         createdAt: row.created_at,
         // bm25 returns lower-is-better; flip it so callers can sort descending.
         score: -row.score,
-        kind: 'message'
+        kind: 'message',
+        temporary: row.temporary === 1
       })
     }
   }

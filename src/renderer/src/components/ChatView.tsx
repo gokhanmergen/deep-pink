@@ -1,14 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CompactionStatus } from '@shared/types'
 import { useStore } from '../store'
 import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
-import { BarChart3, Cpu, FileText, PanelLeft, Plus, Route } from 'lucide-react'
+import { BarChart3, Cpu, FileText, Ghost, PanelLeft, Plus, Route } from 'lucide-react'
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
-import { formatCost, formatTokens, modelShortName } from '../format'
+import { formatCost, formatTokens, modelShortName, threadLabel } from '../format'
 
 export function ChatView(): React.JSX.Element {
   const settings = useStore((s) => s.settings)
@@ -21,7 +21,14 @@ export function ChatView(): React.JSX.Element {
   const updateThread = useStore((s) => s.updateThread)
   const toggleSidebar = useStore((s) => s.toggleSidebar)
   const createThread = useStore((s) => s.createThread)
+  const keepThread = useStore((s) => s.keepThread)
+  const showToast = useStore((s) => s.showToast)
   const compact = useStore((s) => s.compact)
+  // Subscribed to so the top-up below re-runs when either changes; the values
+  // it acts on are read from the store, which is never a frame behind.
+  const hasOlderMessages = useStore((s) => s.hasOlderMessages)
+  const loadingOlder = useStore((s) => s.loadingOlder)
+  const threadTotals = useStore((s) => s.threadTotals)
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
 
@@ -32,22 +39,125 @@ export function ChatView(): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedToBottom = useRef(true)
 
-  // Track whether the user has scrolled away; only autoscroll if they have not.
-  const onScroll = (): void => {
+  /**
+   * The message the reader is looking at, held across a page arriving above it.
+   *
+   * Messages inserted above the viewport push everything below them down by
+   * their own height, which would throw the reader down the page. So one
+   * element is remembered by id along with where it was on screen, and after
+   * the render the view is moved by however far it went — in a layout effect,
+   * before the browser paints, so there is no frame in which anything is in
+   * the wrong place.
+   *
+   * Deliberately an element rather than a distance from either end. A reply
+   * still arriving grows the transcript at the bottom, and any measure taken
+   * from an end would read that growth as the prepend and move the page by it.
+   * Nothing that happens below the anchor can move the anchor.
+   */
+  const anchor = useRef<{ id: string; top: number } | null>(null)
+
+  /**
+   * Reads in the page above, holding the reader's place across it.
+   *
+   * Both callers guard on the store rather than on what they last rendered.
+   * A render-time `loadingOlder` can be a frame behind the store's, and the
+   * cost of being wrong is not a duplicate request — the store refuses that —
+   * but a refusal arriving as `false` and clearing an anchor that the request
+   * actually in flight is going to need.
+   */
+  const readOlder = useCallback((): void => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const store = useStore.getState()
+    if (!store.hasOlderMessages || store.loadingOlder) return
+
+    const held = el.querySelector<HTMLElement>('[data-message-id]')
+    const mark = held?.dataset.messageId
+      ? { id: held.dataset.messageId, top: held.getBoundingClientRect().top }
+      : null
+    anchor.current = mark
+
+    void store.loadOlderMessages().then((added) => {
+      // Nothing came, so nothing needs putting back — and an anchor left set
+      // would move the view the next time anything at all re-rendered. Only
+      // ours is cleared, never one a later request is waiting on.
+      if (!added && anchor.current === mark) anchor.current = null
+    })
+  }, [])
+
+  /**
+   * Asks for the page above while it is still two screens away.
+   *
+   * The point is that the reader never arrives at an edge: by the time the
+   * older messages would be needed they have been rendered for a while.
+   */
+  const fetchAhead = useCallback((): void => {
+    const el = scrollRef.current
+    if (!el || el.scrollTop > el.clientHeight * 2) return
+    readOlder()
+  }, [readOlder])
+
+  /**
+   * Measured in the event rather than on the next frame.
+   *
+   * Deferring to `requestAnimationFrame` is the usual advice for scroll
+   * handlers, and it was wrong here: rAF does not run in a window that is not
+   * being painted, and this handler is not doing cosmetic work — it is what
+   * decides that more of the conversation should be read in. Making that
+   * conditional on the compositor is how a transcript ends up stuck.
+   *
+   * The reads themselves are cheap: during a scroll nothing has dirtied the
+   * DOM, so `scrollHeight` is a cached value rather than a forced layout. The
+   * one exception is the frame just after a page was prepended, which is one
+   * layout, once per page.
+   */
+  const onScroll = useCallback((): void => {
     const el = scrollRef.current
     if (!el) return
     pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-  }
+    fetchAhead()
+  }, [fetchAhead])
 
   useLayoutEffect(() => {
-    if (!pinnedToBottom.current) return
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+
+    const mark = anchor.current
+    // Something is now above what used to be first: a page has landed. Put the
+    // reader back on the message they were reading. A render that changed only
+    // the bottom of the transcript leaves the mark alone, to be used by the
+    // page that is still on its way.
+    if (mark && el.querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId !== mark.id) {
+      const held = el.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(mark.id)}"]`)
+      anchor.current = null
+      if (held) {
+        el.scrollTop += held.getBoundingClientRect().top - mark.top
+        return
+      }
+    }
+
+    if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
   }, [messages])
 
   useEffect(() => {
     pinnedToBottom.current = true
+    anchor.current = null
   }, [activeThreadId])
+
+  /**
+   * Tops the transcript up until there is something to scroll.
+   *
+   * A page is a count of messages, and forty short ones do not fill a window —
+   * which would leave the scroll handler with no room to fire in and the reader
+   * at the top of a conversation that looks finished. Runs after each page
+   * lands, and stops as soon as there is a screenful in reserve.
+   */
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || el.scrollHeight > el.clientHeight * 2.5) return
+    readOlder()
+  }, [messages, hasOlderMessages, loadingOlder, readOlder])
 
   // Refresh the context gauge when the conversation changes.
   useEffect(() => {
@@ -70,8 +180,10 @@ export function ChatView(): React.JSX.Element {
   const model = thread?.config.model ?? settings.defaultModel
   const usedRatio = context?.limit ? Math.min(context.used / context.limit, 1) : 0
 
-  const totalCost = messages.reduce((sum, m) => sum + (m.usage?.costUsd ?? 0), 0)
-  const totalTokens = messages.reduce((sum, m) => sum + (m.usage?.totalTokens ?? 0), 0)
+  // The thread's, not the sum of what has been read in — a figure that counted
+  // upwards as you scrolled back would be a lie about what anything cost.
+  const totalCost = threadTotals?.costUsd ?? 0
+  const totalTokens = threadTotals?.totalTokens ?? 0
 
   const commitRename = (): void => {
     if (thread) void updateThread(thread.id, { title: titleDraft.trim() })
@@ -116,7 +228,27 @@ export function ChatView(): React.JSX.Element {
             title="Double-click to rename"
             type="button"
           >
-            {thread ? thread.title || 'Untitled thread' : 'Deep Pink'}
+            {thread ? threadLabel(thread) : 'Deep Pink'}
+          </button>
+        )}
+
+        {/* The one thing about this conversation that is not true of the others,
+            said where its name would be — and next to the way out of it. */}
+        {thread?.temporary && (
+          <button
+            className="btn btn--ghost temp-badge"
+            onClick={() => {
+              void keepThread(thread.id)
+              showToast('Kept — this chat now stays')
+            }}
+            title={
+              'Temporary — deleted when you leave it or close the app. ' +
+              `Click to keep it (${formatBinding(keybinds['thread.keep'])}).`
+            }
+            type="button"
+          >
+            <Ghost {...ICON} />
+            <span className="btn__label">Temporary — click to keep</span>
           </button>
         )}
 
@@ -205,6 +337,16 @@ export function ChatView(): React.JSX.Element {
 
       <div className="transcript" ref={scrollRef} onScroll={onScroll}>
         <div className="transcript__inner">
+          {/* A fixed height, held for as long as there is anything above — so
+              it cannot change size as pages arrive, and so nothing below it can
+              be moved by one. Meant to be scrolled past rather than read: by
+              the time it is on screen the page it stands for is usually already
+              rendered above it. */}
+          {hasOlderMessages && (
+            <div className="transcript__earlier" aria-hidden="true">
+              earlier messages
+            </div>
+          )}
           {!thread ? (
             <div className="empty" style={{ height: '50vh' }}>
               <div className="empty__title">Nothing open</div>
@@ -216,7 +358,15 @@ export function ChatView(): React.JSX.Element {
             </div>
           ) : messages.length === 0 ? (
             <div className="empty" style={{ height: '46vh' }}>
-              <div className="empty__title">Ask anything</div>
+              <div className="empty__title">
+                {thread.temporary ? 'Ask, and forget' : 'Ask anything'}
+              </div>
+              {thread.temporary && (
+                <p>
+                  Nothing said here is kept. It is deleted when you open another
+                  chat or close the app, and it is never synced.
+                </p>
+              )}
               <p>
                 Using <strong>{modelShortName(model)}</strong>. Press{' '}
                 <span className="kbd">{formatBinding(keybinds['palette.open'])}</span> for the

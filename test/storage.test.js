@@ -293,13 +293,20 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   const shelf = repo.createFolder('Shelf')
   repo.setThreadFolder(filedEmpty.id, shelf.id)
 
+  const emptyTemporary = repo.createThread('', {}, true)
+
   const swept = repo.deleteEmptyThreads()
   check('an untouched thread is swept away', repo.getThread(untouched.id) === null)
+  check(
+    'an empty temporary chat is left to the sweep that leaves no trace',
+    repo.getThread(emptyTemporary.id) !== null
+  )
   check('one that was spoken in is not', repo.getThread(spokenIn.id) !== null)
   check('nor is one that has a name', repo.getThread(named.id) !== null)
   check('nor a pinned one', repo.getThread(pinnedEmpty.id) !== null)
   check('nor one filed in a folder', repo.getThread(filedEmpty.id) !== null)
   check('and it reports what it removed', swept === 1, swept)
+  repo.deleteThread(emptyTemporary.id)
 
   section('threads that never got a name')
   const unnamed = repo.createThread()
@@ -338,13 +345,271 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   repo.deleteThread(filedEmpty.id)
   repo.deleteFolder(shelf.id)
 
+  section('reading a transcript a page at a time')
+  const paged = repo.createThread('A long conversation')
+  // Ninety turns, some of them with a tool round in the middle, so the pages
+  // have something to align to and something to get wrong.
+  for (let i = 0; i < 90; i++) {
+    repo.insertMessage({ threadId: paged.id, role: 'user', content: `Question ${i}` })
+    if (i % 7 === 0) {
+      const asked = repo.insertMessage({
+        threadId: paged.id,
+        role: 'assistant',
+        content: `Let me look, ${i}.`,
+        model: 'test/model'
+      })
+      repo.insertMessage({ threadId: paged.id, role: 'tool', content: `result ${i}` })
+      repo.insertMessage({
+        threadId: paged.id,
+        role: 'assistant',
+        content: `Answer ${i}.`,
+        model: 'test/model'
+      })
+      void asked
+    } else {
+      repo.insertMessage({
+        threadId: paged.id,
+        role: 'assistant',
+        content: `Answer ${i}.`,
+        model: 'test/model'
+      })
+    }
+  }
+  const everything = repo.getMessages(paged.id)
+  // Rows come back as fresh objects each time they are read, so positions are
+  // found by id rather than by identity.
+  const positionOf = (message) => everything.findIndex((m) => m.id === message.id)
+
+  const newest = repo.getMessagePage(paged.id, 40, null)
+  check('a page is the size asked for, or a little more', newest.messages.length >= 40, newest.messages.length)
+  check('and never the whole conversation', newest.messages.length < everything.length, newest.messages.length)
+  check('it ends where the conversation does',
+    newest.messages[newest.messages.length - 1].id === everything[everything.length - 1].id)
+  check('and says there is more above it', newest.hasOlder === true)
+  check('and where it begins', typeof newest.startSeq === 'number', newest.startSeq)
+
+  check(
+    'a page begins on something that starts a turn',
+    newest.messages[0].role !== 'assistant' && newest.messages[0].role !== 'tool',
+    newest.messages[0].role
+  )
+
+  const older = repo.getMessagePage(paged.id, 40, newest.startSeq)
+  check('the page before it stops where that one starts',
+    older.messages[older.messages.length - 1].id ===
+      everything[positionOf(newest.messages[0]) - 1].id)
+  check('and it also starts a turn',
+    older.messages[0].role !== 'assistant' && older.messages[0].role !== 'tool', older.messages[0].role)
+  check(
+    'the two together are a contiguous run of the conversation',
+    [...older.messages, ...newest.messages].map((m) => m.id).join() ===
+      everything.slice(positionOf(older.messages[0])).map((m) => m.id).join()
+  )
+
+  // Walking back to the beginning: every message, once, in order, and then a
+  // page that admits there is nothing before it.
+  let walked = [...newest.messages]
+  let cursor = newest
+  let pages = 1
+  while (cursor.hasOlder && pages < 50) {
+    cursor = repo.getMessagePage(paged.id, 40, cursor.startSeq)
+    walked = [...cursor.messages, ...walked]
+    pages++
+  }
+  check('paging to the top reaches the first message', cursor.hasOlder === false, { pages })
+  check(
+    'and hands over every message exactly once, in order',
+    walked.map((m) => m.id).join() === everything.map((m) => m.id).join(),
+    { walked: walked.length, all: everything.length }
+  )
+
+  section('re-reading what is already on screen')
+  const reread = repo.getMessagesFrom(paged.id, newest.startSeq)
+  check('it gives back the same range', reread.messages.map((m) => m.id).join() ===
+    newest.messages.map((m) => m.id).join())
+  check('and keeps saying where the range begins', reread.startSeq === newest.startSeq)
+  check('and that there is still more above it', reread.hasOlder === true)
+
+  const saidSince = repo.insertMessage({ threadId: paged.id, role: 'user', content: 'one more thing' })
+  const grown = repo.getMessagesFrom(paged.id, newest.startSeq)
+  check('a message added since is picked up without collapsing the range',
+    grown.messages.length === reread.messages.length + 1 &&
+      grown.messages[grown.messages.length - 1].id === saidSince.id)
+  check('the range still begins where it did', grown.startSeq === newest.startSeq)
+
+  check(
+    'asking from nowhere in particular is the whole conversation',
+    repo.getMessagesFrom(paged.id, null).messages.length === everything.length + 1
+  )
+  check('which has nothing above it', repo.getMessagesFrom(paged.id, null).hasOlder === false)
+
+  section('reaching a message from anywhere in the thread')
+  // What a search hit needs: the range that contains it, however far back it is.
+  const buried = everything[10]
+  const reached = repo.getMessagesIncluding(paged.id, buried.id)
+  check('the message asked for is in the range', reached.messages.some((m) => m.id === buried.id))
+  check(
+    'with some of the conversation before it, for context',
+    reached.messages[0].id !== buried.id,
+    reached.messages[0].content
+  )
+  // Read fresh: something was said in this thread since `everything` was taken.
+  const nowEnds = repo.getMessages(paged.id).slice(-1)[0]
+  check(
+    'and everything after it, so a reply still arriving has somewhere to land',
+    reached.messages[reached.messages.length - 1].id === nowEnds.id
+  )
+  check('it still starts a turn', reached.messages[0].role !== 'assistant' &&
+    reached.messages[0].role !== 'tool', reached.messages[0].role)
+
+  check('a message at the end reaches the end',
+    repo.getMessagesIncluding(paged.id, nowEnds.id).messages.some((m) => m.id === nowEnds.id))
+  check(
+    'and a message that is not there falls back to the end of the conversation',
+    repo.getMessagesIncluding(paged.id, 'no-such-message').messages.length > 0
+  )
+
+  section('a short conversation is one page')
+  const brief = repo.createThread('Brief')
+  repo.insertMessage({ threadId: brief.id, role: 'user', content: 'hello' })
+  repo.insertMessage({ threadId: brief.id, role: 'assistant', content: 'hi', model: 'test/model' })
+  const onePage = repo.getMessagePage(brief.id, 40, null)
+  check('all of it arrives at once', onePage.messages.length === 2)
+  check('and it says so', onePage.hasOlder === false, onePage)
+
+  const empty = repo.createThread('Nothing said')
+  const noPage = repo.getMessagePage(empty.id, 40, null)
+  check('an empty thread pages to nothing', noPage.messages.length === 0 && noPage.hasOlder === false)
+  check('with no range to remember', noPage.startSeq === null)
+
+  section('what a thread cost is asked of the database, not of the screen')
+  const paid = repo.createThread('Paid for')
+  for (let i = 0; i < 3; i++) {
+    const reply = repo.insertMessage({ threadId: paid.id, role: 'assistant', content: `r${i}`, model: 'm' })
+    repo.recordUsage(paid.id, reply.id, 'm', 'p', {
+      promptTokens: 100, completionTokens: 100, reasoningTokens: 0, cachedTokens: 0,
+      totalTokens: 200, costUsd: 0.01, latencyMs: 10, timeToFirstTokenMs: 1,
+      tokensPerSecond: 1, generationId: `g${i}`
+    })
+  }
+  const totals = repo.getThreadTotals(paid.id)
+  check('every turn is counted, on screen or not', totals.totalTokens === 600, totals)
+  check('and so is every cent', Math.abs(totals.costUsd - 0.03) < 1e-9, totals)
+  check('a thread that cost nothing says zero', repo.getThreadTotals(empty.id).costUsd === 0)
+
+  // Compacted-away messages are not part of what a reader scrolls through, so
+  // they are not part of what a page is made of either.
+  section('pages are of what a reader would see')
+  const withSummary = repo.createThread('Compacted')
+  const oldest = repo.insertMessage({ threadId: withSummary.id, role: 'user', content: 'old news' })
+  const replacedBy = repo.insertMessage({
+    threadId: withSummary.id, role: 'system', content: 'Summary', isCompactionSummary: true
+  })
+  repo.markCompacted([oldest.id], replacedBy.id)
+  repo.insertMessage({ threadId: withSummary.id, role: 'user', content: 'current' })
+  const shown = repo.getMessagePage(withSummary.id, 40, null)
+  check('what was compacted away is not paged in',
+    !shown.messages.some((m) => m.id === oldest.id), shown.messages.map((m) => m.content))
+  check('but the summary that replaced it is', shown.messages.some((m) => m.id === replacedBy.id))
+
+  for (const one of [paged, brief, empty, paid, withSummary]) repo.deleteThread(one.id)
+
+  section('temporary chats')
+  const temp = repo.createThread('', {}, true)
+  check('a chat can be created temporary', temp.temporary === true)
+  check('an ordinary one is not', repo.createThread('Ordinary').temporary === false)
+
+  repo.insertMessage({ threadId: temp.id, role: 'user', content: 'ephemeral question' })
+  check(
+    'it is never queued for a name',
+    !repo.listUntitledThreadIds(25).includes(temp.id),
+    repo.listUntitledThreadIds(25)
+  )
+  check(
+    'but it can still be found while it exists',
+    repo.search('ephemeral').some((hit) => hit.threadId === temp.id)
+  )
+  check(
+    'and a hit says which kind of chat it was in',
+    repo.search('ephemeral').find((hit) => hit.threadId === temp.id).temporary === true
+  )
+
+  const tempBranch = repo.branchThread(temp.id, repo.getMessages(temp.id)[0].id)
+  check('a branch of it is temporary too', tempBranch.temporary === true)
+  repo.deleteThread(tempBranch.id)
+
+  // The three gestures that mean "I want this later", and the one that says so.
+  const pinnedTemp = repo.createThread('', {}, true)
+  check(
+    'pinning keeps it',
+    repo.updateThread(pinnedTemp.id, { pinned: true }).temporary === false
+  )
+  const archivedTemp = repo.createThread('', {}, true)
+  check(
+    'archiving keeps it',
+    repo.updateThread(archivedTemp.id, { archived: true }).temporary === false
+  )
+  const filedTemp = repo.createThread('', {}, true)
+  const drawer = repo.createFolder('Drawer')
+  check(
+    'filing it in a folder keeps it',
+    repo.setThreadFolder(filedTemp.id, drawer.id).temporary === false
+  )
+  check(
+    'and taking it back out does not make it temporary again',
+    repo.setThreadFolder(filedTemp.id, null).temporary === false
+  )
+  const renamedTemp = repo.createThread('', {}, true)
+  check(
+    'naming one does not keep it — a name is not a promise',
+    repo.updateThread(renamedTemp.id, { title: 'Still going' }).temporary === true
+  )
+  check('asking to keep it keeps it', repo.keepThread(renamedTemp.id).temporary === false)
+  check(
+    'and nothing else about the conversation changed',
+    repo.getThread(renamedTemp.id).title === 'Still going'
+  )
+
+  for (const one of [pinnedTemp, archivedTemp, filedTemp, renamedTemp]) repo.deleteThread(one.id)
+  repo.deleteFolder(drawer.id)
+
+  section('a temporary chat leaves nothing behind')
+  const tombstones = (kind, id) =>
+    getDb().prepare('SELECT COUNT(*) AS n FROM sync_deletions WHERE kind = ? AND id = ?').get(kind, id).n
+
+  const tempMessage = repo.getMessages(temp.id)[0]
+  const ordinary = repo.createThread('Ordinary, and deleted')
+  const ordinaryMessage = repo.insertMessage({
+    threadId: ordinary.id,
+    role: 'user',
+    content: 'this deletion has to travel'
+  })
+  repo.deleteThread(ordinary.id)
+  check('deleting an ordinary thread leaves a tombstone', tombstones('thread', ordinary.id) === 1)
+  check('and one for each message it took with it', tombstones('message', ordinaryMessage.id) === 1)
+
+  const expired = repo.deleteTemporaryThreads()
+  check('a temporary chat is swept away', repo.getThread(temp.id) === null, expired)
+  check('its messages go with it', repo.getMessages(temp.id, true).length === 0)
+  check('it is reported', expired === 1, expired)
+  check('but it leaves no tombstone', tombstones('thread', temp.id) === 0)
+  check('nor do its messages', tombstones('message', tempMessage.id) === 0)
+  check(
+    'and it is gone from the search index with them',
+    !repo.search('ephemeral').some((hit) => hit.threadId === temp.id)
+  )
+  check(
+    'sweeping again finds nothing to do',
+    repo.deleteTemporaryThreads() === 0
+  )
+
   section('branching and deletion')
   const branch = repo.branchThread(thread.id, question.id)
   check('a branch is created as a new thread', Boolean(branch) && branch.id !== thread.id)
   check('the branch stops at the chosen message', repo.getMessages(branch.id).length === 1)
 
-  repo.deleteThread(long.id)
-  check('deleting a thread removes its messages', repo.getMessages(long.id, true).length === 0)
+  repo.deleteThread(paged.id)
+  check('deleting a thread removes its messages', repo.getMessages(paged.id, true).length === 0)
 
   section('image attachments')
   const { attachments } = subject

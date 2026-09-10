@@ -108,6 +108,8 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     title: 'Threads',
     actions: [
       { id: 'thread.new', label: 'New thread' },
+      { id: 'thread.newTemporary', label: 'New temporary chat' },
+      { id: 'thread.keep', label: 'Keep a temporary chat' },
       { id: 'thread.rename', label: 'Rename thread' },
       { id: 'thread.retitle', label: 'Regenerate thread name' },
       { id: 'thread.delete', label: 'Delete thread' },

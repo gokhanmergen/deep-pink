@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { dateBucket, formatDateTime, formatRelativeShort } from '../format'
+import { dateBucket, formatDateTime, formatRelativeShort, threadLabel } from '../format'
 import {
   BarChart3,
   Blocks,
@@ -12,6 +12,7 @@ import {
   FolderOpen as FolderOpenIcon,
   FolderPlus,
   FolderMinus,
+  Ghost,
   Pencil,
   Pin,
   PinOff,
@@ -71,14 +72,20 @@ const ThreadRow = memo(function ThreadRow({
         onDragState(thread.id)
       }}
       onDragEnd={() => onDragState(null)}
+      data-temporary={thread.temporary}
       onClick={() => onSelect(thread.id)}
       onContextMenu={(event) => onMenu(event, thread)}
-      title={thread.title || 'Untitled thread'}
+      title={
+        thread.temporary
+          ? 'Temporary chat — deleted when you leave it or close the app'
+          : threadLabel(thread)
+      }
       type="button"
     >
       <span className="thread-item__head">
         {thread.pinned && <Pin className="thread-item__pin" size={11} strokeWidth={2} />}
-        <span className="thread-item__title">{thread.title || 'Untitled thread'}</span>
+        {thread.temporary && <Ghost className="thread-item__ghost" size={12} strokeWidth={2} />}
+        <span className="thread-item__title">{threadLabel(thread)}</span>
         {/* The time the list is ordered by, where the eye already is. */}
         <span
           className="thread-item__time"
@@ -98,7 +105,11 @@ const ThreadRow = memo(function ThreadRow({
             : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
         </span>
         <span className="thread-item__sep">·</span>
-        <span className="nowrap">created {formatRelativeShort(thread.createdAt)}</span>
+        {/* The second half of the line is the age of an ordinary thread, and
+            for a temporary one the only thing worth saying about it. */}
+        <span className="nowrap">
+          {thread.temporary ? 'not saved' : `created ${formatRelativeShort(thread.createdAt)}`}
+        </span>
       </span>
     </button>
   )
@@ -142,9 +153,10 @@ export function Sidebar(): React.JSX.Element {
   const setSidebarFilter = useStore((s) => s.setSidebarFilter)
   const runSearch = useStore((s) => s.runSearch)
   const setOverlay = useStore((s) => s.setOverlay)
-  const setHighlight = useStore((s) => s.setHighlight)
+  const revealMessage = useStore((s) => s.revealMessage)
   const updateThread = useStore((s) => s.updateThread)
   const deleteThread = useStore((s) => s.deleteThread)
+  const keepThread = useStore((s) => s.keepThread)
   const showToast = useStore((s) => s.showToast)
   const askConfirm = useStore((s) => s.askConfirm)
   const askPrompt = useStore((s) => s.askPrompt)
@@ -178,6 +190,20 @@ export function Sidebar(): React.JSX.Element {
   }, [filter, runSearch])
 
   /**
+   * Temporary chats are lifted out of the list and shown above it.
+   *
+   * They belong nowhere in an ordering by date: a chat that will not see
+   * tomorrow does not want to be told apart from yesterday's, and one filed
+   * under "Today" among thirty others is exactly the chat somebody clicks away
+   * from without meaning to. There is normally one, and it sits at the top
+   * under a heading that says what it is.
+   */
+  const temporaryThreads = useMemo(
+    () => threads.filter((t) => t.temporary).sort((a, b) => b.createdAt - a.createdAt),
+    [threads]
+  )
+
+  /**
    * The list, as folders and loose threads together.
    *
    * A folder takes the time of the newest thing inside it, so it rises through
@@ -190,7 +216,9 @@ export function Sidebar(): React.JSX.Element {
     const contents = new Map<string, Thread[]>()
     const loose: Thread[] = []
 
-    for (const thread of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    for (const thread of [...threads]
+      .filter((t) => !t.temporary)
+      .sort((a, b) => b.updatedAt - a.updatedAt)) {
       // A thread whose folder has gone is loose, not lost.
       if (!thread.folderId || !known.has(thread.folderId)) {
         loose.push(thread)
@@ -262,7 +290,7 @@ export function Sidebar(): React.JSX.Element {
   const visibleThreadIds = useMemo(() => {
     if (filter.trim()) return hitsByThread.map((hit) => hit.threadId)
 
-    const ids: string[] = []
+    const ids: string[] = temporaryThreads.map((thread) => thread.id)
     const walk = (entry: Entry): void => {
       if (entry.kind === 'thread') {
         ids.push(entry.thread.id)
@@ -275,7 +303,7 @@ export function Sidebar(): React.JSX.Element {
     grouped.pinned.forEach(walk)
     for (const list of grouped.buckets.values()) list.forEach(walk)
     return ids
-  }, [filter, hitsByThread, grouped, openFolderIds])
+  }, [filter, hitsByThread, grouped, openFolderIds, temporaryThreads])
 
   useEffect(() => {
     setVisibleThreads(visibleThreadIds)
@@ -285,8 +313,11 @@ export function Sidebar(): React.JSX.Element {
   useEffect(() => () => setVisibleThreads([]), [setVisibleThreads])
 
   const openHit = async (hit: SearchHit): Promise<void> => {
-    await selectThread(hit.threadId)
-    if (hit.messageId) setHighlight(hit.messageId)
+    // `revealMessage` rather than a select and a highlight: the message may be
+    // further back than the transcript reads in on opening, and something has
+    // to go and get it.
+    if (hit.messageId) await revealMessage(hit.threadId, hit.messageId)
+    else await selectThread(hit.threadId)
   }
 
   /** Reads the dragged thread out of a drop, whichever type survived. */
@@ -303,6 +334,21 @@ export function Sidebar(): React.JSX.Element {
   const menuItems = (thread: Thread): ContextMenuItem[] => {
     const folder = folders.find((f) => f.id === thread.folderId) ?? null
     return [
+      // Offered first, because it is the only one of these with a deadline.
+      ...(thread.temporary
+        ? [
+            {
+              id: 'keep',
+              label: 'Keep this chat',
+              icon: <Ghost {...ICON} />,
+              hint: formatBinding(settings?.keybinds['thread.keep'] ?? 'mod+alt+k'),
+              onSelect: () => {
+                void keepThread(thread.id)
+                showToast('Kept — this chat now stays')
+              }
+            }
+          ]
+        : []),
       {
         id: 'pin',
         label: thread.pinned ? 'Unpin' : 'Pin',
@@ -310,16 +356,30 @@ export function Sidebar(): React.JSX.Element {
         hint: formatBinding(settings?.keybinds['thread.pin'] ?? 'mod+shift+p'),
         onSelect: () => {
           void updateThread(thread.id, { pinned: !thread.pinned })
-          showToast(thread.pinned ? 'Unpinned' : 'Pinned to the top')
+          // Pinning keeps a temporary chat, because pinning it to a list it
+          // would never appear in is not a thing anybody means.
+          showToast(
+            thread.temporary
+              ? 'Pinned — and kept, so it stays'
+              : thread.pinned
+                ? 'Unpinned'
+                : 'Pinned to the top'
+          )
         }
       },
-      {
-        id: 'retitle',
-        label: 'Regenerate name',
-        icon: <RefreshCw {...ICON} />,
-        hint: formatBinding(settings?.keybinds['thread.retitle'] ?? 'shift+f2'),
-        onSelect: () => void retitleThread(thread.id)
-      },
+      // A temporary chat is never named by the model, so there is no name to
+      // regenerate; it reads as "Temporary chat" until it goes.
+      ...(thread.temporary
+        ? []
+        : [
+            {
+              id: 'retitle',
+              label: 'Regenerate name',
+              icon: <RefreshCw {...ICON} />,
+              hint: formatBinding(settings?.keybinds['thread.retitle'] ?? 'shift+f2'),
+              onSelect: () => void retitleThread(thread.id)
+            }
+          ]),
       {
         id: 'export',
         label: 'Export as Markdown',
@@ -358,7 +418,7 @@ export function Sidebar(): React.JSX.Element {
           // naming the thread, since the menu may not be over the active one.
           void (async () => {
             const ok = await askConfirm({
-              title: `Delete “${thread.title || 'Untitled thread'}”?`,
+              title: `Delete “${threadLabel(thread)}”?`,
               body: 'Its messages go with it. This cannot be undone.',
               confirmLabel: 'Delete',
               danger: true
@@ -562,6 +622,17 @@ export function Sidebar(): React.JSX.Element {
           <FolderPlus size={12} strokeWidth={ICON.strokeWidth} />
           New folder
         </button>
+        <button
+          className="minor-btn"
+          onClick={() => runAction('thread.newTemporary')}
+          title={`A chat that is deleted when you leave it or close the app — ${formatBinding(
+            settings?.keybinds['thread.newTemporary'] ?? 'mod+alt+n'
+          )}`}
+          type="button"
+        >
+          <Ghost size={12} strokeWidth={ICON.strokeWidth} />
+          Temporary chat
+        </button>
         {focusing && (
           <button
             className="minor-btn"
@@ -613,7 +684,7 @@ export function Sidebar(): React.JSX.Element {
                 >
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <span className="cmditem__label" style={{ display: 'block' }}>
-                      {hit.threadTitle || 'Untitled thread'}
+                      {threadLabel({ title: hit.threadTitle, temporary: hit.temporary })}
                     </span>
                     {hit.messageId && <Snippet html={hit.snippet} />}
                   </span>
@@ -625,6 +696,12 @@ export function Sidebar(): React.JSX.Element {
           )
         ) : (
           <>
+            {temporaryThreads.length > 0 && (
+              <>
+                <div className="sidebar__group-label">Temporary — gone when you leave</div>
+                {temporaryThreads.map((thread) => renderThread(thread))}
+              </>
+            )}
             {grouped.pinned.length > 0 && (
               <>
                 <div className="sidebar__group-label">Pinned</div>

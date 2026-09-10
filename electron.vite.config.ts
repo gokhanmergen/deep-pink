@@ -46,6 +46,10 @@ export default defineConfig({
   renderer: {
     define,
     root: resolve(__dirname, 'src/renderer'),
+    // Syntax highlighting runs on a worker. ES rather than Vite's default IIFE
+    // because Shiki loads its grammars as dynamic imports, and an IIFE bundle
+    // cannot be split.
+    worker: { format: 'es' },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/renderer/index.html') }

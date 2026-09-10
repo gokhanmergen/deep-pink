@@ -1,4 +1,5 @@
 import type { ExportFormat } from '@shared/types'
+import { threadLabel } from './format'
 import { useStore } from './store'
 import { COMPOSER_ID } from './components/Composer'
 
@@ -64,6 +65,32 @@ export function buildActions(): AppAction[] {
     // Threads
     { id: 'thread.new', label: 'New thread', group: 'Threads', run: () => void store.createThread() },
     {
+      id: 'thread.newTemporary',
+      label: 'New temporary chat',
+      group: 'Threads',
+      run: () => {
+        void (async () => {
+          await store.createThread({ temporary: true })
+          store.showToast('Temporary chat — deleted when you leave it')
+        })()
+      }
+    },
+    {
+      id: 'thread.keep',
+      label: 'Keep this chat',
+      group: 'Threads',
+      // Nothing to offer when the open chat was never going anywhere.
+      hidden: !thread?.temporary,
+      run: requireThread(async (id) => {
+        if (!thread?.temporary) {
+          store.showToast('This chat is already saved')
+          return
+        }
+        await store.keepThread(id)
+        store.showToast('Kept — this chat now stays')
+      })
+    },
+    {
       id: 'thread.rename',
       label: 'Rename thread',
       group: 'Threads',
@@ -82,7 +109,7 @@ export function buildActions(): AppAction[] {
       group: 'Threads',
       run: requireThread(async (id) => {
         const ok = await store.askConfirm({
-          title: `Delete “${thread?.title || 'Untitled thread'}”?`,
+          title: `Delete “${threadLabel(thread)}”?`,
           body: 'Its messages go with it. This cannot be undone.',
           confirmLabel: 'Delete',
           danger: true
@@ -265,7 +292,10 @@ export function buildActions(): AppAction[] {
         })
         if (next === null) return
         await window.deepPink.messages.update(last.id, { content: next })
-        await store.selectThread(store.activeThreadId)
+        // Re-reads the range on screen rather than reopening the thread, which
+        // would drop back to the last screenful of a conversation somebody may
+        // have scrolled a long way up.
+        await store.refreshTranscript()
       }
     },
     {
@@ -287,7 +317,9 @@ export function buildActions(): AppAction[] {
       run: () => {
         const last = store.messages[store.messages.length - 1]
         if (!last) return
-        void window.deepPink.messages.remove(last.id).then(() => store.selectThread(store.activeThreadId))
+        void window.deepPink.messages
+          .remove(last.id)
+          .then(() => store.refreshTranscript())
       }
     },
 

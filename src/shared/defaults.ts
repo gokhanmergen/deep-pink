@@ -77,6 +77,9 @@ export const DEFAULT_UI: UiSettings = {
 export const DEFAULT_KEYBINDS: Record<string, string> = {
   // Threads
   'thread.new': 'mod+n',
+  // The other new: a chat that ends when you leave it.
+  'thread.newTemporary': 'mod+alt+n',
+  'thread.keep': 'mod+alt+k',
   'thread.rename': 'f2',
   // F2 names it yourself; shift asks the model to.
   'thread.retitle': 'shift+f2',

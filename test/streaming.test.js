@@ -23,6 +23,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   // Threads besides the fixture, for the "leave an empty one behind" checks.
   const extraThreads = []
   const removed = []
+  let createdCount = 0
 
   const thread = {
     id: 't1',
@@ -42,6 +43,20 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       settings: { get: async () => ({ ui: {}, keybinds: {}, web: {}, compaction: {} }) },
       threads: {
         list: async () => extraThreads.concat([thread]).map((t) => ({ ...t })),
+        create: async (_config, temporary = false) => {
+          // Counted, not derived from the list's length: a deleted thread would
+          // otherwise hand its id to the next one, and "was this deleted?" would
+          // answer for the wrong conversation.
+          const made = { ...thread, id: `made-${++createdCount}`, title: '', messageCount: 0, temporary }
+          extraThreads.push(made)
+          return { ...made }
+        },
+        keep: async (id) => {
+          const one = extraThreads.find((t) => t.id === id)
+          if (!one) return null
+          one.temporary = false
+          return { ...one }
+        },
         remove: async (id) => {
           removed.push(id)
           const at = extraThreads.findIndex((t) => t.id === id)
@@ -76,7 +91,25 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       },
       // Only the fixture thread has a transcript; the rest are as empty as the
       // database would report them.
-      messages: { list: async (id) => (id === thread.id ? persisted : []) },
+      //
+      // The transcript arrives a page at a time, so the stub answers in pages.
+      // The fixture is short enough to be one, which is the ordinary case and
+      // keeps these tests about streaming rather than about paging.
+      messages: {
+        list: async (id) => (id === thread.id ? persisted : []),
+        page: async (id) => ({
+          messages: id === thread.id ? persisted : [],
+          startSeq: id === thread.id && persisted.length ? 0 : null,
+          hasOlder: false
+        }),
+        from: async (id) => ({
+          messages: id === thread.id ? persisted : [],
+          startSeq: id === thread.id && persisted.length ? 0 : null,
+          hasOlder: false
+        }),
+        totals: async () => ({ costUsd: 0, totalTokens: 0 })
+      },
+      attachments: { images: async () => [] },
       models: { list: async () => [] },
       chat: {
         isGenerating: async () => false,
@@ -311,6 +344,40 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     kept.every((one) => !removed.includes(one.id)),
     removed
   )
+
+  section('a temporary chat does not survive being left')
+  const ephemeral = await state().createThread({ temporary: true })
+  check('it opens as the active thread', state().activeThreadId === ephemeral.id, ephemeral)
+  check('and it is marked temporary', ephemeral.temporary === true, ephemeral)
+
+  await state().selectThread('t1')
+  check('leaving it deletes it, empty or not', removed.includes(ephemeral.id), removed)
+  check(
+    'and it goes from the list on the spot',
+    !state().threads.some((t) => t.id === ephemeral.id),
+    state().threads.map((t) => t.id)
+  )
+
+  // The one thing that has to be true of a chat that was spoken in: leaving it
+  // still ends it. The abandoned-thread sweep above would have kept this one.
+  const usedUp = await state().createThread({ temporary: true })
+  extraThreads.find((t) => t.id === usedUp.id).messageCount = 3
+  await state().refreshThreads()
+  await state().selectThread('t1')
+  check('one that was spoken in goes too', removed.includes(usedUp.id), removed)
+
+  const rescued = await state().createThread({ temporary: true })
+  // Spoken in, so the abandoned-empty-thread sweep has nothing to say about it
+  // and only the temporary rule is under test.
+  extraThreads.find((t) => t.id === rescued.id).messageCount = 2
+  await state().keepThread(rescued.id)
+  check(
+    'keeping it stops it being temporary',
+    state().threads.find((t) => t.id === rescued.id)?.temporary === false,
+    state().threads.find((t) => t.id === rescued.id)
+  )
+  await state().selectThread('t1')
+  check('and then leaving it leaves it alone', !removed.includes(rescued.id), removed)
 
   section('folders')
   const created = await state().createFolder('Reading')

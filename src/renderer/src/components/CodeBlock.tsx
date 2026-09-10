@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { codeToHtml } from 'shiki'
+import { memo, useEffect, useState } from 'react'
+import { highlight, highlightedAlready } from '../highlight'
 
 /**
  * Shiki highlights locally — the grammars and themes are bundled, so nothing is
- * fetched at runtime and the strict CSP stays intact.
+ * fetched at runtime and the strict CSP stays intact. The work itself happens
+ * on a worker; see `../highlight`.
  */
-
-const cache = new Map<string, string>()
 
 interface Props {
   code: string
@@ -14,40 +13,24 @@ interface Props {
   theme: string
 }
 
-export function CodeBlock({ code, lang, theme }: Props): React.JSX.Element {
-  const [html, setHtml] = useState<string | null>(() => cache.get(`${theme}:${lang}:${code}`) ?? null)
+export const CodeBlock = memo(function CodeBlock({ code, lang, theme }: Props): React.JSX.Element {
+  // Seeded from the cache so a block that has been highlighted before — the
+  // usual case, because a streaming reply re-renders its blocks on every chunk
+  // — paints highlighted in the frame it mounts in, with no plain-text flash.
+  const [html, setHtml] = useState<string | null>(() => highlightedAlready(code, lang, theme))
   const [copied, setCopied] = useState(false)
-  const alive = useRef(true)
 
   useEffect(() => {
-    alive.current = true
-    return () => {
-      alive.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    const key = `${theme}:${lang}:${code}`
-    const hit = cache.get(key)
-    if (hit) {
-      setHtml(hit)
+    const known = highlightedAlready(code, lang, theme)
+    if (known) {
+      setHtml(known)
       return
     }
 
     let cancelled = false
-    codeToHtml(code, { lang, theme })
-      .catch(() =>
-        // Unknown language — still render, just without highlighting.
-        codeToHtml(code, { lang: 'text', theme })
-      )
-      .then((result) => {
-        if (cancelled || !alive.current) return
-        // Bound the cache so a long session cannot grow it without limit.
-        if (cache.size > 300) cache.clear()
-        cache.set(key, result)
-        setHtml(result)
-      })
-      .catch(() => undefined)
+    void highlight(code, lang, theme).then((result) => {
+      if (!cancelled) setHtml(result)
+    })
 
     return () => {
       cancelled = true
@@ -77,4 +60,4 @@ export function CodeBlock({ code, lang, theme }: Props): React.JSX.Element {
       )}
     </div>
   )
-}
+})

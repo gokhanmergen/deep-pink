@@ -626,6 +626,71 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   syncEngine.saveConfig({ scopes: { ...twoWay } })
 
   /* ---------------------------------------------------------------- */
+  section('a temporary chat never leaves the machine')
+
+  // Settle first: this machine is partway through a scenario and still owes the
+  // bucket things that have nothing to do with what is being tested here. What
+  // matters is that the next run has nothing to say, and it can only mean that
+  // if the run before it said everything else.
+  await syncEngine.run({ fetcher: store.fetcher })
+
+  const secretPhrase = 'the thing said only in a temporary chat'
+  const tempChat = repo.createThread('', {}, true)
+  const tempSaid = repo.insertMessage({
+    threadId: tempChat.id,
+    role: 'user',
+    content: secretPhrase
+  })
+  const tempPicture = attachments.store(tempChat.id, tempSaid.id, {
+    mime: 'image/png', filename: 'private.png', data: PNG, width: 1, height: 1
+  })
+
+  const conversationKinds = ['thread', 'message', 'folder', 'attachment']
+  const seen = syncRecords.localRevisions(conversationKinds).records
+  check('the thread is not among what there is to send', !seen.has(`thread:${tempChat.id}`))
+  check('nor is what was said in it', !seen.has(`message:${tempSaid.id}`))
+  check('nor what was attached to it', !seen.has(`attachment:${tempPicture.id}`))
+  check(
+    'and reading it out is refused even when asked directly',
+    syncRecords.readRecord('thread', tempChat.id) === null
+  )
+  check(
+    'as is what was said in it',
+    syncRecords.readRecord('message', tempSaid.id) === null
+  )
+  check(
+    'and what was attached to it',
+    syncRecords.readRecord('attachment', tempPicture.id) === null
+  )
+
+  const before = store.objects.size
+  const quiet = await syncEngine.run({ fetcher: store.fetcher })
+  check('a run with only a temporary chat to show for it pushes nothing', quiet.pushed === 0, quiet)
+  check('and puts nothing in the bucket', store.objects.size === before, {
+    before, after: store.objects.size
+  })
+  check(
+    'the phrase is nowhere in it, under any name',
+    leaks(store, secretPhrase) === null,
+    leaks(store, secretPhrase)
+  )
+
+  repo.keepThread(tempChat.id)
+  const kept = syncRecords.localRevisions(conversationKinds).records
+  check('keeping it puts the thread in the library', kept.has(`thread:${tempChat.id}`))
+  check('with everything that was said in it', kept.has(`message:${tempSaid.id}`))
+  check('and everything attached to it', kept.has(`attachment:${tempPicture.id}`))
+  check(
+    'and now it will be handed over when asked for',
+    syncRecords.readRecord('message', tempSaid.id) !== null
+  )
+  const keptRun = await syncEngine.run({ fetcher: store.fetcher })
+  check('and now there is something to send', keptRun.pushed > 0, keptRun)
+
+  repo.deleteThread(tempChat.id)
+  await syncEngine.run({ fetcher: store.fetcher })
+
+  /* ---------------------------------------------------------------- */
   section('what the screen in front of you decides stays here')
 
   // Settings travel as one row, which is what makes last-write-wins honest for

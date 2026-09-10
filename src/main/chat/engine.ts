@@ -811,6 +811,10 @@ async function nameIfUnnamed(threadId: string, emit: Emit): Promise<void> {
   try {
     const thread = repo.getThread(threadId)
     if (!thread || thread.title) return
+    // A temporary chat is not named: it would be a request paid for to label
+    // something that is about to stop existing, and it already reads as
+    // "Temporary chat" wherever it appears.
+    if (thread.temporary) return
     await generateTitle(threadId, emit)
   } catch {
     // Naming is a convenience. A failure must not disturb the conversation.

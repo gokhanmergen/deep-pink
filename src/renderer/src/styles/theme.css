@@ -544,6 +544,28 @@ svg.lucide {
   opacity: 0.5;
 }
 
+/* A temporary chat is drawn as a row that has not settled: dashed where the
+   others are solid, so it reads as provisional from across the sidebar without
+   being loud about it. Deliberately not the accent — the accent is for things
+   you act on, and this is a statement about what the row is. */
+.thread-item[data-temporary='true'] {
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+
+.thread-item[data-temporary='true'][data-active='true'] {
+  border-color: var(--accent-line);
+}
+
+.thread-item__ghost {
+  color: var(--text-dim);
+  flex: none;
+}
+
+.thread-item[data-active='true'] .thread-item__ghost {
+  color: var(--accent);
+}
+
 /* ------------------------------------------------------------------ *
  * Main column
  * ------------------------------------------------------------------ */
@@ -584,6 +606,20 @@ svg.lucide {
    statistics off the end of the bar. */
 .topbar .btn {
   min-width: 0;
+}
+
+/* The badge is a button, because the useful thing to do about "this will be
+   deleted" is to say no. Dashed for the same reason the sidebar row is. */
+.temp-badge {
+  flex: none;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+}
+
+.temp-badge:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-dim);
+  color: var(--text);
 }
 
 .btn__label {
@@ -864,8 +900,40 @@ svg.lucide {
   padding: 0 24px;
 }
 
+/* The top of a conversation that has more above it. Deliberately quiet and
+   deliberately a fixed height: it is a mark of where the read-in part begins,
+   not a spinner, and a spinner that appeared and vanished would be the visible
+   pause the paging exists to avoid. */
+.transcript__earlier {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  opacity: 0.55;
+  user-select: none;
+}
+
 .message {
   margin-bottom: 22px;
+
+  /* The browser is told it may skip a message it is not showing.
+   *
+   * A long conversation is a lot of Markdown — tables, maths, highlighted code
+   * — and style and layout are recalculated across all of it whenever anything
+   * changes. This confines that work to what is on screen and a little either
+   * side of it, which is the difference between a wheel that tracks and one
+   * that catches.
+   *
+   * `auto` on the intrinsic size is the important half: the browser guesses a
+   * height only until it has laid a message out once, and then remembers the
+   * real one. Without it, every message that has ever been on screen would go
+   * back to being a guess the moment it left, and the scrollbar would breathe
+   * in and out as you moved. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
 }
 
 .message[data-density='compact'] {

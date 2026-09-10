@@ -178,6 +178,26 @@ export function forThread(threadId: string): Map<string, Attachment[]> {
   return byMessage
 }
 
+/**
+ * Every image in a thread, in the order it was said.
+ *
+ * What the viewer steps through with the arrow keys. Asked of the database
+ * rather than gathered from the transcript, which now holds only the part of
+ * the conversation that has been read in.
+ */
+export function imagesInThread(threadId: string): Attachment[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT a.* FROM attachments a
+         JOIN messages m ON m.id = a.message_id
+        WHERE a.thread_id = ?
+        ORDER BY m.seq, a.created_at`
+    )
+    .all(threadId) as AttachmentRow[]
+
+  return rows.map(toAttachment).filter((file) => file.kind === 'image')
+}
+
 /** Full text of a text attachment. Read on demand, never held in the row. */
 export function readText(id: string): string | null {
   const row = getDb().prepare('SELECT id, mime FROM attachments WHERE id = ?').get(id) as

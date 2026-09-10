@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { Copy, FileText, GitBranch, RefreshCw } from 'lucide-react'
 import { ICON } from '../icons'
 import type { Message, UiSettings, Usage } from '@shared/types'
@@ -58,16 +58,29 @@ interface Props {
   isLast: boolean
 }
 
-export function AssistantTurn({ messages, ui, isLast }: Props): React.JSX.Element {
+/**
+ * Memoised for the same reason as `MessageItem`: a long conversation is a lot
+ * of these, and a streamed delta or a highlight elsewhere must not wake them
+ * all. `messages` is a fresh array on every group, so the comparison below is
+ * on what a turn is actually made of.
+ */
+export const AssistantTurn = memo(function AssistantTurn({
+  messages,
+  ui,
+  isLast
+}: Props): React.JSX.Element {
   const regenerate = useStore((s) => s.regenerate)
   const showToast = useStore((s) => s.showToast)
   const setOverlay = useStore((s) => s.setOverlay)
   const activeThreadId = useStore((s) => s.activeThreadId)
-  const highlightMessageId = useStore((s) => s.highlightMessageId)
   const setHighlight = useStore((s) => s.setHighlight)
+  // The answer rather than the id, so only the turn that holds the highlighted
+  // message hears about it.
+  const highlighted = useStore((s) =>
+    messages.some((m) => m.id === s.highlightMessageId)
+  )
 
   const ref = useRef<HTMLDivElement>(null)
-  const highlighted = messages.some((m) => m.id === highlightMessageId)
 
   useEffect(() => {
     if (!highlighted) return
@@ -109,6 +122,7 @@ export function AssistantTurn({ messages, ui, isLast }: Props): React.JSX.Elemen
       className="message"
       data-role="assistant"
       data-density={ui.messageDensity}
+      data-message-id={first.id}
       ref={ref}
       style={highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : undefined}
     >
@@ -248,4 +262,15 @@ export function AssistantTurn({ messages, ui, isLast }: Props): React.JSX.Elemen
       {isLast && streaming && text && <span className="caret" />}
     </div>
   )
-}
+},
+/**
+ * `groupIntoTurns` rebuilds its arrays on every render, so the default
+ * comparison — which is by identity — would find every turn changed every time
+ * and the memo would do nothing at all. What a turn is made of is its rows, and
+ * a row only becomes a new object when it actually changed.
+ */
+function same(before: Props, after: Props): boolean {
+  if (before.ui !== after.ui || before.isLast !== after.isLast) return false
+  if (before.messages.length !== after.messages.length) return false
+  return before.messages.every((message, at) => message === after.messages[at])
+})

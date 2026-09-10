@@ -3,6 +3,7 @@ import { buildActions } from '../actions'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
 import { formatBinding } from '../keybinds'
+import { threadLabel } from '../format'
 
 /** Subsequence match, so "npt" finds "New thread". */
 function fuzzyScore(needle: string, haystack: string): number {
@@ -45,7 +46,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }): React.JSX.
           .map((thread) => ({
             kind: 'thread' as const,
             thread,
-            score: fuzzyScore(query, thread.title || 'Untitled thread')
+            score: fuzzyScore(query, threadLabel(thread))
           }))
           .filter((hit) => hit.score > 0)
           .sort((a, b) => b.score - a.score)
@@ -115,7 +116,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }): React.JSX.
             type="button"
           >
             <span className="cmditem__label">
-              {item.kind === 'command' ? item.action.label : item.thread.title || 'Untitled thread'}
+              {item.kind === 'command' ? item.action.label : threadLabel(item.thread)}
             </span>
             {item.kind === 'command' ? (
               <>

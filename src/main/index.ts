@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
-import { deleteEmptyThreads, reconcileInterruptedMessages } from './db/repo'
+import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
 import { nameUnnamedThreads, registerIpc, startSync } from './ipc'
 import * as attachments from './attachments'
@@ -108,6 +108,13 @@ app.whenReady().then(async () => {
   const emptied = deleteEmptyThreads()
   if (emptied) console.log(`Removed ${emptied} empty thread(s) left open.`)
 
+  // The other half of a temporary chat's promise. `before-quit` handles the
+  // ordinary ending; this one covers every other way a session can stop —
+  // a crash, a kill, a machine that lost power — and it runs before the window
+  // so no temporary chat is ever on screen twice.
+  const expired = deleteTemporaryThreads()
+  if (expired) console.log(`Removed ${expired} temporary chat(s) from the last session.`)
+
   attachments.registerProtocolHandler()
   const orphans = attachments.collectOrphans()
   if (orphans) console.log(`Removed ${orphans} orphaned attachment file(s).`)
@@ -137,6 +144,11 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', async () => {
+  // First, and synchronously: an async handler does not hold the app open, so
+  // anything awaited before this may simply not happen. A temporary chat has to
+  // be gone before the database closes, not merely scheduled to be.
+  deleteTemporaryThreads()
+
   await mcp.disconnectAll().catch(() => undefined)
   await shutdownRepoWorker().catch(() => undefined)
   closeDb()

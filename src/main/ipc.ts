@@ -159,9 +159,16 @@ export function registerIpc(): void {
     repo.listThreads(includeArchived)
   )
   ipcMain.handle('threads:get', (_e, id: string) => repo.getThread(id))
-  ipcMain.handle('threads:create', (_e, config?: Partial<ThreadConfig>) =>
-    repo.createThread('', config)
+  ipcMain.handle('threads:create', (_e, config?: Partial<ThreadConfig>, temporary = false) =>
+    repo.createThread('', config, temporary)
   )
+  // Keeping a chat is a change like any other, so it syncs — this is the first
+  // moment the conversation is allowed to leave the machine at all.
+  ipcMain.handle('threads:keep', (_e, id: string) => {
+    const kept = repo.keepThread(id)
+    syncSoon()
+    return kept
+  })
   ipcMain.handle(
     'threads:update',
     (
@@ -178,7 +185,12 @@ export function registerIpc(): void {
   )
   ipcMain.handle('threads:delete', (_e, id: string) => {
     engine.abortThread(id)
+    const temporary = repo.getThread(id)?.temporary ?? false
     repo.deleteThread(id)
+    // Attached bytes are otherwise swept at the next start, which is late
+    // enough to be wrong for a chat whose whole promise is that leaving it is
+    // the end of it. One directory scan, and only when there was one to end.
+    if (temporary) attachments.collectOrphans()
     syncSoon()
   })
   ipcMain.handle('threads:branch', (_e, id: string, messageId: string) => {
@@ -214,9 +226,23 @@ export function registerIpc(): void {
 
   /* ---------------- messages ---------------- */
 
-  ipcMain.handle('messages:list', (_e, threadId: string, includeCompacted = false): Message[] =>
-    repo.getMessages(threadId, includeCompacted)
+  // The transcript is read from the end of the conversation first, and the page
+  // before it whenever the reader gets near the top. There is deliberately no
+  // way to ask for all of it: that was what made opening a long thread slow,
+  // and a bridge that still offered it would be an invitation to go back.
+  ipcMain.handle('messages:page', (_e, threadId: string, limit: number, before: number | null) =>
+    repo.getMessagePage(threadId, limit, before)
   )
+  ipcMain.handle('messages:from', (_e, threadId: string, startSeq: number | null) =>
+    repo.getMessagesFrom(threadId, startSeq)
+  )
+  // What a search result opens: the range that actually contains the hit.
+  ipcMain.handle('messages:including', (_e, threadId: string, messageId: string) =>
+    repo.getMessagesIncluding(threadId, messageId)
+  )
+  // The header's running total, which is about the thread rather than about
+  // whichever part of it has been read in.
+  ipcMain.handle('messages:totals', (_e, threadId: string) => repo.getThreadTotals(threadId))
   ipcMain.handle('messages:delete', (_e, id: string) => {
     repo.deleteMessage(id)
     syncSoon()
@@ -510,6 +536,12 @@ export function registerIpc(): void {
 
   // Full text of a text attachment, fetched only when the reader expands it.
   ipcMain.handle('attachments:text', (_e, id: string) => attachments.readText(id))
+  // Every picture in a thread, in the order it was said. The viewer steps
+  // through all of them, which stopped being the same thing as "all of them on
+  // screen" when the transcript started arriving a page at a time.
+  ipcMain.handle('attachments:images', (_e, threadId: string) =>
+    attachments.imagesInThread(threadId)
+  )
 
   /**
    * Saves a copy of an attachment wherever the user says.

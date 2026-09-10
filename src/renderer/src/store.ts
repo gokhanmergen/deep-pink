@@ -4,6 +4,7 @@ import type {
   Folder,
   McpServerStatus,
   Message,
+  MessagePage,
   OpenRouterModel,
   SearchHit,
   PendingAttachment,
@@ -14,6 +15,7 @@ import type {
   SyncState,
   Thread,
   ThreadConfig,
+  ThreadTotals,
   ToolCall
 } from '@shared/types'
 
@@ -92,7 +94,27 @@ interface State {
   /** The thread being dragged, so the list can show where it would land. */
   draggingThreadId: string | null
   activeThreadId: string | null
+  /**
+   * The part of the conversation that has been read in — the end of it, and
+   * however much before that the reader has scrolled back to. Never the whole
+   * thread unless the whole thread is short.
+   */
   messages: Message[]
+  /**
+   * Where the loaded part begins, in the database's own ordering. Kept opaque:
+   * it is handed straight back to ask for the page before this one, or to
+   * re-read this one, and nothing here does arithmetic on it.
+   */
+  messageWindowStart: number | null
+  /** Whether there is anything before what has been read in. */
+  hasOlderMessages: boolean
+  /** A page is on its way, so the scroll handler does not ask for it again. */
+  loadingOlder: boolean
+  /**
+   * What the whole thread cost, which is not the sum of what is on screen.
+   * Read from the database so the header does not count upwards as you scroll.
+   */
+  threadTotals: ThreadTotals | null
   generating: boolean
   compacting: boolean
   mcpStatuses: McpServerStatus[]
@@ -133,8 +155,32 @@ interface State {
   refreshThreads: () => Promise<void>
   refreshSettings: () => Promise<Settings>
   selectThread: (id: string | null) => Promise<void>
-  createThread: () => Promise<Thread>
+  createThread: (options?: { temporary?: boolean }) => Promise<Thread>
   deleteThread: (id: string) => Promise<void>
+  /** Stops a temporary chat being temporary, so it outlives the session. */
+  keepThread: (id: string) => Promise<void>
+  /**
+   * Reads in the page before the one on screen. Returns whether anything was
+   * added, so the caller can put the view back where the reader left it.
+   */
+  loadOlderMessages: () => Promise<boolean>
+  /**
+   * Re-reads the range that is on screen, in place. What an edit or a deletion
+   * calls: reopening the thread would throw away everything scrolled back to.
+   */
+  refreshTranscript: () => Promise<void>
+  /**
+   * Throws the loaded range away and re-reads the end of the conversation.
+   * For when the transcript is no longer the one that was loaded — compaction.
+   */
+  resetTranscript: () => Promise<void>
+  /** Re-reads what the thread has cost, which the header shows. */
+  refreshTotals: () => Promise<void>
+  /**
+   * Opens a thread at a particular message and flashes it — what a search hit
+   * does. Reads in whatever part of the conversation it takes to get there.
+   */
+  revealMessage: (threadId: string, messageId: string) => Promise<void>
   updateThread: (
     id: string,
     patch: Partial<Pick<Thread, 'title' | 'pinned' | 'archived'>> & {
@@ -196,6 +242,35 @@ interface State {
 
 const api = window.deepPink
 
+/**
+ * How much of a conversation is read at once.
+ *
+ * Chosen to be several screenfuls of ordinary turns rather than to be small:
+ * the point of paging is that opening a thousand-message thread does not have
+ * to parse a thousand messages of Markdown, not that the reader should meet a
+ * loading edge. The transcript asks for the next page while the one before it
+ * is still two screens away, and tops up on open until the view is full — so a
+ * page landing late is a page nobody was waiting for.
+ */
+const PAGE_SIZE = 40
+
+/**
+ * Re-reads the part of the transcript that is on screen.
+ *
+ * An edit, a deletion or a tool result changes rows that are already loaded, so
+ * the window has to be read again — but asking for a *page* would collapse it
+ * back to one screenful and take the reader's place in the conversation with
+ * it. This asks for exactly the range that was already there, plus whatever has
+ * been added at the end since.
+ *
+ * Returns null when the reader has moved to another thread in the meantime, in
+ * which case what came back belongs to a conversation nobody is looking at.
+ */
+async function readWindow(threadId: string, get: Getter): Promise<MessagePage | null> {
+  const page = await api.messages.from(threadId, get().messageWindowStart)
+  return get().activeThreadId === threadId ? page : null
+}
+
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
@@ -224,6 +299,10 @@ export const useStore = create<State>((set, get) => ({
   draggingThreadId: null,
   activeThreadId: null,
   messages: [],
+  messageWindowStart: null,
+  hasOlderMessages: false,
+  loadingOlder: false,
+  threadTotals: null,
   generating: false,
   compacting: false,
   mcpStatuses: [],
@@ -301,27 +380,45 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectThread(id) {
+    // Two reasons a thread does not survive being left.
+    //
     // A thread is created the moment the button is pressed, so leaving one
     // without saying anything is the most ordinary thing in the app — and it
     // leaves an "Untitled thread" in the list forever. Anything named, pinned,
     // filed, spoken in, or still generating is left exactly where it is.
+    //
+    // A temporary chat goes whatever is in it: that is what was asked for when
+    // it was started, and "until you go elsewhere" is only a promise if a reply
+    // still arriving does not extend it. The main process stops the generation
+    // as part of the delete, so leaving mid-reply ends the reply.
     const leaving = get().activeThreadId
-    if (leaving && leaving !== id && !get().generating && !get().messages.length) {
-      const thread = get().threads.find((t) => t.id === leaving)
-      if (
-        thread &&
+    const thread =
+      leaving && leaving !== id ? (get().threads.find((t) => t.id === leaving) ?? null) : null
+
+    if (thread) {
+      const abandoned =
+        !get().generating &&
+        !get().messages.length &&
         !thread.title &&
         thread.messageCount === 0 &&
         !thread.pinned &&
         !thread.folderId
-      ) {
-        set({ threads: get().threads.filter((t) => t.id !== leaving) })
-        void window.deepPink.threads.remove(leaving)
+
+      if (thread.temporary || abandoned) {
+        set({ threads: get().threads.filter((t) => t.id !== thread.id) })
+        void window.deepPink.threads.remove(thread.id)
       }
     }
 
     if (!id) {
-      set({ activeThreadId: null, messages: [], generating: false })
+      set({
+        activeThreadId: null,
+        messages: [],
+        messageWindowStart: null,
+        hasOlderMessages: false,
+        threadTotals: null,
+        generating: false
+      })
       return
     }
 
@@ -336,11 +433,16 @@ export const useStore = create<State>((set, get) => ({
     const switching = get().activeThreadId !== id
     if (switching) set({ activeThreadId: id, highlightMessageId: null })
 
-    const [messages, generating, live] = await Promise.all([
-      api.messages.list(id),
+    // The end of the conversation, not all of it. The rest arrives as it is
+    // scrolled towards, and the totals come from the database because the sum
+    // of what happens to be on screen is not what the thread cost.
+    const [page, totals, generating, live] = await Promise.all([
+      api.messages.page(id, PAGE_SIZE, null),
+      api.messages.totals(id),
       api.chat.isGenerating(id),
       api.chat.liveStreams(id)
     ])
+    const messages = page.messages
 
     // Something else was selected while this was loading; that one wins.
     if (get().activeThreadId !== id) return
@@ -361,7 +463,15 @@ export const useStore = create<State>((set, get) => ({
         })
       : messages
 
-    set({ activeThreadId: id, messages: caughtUp, generating })
+    set({
+      activeThreadId: id,
+      messages: caughtUp,
+      messageWindowStart: page.startSeq,
+      hasOlderMessages: page.hasOlder,
+      loadingOlder: false,
+      threadTotals: totals,
+      generating
+    })
 
     // Deltas that arrived while the above was loading were dropped, because the
     // thread was not on screen to receive them. The buffer holds the whole text
@@ -380,11 +490,111 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  async createThread() {
-    const thread = await api.threads.create()
+  async refreshTranscript() {
+    const threadId = get().activeThreadId
+    if (!threadId) return
+    const page = await readWindow(threadId, get)
+    if (!page) return
+    set({
+      messages: page.messages,
+      messageWindowStart: page.startSeq,
+      hasOlderMessages: page.hasOlder
+    })
+    await get().refreshTotals()
+  },
+
+  async resetTranscript() {
+    const threadId = get().activeThreadId
+    if (!threadId) return
+    const [page, totals] = await Promise.all([
+      api.messages.page(threadId, PAGE_SIZE, null),
+      api.messages.totals(threadId)
+    ])
+    if (get().activeThreadId !== threadId) return
+    set({
+      messages: page.messages,
+      messageWindowStart: page.startSeq,
+      hasOlderMessages: page.hasOlder,
+      loadingOlder: false,
+      threadTotals: totals
+    })
+  },
+
+  async refreshTotals() {
+    const threadId = get().activeThreadId
+    if (!threadId) return
+    const totals = await api.messages.totals(threadId)
+    if (get().activeThreadId === threadId) set({ threadTotals: totals })
+  },
+
+  async revealMessage(threadId, messageId) {
+    await get().selectThread(threadId)
+    if (get().activeThreadId !== threadId) return
+
+    // A hit can be anywhere in a conversation, and what a thread opens with is
+    // the end of one. Highlighting a message that was never read in would look
+    // exactly like the search having found nothing.
+    if (!get().messages.some((m) => m.id === messageId)) {
+      const page = await api.messages.including(threadId, messageId)
+      if (get().activeThreadId !== threadId) return
+      set({
+        messages: page.messages,
+        messageWindowStart: page.startSeq,
+        hasOlderMessages: page.hasOlder,
+        loadingOlder: false
+      })
+    }
+
+    get().setHighlight(messageId)
+  },
+
+  async loadOlderMessages() {
+    const threadId = get().activeThreadId
+    const from = get().messageWindowStart
+    if (!threadId || !get().hasOlderMessages || get().loadingOlder) return false
+
+    set({ loadingOlder: true })
+    try {
+      const page = await api.messages.page(threadId, PAGE_SIZE, from)
+
+      // Somebody opened another thread, or the window moved underneath this
+      // request. Either way the page in hand belongs somewhere else, and
+      // prepending it would splice one conversation into another.
+      if (get().activeThreadId !== threadId || get().messageWindowStart !== from) return false
+
+      if (!page.messages.length) {
+        set({ hasOlderMessages: false })
+        return false
+      }
+
+      set({
+        messages: [...page.messages, ...get().messages],
+        messageWindowStart: page.startSeq,
+        hasOlderMessages: page.hasOlder
+      })
+      return true
+    } catch {
+      // A page that would not load is not worth an error in front of the
+      // reader: the conversation on screen is unharmed, and scrolling asks
+      // again a moment later.
+      return false
+    } finally {
+      set({ loadingOlder: false })
+    }
+  },
+
+  async createThread(options = {}) {
+    const thread = await api.threads.create(undefined, options.temporary ?? false)
     await get().refreshThreads()
     await get().selectThread(thread.id)
     return thread
+  },
+
+  async keepThread(id) {
+    const kept = await window.deepPink.threads.keep(id)
+    if (!kept) return
+    set({ threads: get().threads.map((t) => (t.id === id ? kept : t)) })
+    await get().refreshThreads()
   },
 
   async deleteThread(id) {
@@ -544,7 +754,11 @@ export const useStore = create<State>((set, get) => ({
     set({ compacting: true })
     try {
       const result = await api.chat.compact(threadId)
-      set({ messages: await api.messages.list(threadId) })
+      // Read fresh from the end rather than re-reading the window: compaction
+      // replaces the older part of the thread with a summary that sits *before*
+      // what was on screen, so the range that was loaded no longer describes
+      // anything a reader would recognise.
+      await get().resetTranscript()
       get().showToast(
         result
           ? `Compacted — about ${result.freedTokens.toLocaleString()} tokens freed`
@@ -646,6 +860,20 @@ export const useStore = create<State>((set, get) => ({
     const index = images.findIndex((image) => image.id === id)
     if (index < 0) return
     set({ imageViewer: { images, index } })
+
+    // Opened on what is on screen, so it appears in the same frame as the
+    // click, and then widened to every picture in the thread. The arrow keys
+    // promise all of them, which stopped being the same thing as "all of them
+    // in the transcript" when the transcript started arriving a page at a time.
+    const threadId = get().activeThreadId
+    if (!threadId) return
+    void api.attachments.images(threadId).then((all) => {
+      const at = all.findIndex((image) => image.id === id)
+      const viewer = get().imageViewer
+      // Closed, or stepped on to another picture, while this was arriving.
+      if (at < 0 || !viewer || viewer.images[viewer.index]?.id !== id) return
+      set({ imageViewer: { images: all, index: at } })
+    })
   },
 
   closeImageViewer() {
@@ -832,9 +1060,14 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       // The main process writes this row before it emits, so the database
       // already knows where the turn belongs. Take its ordering, and keep only
       // the text that exists nowhere else yet — the deltas streamed so far.
-      void api.messages
-        .list(event.threadId)
-        .then((persisted) => set({ messages: mergeStreamed(persisted, get().messages) }))
+      void readWindow(event.threadId, get).then((page) => {
+        if (!page) return
+        set({
+          messages: mergeStreamed(page.messages, get().messages),
+          messageWindowStart: page.startSeq,
+          hasOlderMessages: page.hasOlder
+        })
+      })
       break
     }
 
@@ -879,7 +1112,15 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
 
     case 'tool-result':
       if (state.activeThreadId) {
-        void api.messages.list(state.activeThreadId).then((messages) => set({ messages }))
+        const threadId = state.activeThreadId
+        void readWindow(threadId, get).then((page) => {
+          if (!page) return
+          set({
+            messages: mergeStreamed(page.messages, get().messages),
+            messageWindowStart: page.startSeq,
+            hasOlderMessages: page.hasOlder
+          })
+        })
       }
       break
 
@@ -887,6 +1128,9 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       set({
         messages: patchMessage(state.messages, event.messageId, (m) => ({ ...m, usage: event.usage }))
       })
+      // The header's total is the thread's, not the sum of what is on screen,
+      // so it is asked for again rather than added to.
+      void get().refreshTotals()
       break
 
     case 'done': {
@@ -899,6 +1143,7 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       }))
       const stillWorking = event.message.toolCalls != null && event.message.toolCalls.length > 0
       set({ messages: merged, generating: stillWorking })
+      void get().refreshTotals()
       break
     }
 
@@ -922,9 +1167,9 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
 
     case 'compaction-done':
       set({ compacting: false })
-      if (state.activeThreadId) {
-        void api.messages.list(state.activeThreadId).then((messages) => set({ messages }))
-      }
+      // Same reason as `compact()`: what the summary replaced is no longer
+      // where the loaded range said it was.
+      void get().resetTranscript()
       get().showToast(`Compacted — about ${event.freedTokens.toLocaleString()} tokens freed`)
       break
   }

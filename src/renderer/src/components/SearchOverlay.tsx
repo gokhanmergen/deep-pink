@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { SearchHit } from '@shared/types'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
-import { formatRelative } from '../format'
+import { formatRelative, threadLabel } from '../format'
 
 /**
  * Full-text search over every message, straight out of the local FTS5 index.
@@ -10,7 +10,7 @@ import { formatRelative } from '../format'
  */
 export function SearchOverlay({ onClose }: { onClose: () => void }): React.JSX.Element {
   const selectThread = useStore((s) => s.selectThread)
-  const setHighlight = useStore((s) => s.setHighlight)
+  const revealMessage = useStore((s) => s.revealMessage)
   // Something else may have opened this overlay with a query already typed.
   const seed = useStore((s) => s.searchSeed)
 
@@ -42,8 +42,8 @@ export function SearchOverlay({ onClose }: { onClose: () => void }): React.JSX.E
   const open = async (hit: SearchHit | undefined): Promise<void> => {
     if (!hit) return
     onClose()
-    await selectThread(hit.threadId)
-    if (hit.messageId) setHighlight(hit.messageId)
+    if (hit.messageId) await revealMessage(hit.threadId, hit.messageId)
+    else await selectThread(hit.threadId)
   }
 
   return (
@@ -101,7 +101,7 @@ export function SearchOverlay({ onClose }: { onClose: () => void }): React.JSX.E
           >
             <span style={{ minWidth: 0, flex: 1 }}>
               <span className="cmditem__label" style={{ display: 'block' }}>
-                {hit.threadTitle || 'Untitled thread'}
+                {threadLabel({ title: hit.threadTitle, temporary: hit.temporary })}
                 {hit.role && (
                   <span className="chip" style={{ marginLeft: 8 }}>
                     {hit.role}

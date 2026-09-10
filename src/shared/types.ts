@@ -98,6 +98,29 @@ export interface Message {
   attachments: Attachment[]
 }
 
+/**
+ * A range of a transcript, as the screen reads it.
+ *
+ * A conversation is read from its end backwards, so what travels is a range
+ * and where it starts. The renderer keeps `startSeq` and hands it back — to ask
+ * for the page before this one, or to re-read this one when something in it
+ * changed. `seq` itself never crosses: it is the database's ordering, and the
+ * renderer has no business doing arithmetic on it.
+ */
+export interface MessagePage {
+  messages: Message[]
+  /** Where this range begins, or null when the thread has nothing to show. */
+  startSeq: number | null
+  /** Whether anything a reader would see comes before it. */
+  hasOlder: boolean
+}
+
+/** What a whole thread has cost, however much of it is on screen. */
+export interface ThreadTotals {
+  costUsd: number
+  totalTokens: number
+}
+
 export interface Thread {
   id: string
   title: string
@@ -107,6 +130,12 @@ export interface Thread {
   archived: boolean
   /** The folder this thread is filed in, or null when it sits in the list. */
   folderId: string | null
+  /**
+   * A chat that is deleted the moment you leave it, and on the next start if
+   * the app was closed with one open. Never named by the model and never
+   * synced; pinning, filing or archiving one keeps it instead.
+   */
+  temporary: boolean
   /** Messages a reader would see — cost markers and compacted text excluded. */
   messageCount: number
   /** Per-thread overrides; anything unset falls back to global settings. */
@@ -750,4 +779,6 @@ export interface SearchHit {
   score: number
   /** What matched: the thread's name, or a message body. */
   kind: 'title' | 'message'
+  /** So a hit in a temporary chat is labelled as one rather than "Untitled". */
+  temporary: boolean
 }

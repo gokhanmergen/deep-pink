@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  Attachment,
   ExportFormat,
   Folder,
   GlobalStats,
@@ -13,6 +14,7 @@ import type {
   ImportPreview,
   ImportResult,
   LiveStream,
+  MessagePage,
   SearchHit,
   PromptPreview,
   CompactionStatus,
@@ -26,7 +28,8 @@ import type {
   SyncState,
   Thread,
   ThreadConfig,
-  ThreadStats
+  ThreadStats,
+  ThreadTotals
 } from '@shared/types'
 
 const api = {
@@ -49,8 +52,10 @@ const api = {
     list: (includeArchived = false): Promise<Thread[]> =>
       ipcRenderer.invoke('threads:list', includeArchived),
     get: (id: string): Promise<Thread | null> => ipcRenderer.invoke('threads:get', id),
-    create: (config?: Partial<ThreadConfig>): Promise<Thread> =>
-      ipcRenderer.invoke('threads:create', config),
+    create: (config?: Partial<ThreadConfig>, temporary = false): Promise<Thread> =>
+      ipcRenderer.invoke('threads:create', config, temporary),
+    /** Turns a temporary chat into an ordinary one that outlives the session. */
+    keep: (id: string): Promise<Thread | null> => ipcRenderer.invoke('threads:keep', id),
     update: (
       id: string,
       patch: Partial<Pick<Thread, 'title' | 'pinned' | 'archived'>> & {
@@ -76,8 +81,21 @@ const api = {
   },
 
   messages: {
-    list: (threadId: string, includeCompacted = false): Promise<Message[]> =>
-      ipcRenderer.invoke('messages:list', threadId, includeCompacted),
+    /**
+     * The end of a conversation, or the page before one already held.
+     * `before` is the `startSeq` of that page; null asks for the end.
+     */
+    page: (threadId: string, limit: number, before: number | null = null): Promise<MessagePage> =>
+      ipcRenderer.invoke('messages:page', threadId, limit, before),
+    /** Everything from `startSeq` on: how a transcript on screen is re-read. */
+    from: (threadId: string, startSeq: number | null): Promise<MessagePage> =>
+      ipcRenderer.invoke('messages:from', threadId, startSeq),
+    /** The range that contains a particular message — what a search hit opens. */
+    including: (threadId: string, messageId: string): Promise<MessagePage> =>
+      ipcRenderer.invoke('messages:including', threadId, messageId),
+    /** What the whole thread cost, however much of it has been read in. */
+    totals: (threadId: string): Promise<ThreadTotals> =>
+      ipcRenderer.invoke('messages:totals', threadId),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('messages:delete', id),
     removeAfter: (threadId: string, messageId: string): Promise<void> =>
       ipcRenderer.invoke('messages:deleteAfter', threadId, messageId),
@@ -190,7 +208,11 @@ const api = {
     /** Asks where to put a copy and writes it; returns the path, or null. */
     save: (id: string): Promise<string | null> => ipcRenderer.invoke('attachments:save', id),
     /** Puts the image on the clipboard. False if there was nothing to copy. */
-    copy: (id: string): Promise<boolean> => ipcRenderer.invoke('attachments:copy', id)
+    copy: (id: string): Promise<boolean> => ipcRenderer.invoke('attachments:copy', id),
+    /** Every image in a thread, in the order it was said — what the viewer
+     *  steps through, which is more than the transcript has read in. */
+    images: (threadId: string): Promise<Attachment[]> =>
+      ipcRenderer.invoke('attachments:images', threadId)
   },
 
   sync: {

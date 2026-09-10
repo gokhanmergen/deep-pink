@@ -78,11 +78,26 @@ const UNSYNCED_SETTINGS = new Set(['sync'])
  * What is here
  * ------------------------------------------------------------------ */
 
+/**
+ * A temporary chat is not part of the library, so none of it travels: not the
+ * thread, not what was said in it, not what was attached to it.
+ *
+ * Excluded from the list of what is here, rather than from the act of sending,
+ * because this list is what a run works from — a row missing from it is a row
+ * no run can reach. The same two conditions are repeated on the way out in
+ * `readRecord`, where they cost nothing because they ride along on a lookup
+ * that was happening anyway, and where being wrong would mean a private
+ * conversation in somebody's bucket.
+ */
+const NOT_TEMPORARY = 'temporary = 0'
+const IN_A_KEPT_THREAD =
+  'EXISTS (SELECT 1 FROM threads t WHERE t.id = thread_id AND t.temporary = 0)'
+
 const REVISION_QUERIES: Record<RecordKind, string> = {
-  thread: 'SELECT id, MAX(updated_at, filed_at) AS rev FROM threads',
-  message: 'SELECT id, updated_at AS rev FROM messages',
+  thread: `SELECT id, MAX(updated_at, filed_at) AS rev FROM threads WHERE ${NOT_TEMPORARY}`,
+  message: `SELECT id, updated_at AS rev FROM messages WHERE ${IN_A_KEPT_THREAD}`,
   folder: 'SELECT id, updated_at AS rev FROM folders',
-  attachment: 'SELECT id, updated_at AS rev FROM attachments',
+  attachment: `SELECT id, updated_at AS rev FROM attachments WHERE ${IN_A_KEPT_THREAD}`,
   setting: "SELECT key AS id, updated_at AS rev FROM settings WHERE key = 'settings'",
   mcp: 'SELECT id, updated_at AS rev FROM mcp_servers'
 }
@@ -123,13 +138,14 @@ export function readRecord(kind: RecordKind, id: string): SyncRecord | null {
       // The later of "last edited" and "last filed": moving a conversation into
       // a folder does not stamp it as edited, and would otherwise never travel.
       if (!row) return null
+      if (Number(row['temporary'] ?? 0) === 1) return null
       const rev = Math.max(Number(row['updated_at']), Number(row['filed_at'] ?? 0))
       return { kind, id, rev, data: row }
     }
     case 'message': {
-      const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as
-        | Record<string, unknown>
-        | undefined
+      const row = db
+        .prepare(`SELECT * FROM messages WHERE id = ? AND ${IN_A_KEPT_THREAD}`)
+        .get(id) as Record<string, unknown> | undefined
       if (!row) return null
       // Usage rides with its message: it is one fact about one turn, and a
       // reply that arrived without what it cost would quietly corrupt the
@@ -145,9 +161,9 @@ export function readRecord(kind: RecordKind, id: string): SyncRecord | null {
       return row ? { kind, id, rev: Number(row['updated_at']), data: row } : null
     }
     case 'attachment': {
-      const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as
-        | Record<string, unknown>
-        | undefined
+      const row = db
+        .prepare(`SELECT * FROM attachments WHERE id = ? AND ${IN_A_KEPT_THREAD}`)
+        .get(id) as Record<string, unknown> | undefined
       if (!row) return null
       const file = attachments.readBase64(id)
       // The row without its file is not worth sending: the other machine would

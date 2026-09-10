@@ -312,5 +312,21 @@ export const MIGRATIONS: string[] = [
    * other machines learn where the conversation was put.
    */
   ALTER TABLE threads ADD COLUMN filed_at INTEGER NOT NULL DEFAULT 0;
+  `,
+
+  /* 15 — temporary chats: a conversation that is not meant to outlast it */ `
+  /*
+   * A temporary chat is an ordinary thread in every respect but its ending. It
+   * is a row here rather than something held in the renderer's memory because
+   * everything a conversation does — streaming a reply, attaching a picture,
+   * compacting itself, counting what it cost — is written down as it happens,
+   * and a second, memory-only path through all of that would be a second set
+   * of bugs. What makes it temporary is that something deletes it: leaving it,
+   * or the next start after the app was closed with one open.
+   *
+   * Partial, because the whole point is that there are almost never any.
+   */
+  ALTER TABLE threads ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX idx_threads_temporary ON threads (id) WHERE temporary = 1;
   `
 ]

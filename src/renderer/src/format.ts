@@ -87,3 +87,16 @@ export function modelShortName(id: string): string {
   const slash = id.indexOf('/')
   return slash >= 0 ? id.slice(slash + 1) : id
 }
+
+/**
+ * What a conversation is called on screen when it has not named itself.
+ *
+ * A temporary chat never will: it is deleted before the naming request would
+ * have paid for itself, so what it is gets said in place of what it is called.
+ */
+export function threadLabel(
+  thread: { title: string; temporary?: boolean } | null | undefined
+): string {
+  if (!thread) return 'Untitled thread'
+  return thread.title || (thread.temporary ? 'Temporary chat' : 'Untitled thread')
+}
