@@ -55,7 +55,19 @@ export function parseBinding(binding: string): ParsedBinding {
 }
 
 export function matchesBinding(event: KeyboardEvent, binding: string): boolean {
-  const parsed = parseBinding(binding)
+  return matchesParsed(event, parseBinding(binding))
+}
+
+/**
+ * The same test against a binding that was parsed earlier.
+ *
+ * `parseBinding` splits and lowercases a string, and the global handler runs
+ * this against every binding there is — on every keystroke, including every
+ * one typed into the composer. Parsing them once and comparing numbers after
+ * that is the difference between a few hundred string operations per keypress
+ * and none.
+ */
+export function matchesParsed(event: KeyboardEvent, parsed: ParsedBinding): boolean {
   const modPressed = isMac ? event.metaKey : event.ctrlKey
 
   if (parsed.mod !== modPressed) return false
@@ -108,8 +120,7 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     title: 'Threads',
     actions: [
       { id: 'thread.new', label: 'New thread' },
-      { id: 'thread.newTemporary', label: 'New temporary chat' },
-      { id: 'thread.keep', label: 'Keep a temporary chat' },
+      { id: 'thread.toggleTemporary', label: 'Make this chat temporary, or keep it' },
       { id: 'thread.rename', label: 'Rename thread' },
       { id: 'thread.retitle', label: 'Regenerate thread name' },
       { id: 'thread.delete', label: 'Delete thread' },
@@ -165,6 +176,7 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
     actions: [
       { id: 'web.toggle', label: 'Toggle web access' },
       { id: 'charts.toggle', label: 'Toggle charts' },
+      { id: 'docs.toggle', label: 'Toggle multiple documents' },
       { id: 'sync.pause', label: 'Pause / resume syncing' },
       { id: 'mcp.panel', label: 'MCP servers' },
       { id: 'reasoning.toggle', label: 'Show / hide reasoning' },

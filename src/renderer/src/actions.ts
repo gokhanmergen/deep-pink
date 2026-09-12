@@ -1,6 +1,6 @@
 import type { ExportFormat } from '@shared/types'
 import { threadLabel } from './format'
-import { useStore } from './store'
+import { canBecomeTemporary, useStore } from './store'
 import { COMPOSER_ID } from './components/Composer'
 
 export interface AppAction {
@@ -65,29 +65,33 @@ export function buildActions(): AppAction[] {
     // Threads
     { id: 'thread.new', label: 'New thread', group: 'Threads', run: () => void store.createThread() },
     {
-      id: 'thread.newTemporary',
-      label: 'New temporary chat',
+      /**
+       * One switch, both ways.
+       *
+       * The two directions are not symmetrical — a chat can only be *made*
+       * temporary before anything is said in it, while keeping one is allowed
+       * right up until it goes — but they are the same decision reversed, and
+       * two shortcuts for that would be one too many.
+       */
+      id: 'thread.toggleTemporary',
+      label: thread?.temporary ? 'Keep this chat' : 'Make this chat temporary',
       group: 'Threads',
-      run: () => {
-        void (async () => {
-          await store.createThread({ temporary: true })
-          store.showToast('Temporary chat — deleted when you leave it')
-        })()
-      }
-    },
-    {
-      id: 'thread.keep',
-      label: 'Keep this chat',
-      group: 'Threads',
-      // Nothing to offer when the open chat was never going anywhere.
-      hidden: !thread?.temporary,
+      // Hidden where it would do nothing: a conversation that has been had
+      // cannot be un-had, and one that has been named, pinned or filed is one
+      // that was meant to be kept. See `makeThreadTemporary` for why.
+      hidden: !thread || (!thread.temporary && !canBecomeTemporary(thread)),
       run: requireThread(async (id) => {
-        if (!thread?.temporary) {
-          store.showToast('This chat is already saved')
+        if (thread?.temporary) {
+          await store.keepThread(id)
+          store.showToast('Kept — this chat now stays')
           return
         }
-        await store.keepThread(id)
-        store.showToast('Kept — this chat now stays')
+        const made = await store.makeThreadTemporary(id)
+        store.showToast(
+          made
+            ? 'Temporary — this chat is deleted when you leave it'
+            : 'Only a new chat — unnamed, unpinned and unused — can be made temporary'
+        )
       })
     },
     {
@@ -375,6 +379,16 @@ export function buildActions(): AppAction[] {
         const on = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
         void store.updateThread(id, { config: { chartsEnabled: !on } })
         store.showToast(on ? 'Charts off' : 'Charts on')
+      })
+    },
+    {
+      id: 'docs.toggle',
+      label: 'Toggle multiple documents for this thread',
+      group: 'Capabilities',
+      run: requireThread((id) => {
+        const on = thread?.config.docsEnabled ?? settings?.docsEnabled ?? false
+        void store.updateThread(id, { config: { docsEnabled: !on } })
+        store.showToast(on ? 'Documents off' : 'Documents on')
       })
     },
     { id: 'mcp.panel', label: 'MCP servers', group: 'Capabilities', run: () => store.setOverlay('mcp') },

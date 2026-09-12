@@ -263,52 +263,25 @@ export async function contextLimitFor(model: string): Promise<number | null> {
  * Context compaction
  * ------------------------------------------------------------------ */
 
-function estimateContextTokens(messages: Message[], systemTokens: number): number {
-  return (
-    systemTokens +
-    messages.reduce(
-      (sum, m) =>
-        sum +
-        estimateTokens(m.content) +
-        estimateTokens(m.toolResult?.content ?? '') +
-        estimateTokens(JSON.stringify(m.toolCalls ?? '')),
-      0
-    )
-  )
-}
-
 export async function shouldCompact(
   thread: Thread,
   settings: Settings
 ): Promise<{ needed: boolean; used: number; limit: number | null }> {
   const model = resolveModel(thread, settings)
   const limit = await contextLimitFor(model)
-  const messages = repo.getMessages(thread.id)
+
+  /*
+   * Counted in the database rather than here.
+   *
+   * This runs every time a conversation is opened, and it used to begin by
+   * loading every message in that conversation — with its usage row and its
+   * attachments — only to add up the lengths of the text. On a long thread
+   * that was the whole cost of opening it. `contextEstimate` asks SQLite for
+   * the same three numbers and reads no messages at all.
+   */
+  const estimate = repo.contextEstimate(thread.id)
   const { estimatedTokens } = assembleContext(thread, settings)
-
-  // The last turn the provider itself counted, which beats any estimate — but
-  // not every usage row is a measurement of this conversation. A compaction
-  // summary's is what summarising cost, over a transcript that is no longer
-  // being sent, and a title marker is not a turn at all.
-  const index = messages.findLastIndex(
-    (m) => m.usage != null && !m.isCompactionSummary && m.role === 'assistant'
-  )
-  const measured = index >= 0 ? messages[index] : null
-
-  // A compaction since that measurement means it describes messages that have
-  // been replaced by a summary, so it now reads as full forever — which is
-  // exactly the loop that compacts a thread again on every turn.
-  const compactedSince =
-    measured != null &&
-    messages.some((m) => m.isCompactionSummary && m.createdAt >= measured.createdAt)
-
-  const used =
-    measured?.usage && !compactedSince
-      ? measured.usage.promptTokens +
-        measured.usage.completionTokens +
-        // Whatever has been said since it was counted.
-        estimateContextTokens(messages.slice(index + 1), 0)
-      : estimateContextTokens(messages, estimatedTokens)
+  const used = estimate.measured ?? estimate.fromText + estimatedTokens
 
   if (!settings.compaction.enabled || !limit) return { needed: false, used, limit }
   return { needed: used > limit * settings.compaction.triggerRatio, used, limit }

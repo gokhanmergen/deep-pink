@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CompactionStatus } from '@shared/types'
-import { useStore } from '../store'
+import { canBecomeTemporary, placeOf, rememberPlace, useStore } from '../store'
 import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
@@ -22,6 +22,7 @@ export function ChatView(): React.JSX.Element {
   const toggleSidebar = useStore((s) => s.toggleSidebar)
   const createThread = useStore((s) => s.createThread)
   const keepThread = useStore((s) => s.keepThread)
+  const makeThreadTemporary = useStore((s) => s.makeThreadTemporary)
   const showToast = useStore((s) => s.showToast)
   const compact = useStore((s) => s.compact)
   // Subscribed to so the top-up below re-runs when either changes; the values
@@ -55,6 +56,15 @@ export function ChatView(): React.JSX.Element {
    * Nothing that happens below the anchor can move the anchor.
    */
   const anchor = useRef<{ id: string; top: number } | null>(null)
+
+  /**
+   * The thread that has been opened but not yet put back in its place.
+   *
+   * Set the moment the thread changes, and consumed by the layout effect when
+   * that thread's messages actually arrive — which is a separate render, a
+   * round trip later.
+   */
+  const restoring = useRef<string | null>(null)
 
   /**
    * Reads in the page above, holding the reader's place across it.
@@ -116,12 +126,46 @@ export function ChatView(): React.JSX.Element {
     const el = scrollRef.current
     if (!el) return
     pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+
+    // Where this conversation is being read, kept current as it is read. No
+    // "before you leave" hook is needed this way, and there is no such hook
+    // worth trusting: the thread changes under this component rather than
+    // unmounting it.
+    const store = useStore.getState()
+    if (store.activeThreadId) {
+      rememberPlace(store.activeThreadId, {
+        startSeq: store.messageWindowStart,
+        scrollTop: el.scrollTop,
+        atBottom: pinnedToBottom.current
+      })
+    }
+
     fetchAhead()
   }, [fetchAhead])
 
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
+
+    // A thread has just been opened. Wait for its own messages — the ones on
+    // screen are still the last thread's until the round trip returns — and
+    // then put the reader where they were, or at the end if they have not
+    // been here before.
+    const opening = restoring.current
+    if (opening !== null) {
+      if (messages.length && messages[0].threadId !== opening) return
+      restoring.current = null
+
+      const place = placeOf(opening)
+      if (place && !place.atBottom) {
+        el.scrollTop = place.scrollTop
+        pinnedToBottom.current = false
+      } else {
+        el.scrollTop = el.scrollHeight
+        pinnedToBottom.current = true
+      }
+      return
+    }
 
     const mark = anchor.current
     // Something is now above what used to be first: a page has landed. Put the
@@ -143,7 +187,36 @@ export function ChatView(): React.JSX.Element {
   useEffect(() => {
     pinnedToBottom.current = true
     anchor.current = null
+    restoring.current = activeThreadId
   }, [activeThreadId])
+
+  /**
+   * Holds the end of the conversation while it settles.
+   *
+   * A transcript is not its final height when it is first laid out: code
+   * blocks arrive as plain text and become highlighted, pictures load, and
+   * messages scrolled past report an estimated height until they have been
+   * seen once. Every one of those changes the height *after* the view was put
+   * at the bottom, which is why opening a thread landed somewhere slightly
+   * different each time depending on what finished first.
+   *
+   * So the bottom is held rather than set: while the reader is at the end,
+   * anything that changes the height puts them back at the end.
+   */
+  useEffect(() => {
+    const el = scrollRef.current
+    const inner = el?.firstElementChild
+    if (!el || !inner) return
+
+    const observer = new ResizeObserver(() => {
+      // Not while a page is landing above: that has its own anchor, and this
+      // would fight it.
+      if (anchor.current || restoring.current) return
+      if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
+    })
+    observer.observe(inner)
+    return () => observer.disconnect()
+  }, [])
 
   /**
    * Tops the transcript up until there is something to scroll.
@@ -159,7 +232,15 @@ export function ChatView(): React.JSX.Element {
     readOlder()
   }, [messages, hasOlderMessages, loadingOlder, readOlder])
 
-  // Refresh the context gauge when the conversation changes.
+  /*
+   * Refresh the context gauge when the conversation changes.
+   *
+   * Keyed on the *last* message rather than on how many there are. Scrolling
+   * back reads in older messages, which changes the count and changes the
+   * context not at all — so a gauge watching the count asked the main process
+   * to work it out again for every page the reader scrolled past.
+   */
+  const lastMessageId = messages[messages.length - 1]?.id
   useEffect(() => {
     if (!activeThreadId) {
       setContext(null)
@@ -172,7 +253,7 @@ export function ChatView(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [activeThreadId, messages.length, generating])
+  }, [activeThreadId, lastMessageId, generating])
 
   if (!settings) return <div className="main" />
 
@@ -184,6 +265,25 @@ export function ChatView(): React.JSX.Element {
   // upwards as you scrolled back would be a lie about what anything cost.
   const totalCost = threadTotals?.costUsd ?? 0
   const totalTokens = threadTotals?.totalTokens ?? 0
+
+  /**
+   * Both halves of the switch. The same thing the shortcut does, because a
+   * button and a binding that disagreed would be two features.
+   */
+  const toggleTemporary = async (): Promise<void> => {
+    if (!thread) return
+    if (thread.temporary) {
+      await keepThread(thread.id)
+      showToast('Kept — this chat now stays')
+      return
+    }
+    const made = await makeThreadTemporary(thread.id)
+    showToast(
+      made
+        ? 'Temporary — this chat is deleted when you leave it'
+        : 'Only a new chat — unnamed, unpinned and unused — can be made temporary'
+    )
+  }
 
   const commitRename = (): void => {
     if (thread) void updateThread(thread.id, { title: titleDraft.trim() })
@@ -232,23 +332,30 @@ export function ChatView(): React.JSX.Element {
           </button>
         )}
 
-        {/* The one thing about this conversation that is not true of the others,
-            said where its name would be — and next to the way out of it. */}
-        {thread?.temporary && (
+        {/* A switch, in the one place a reader is already looking at what this
+            conversation is. It shows on a chat that is temporary and on one
+            that could still become temporary, and it is the same control in
+            both cases — the styling says which way it is set, and clicking it
+            sets it the other way. On a chat that has been spoken in there is
+            nothing to offer, so there is no button. */}
+        {thread && (thread.temporary || canBecomeTemporary(thread)) && (
           <button
             className="btn btn--ghost temp-badge"
-            onClick={() => {
-              void keepThread(thread.id)
-              showToast('Kept — this chat now stays')
-            }}
+            data-on={thread.temporary}
+            onClick={() => void toggleTemporary()}
             title={
-              'Temporary — deleted when you leave it or close the app. ' +
-              `Click to keep it (${formatBinding(keybinds['thread.keep'])}).`
+              thread.temporary
+                ? `Temporary — deleted when you leave it or close the app (${formatBinding(
+                    keybinds['thread.toggleTemporary']
+                  )})`
+                : `Make this chat temporary — deleted when you leave it (${formatBinding(
+                    keybinds['thread.toggleTemporary']
+                  )})`
             }
             type="button"
           >
             <Ghost {...ICON} />
-            <span className="btn__label">Temporary — click to keep</span>
+            <span className="btn__label">Temporary</span>
           </button>
         )}
 
@@ -373,6 +480,14 @@ export function ChatView(): React.JSX.Element {
                 command palette, or <span className="kbd">{formatBinding(keybinds['keybinds.cheatsheet'])}</span>{' '}
                 for every shortcut.
               </p>
+              {/* Said here because here is the only place it can be done: a
+                  chat can be made temporary before it is used and not after. */}
+              {!thread.temporary && (
+                <p>
+                  <span className="kbd">{formatBinding(keybinds['thread.toggleTemporary'])}</span>{' '}
+                  makes this one temporary — deleted when you leave it, and never synced.
+                </p>
+              )}
             </div>
           ) : (
             groupIntoTurns(messages).map((block, index, blocks) =>

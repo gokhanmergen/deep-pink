@@ -565,6 +565,68 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
     repo.updateThread(renamedTemp.id, { title: 'Still going' }).temporary === true
   )
   check('asking to keep it keeps it', repo.keepThread(renamedTemp.id).temporary === false)
+
+  section('turning an ordinary chat into a temporary one')
+  const fresh = repo.createThread()
+  check('a chat with nothing in it can be made temporary',
+    repo.makeThreadTemporary(fresh.id)?.temporary === true)
+  check('and it is temporary on disk', repo.getThread(fresh.id).temporary === true)
+  check('asking again is not an error', repo.makeThreadTemporary(fresh.id)?.temporary === true)
+
+  const spoken = repo.createThread()
+  repo.insertMessage({ threadId: spoken.id, role: 'user', content: 'already said' })
+  check(
+    'a chat that has been spoken in cannot be',
+    repo.makeThreadTemporary(spoken.id) === null,
+    repo.makeThreadTemporary(spoken.id)
+  )
+  check('and it is left exactly as it was', repo.getThread(spoken.id).temporary === false)
+
+  /*
+   * The other half of the rule, and the half that is about sync rather than
+   * about sense. A temporary chat's deletion leaves no tombstone, which is
+   * only safe if no other machine could know the thread existed — and an empty
+   * thread that has a name, or is pinned, or is filed, survives the startup
+   * sweep and therefore travels. Making one of those temporary and leaving it
+   * would delete it here, tell nobody, and let the next sync bring it back.
+   */
+  const titled = repo.createThread('I have a name')
+  check('a named empty chat cannot be made temporary',
+    repo.makeThreadTemporary(titled.id) === null)
+
+  const held = repo.createThread()
+  repo.updateThread(held.id, { pinned: true })
+  check('nor a pinned one', repo.makeThreadTemporary(held.id) === null)
+
+  const shelved = repo.createThread()
+  repo.updateThread(shelved.id, { archived: true })
+  check('nor an archived one', repo.makeThreadTemporary(shelved.id) === null)
+
+  const put = repo.createThread()
+  const drawer2 = repo.createFolder('Somewhere')
+  repo.setThreadFolder(put.id, drawer2.id)
+  check('nor one that has been filed', repo.makeThreadTemporary(put.id) === null)
+
+  for (const one of [titled, held, shelved, put]) repo.deleteThread(one.id)
+  repo.deleteFolder(drawer2.id)
+
+  // A message compacted away is not on screen, but it was said, counted and
+  // — if this machine syncs — sent. It still counts as having been used.
+  const summarised = repo.createThread()
+  const said = repo.insertMessage({ threadId: summarised.id, role: 'user', content: 'long ago' })
+  const standsFor = repo.insertMessage({
+    threadId: summarised.id, role: 'system', content: 'Summary', isCompactionSummary: true
+  })
+  repo.markCompacted([said.id], standsFor.id)
+  check(
+    'nor can one whose messages have been compacted away',
+    repo.makeThreadTemporary(summarised.id) === null
+  )
+
+  check('a thread that is not there is refused too',
+    repo.makeThreadTemporary('no-such-thread') === null)
+
+  for (const one of [fresh, spoken, summarised]) repo.deleteThread(one.id)
   check(
     'and nothing else about the conversation changed',
     repo.getThread(renamedTemp.id).title === 'Still going'
@@ -759,6 +821,16 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   }
   repo.recordUsage(ctx.id, answered.id, 'test/ctx', 'test', counted)
 
+  // The same three numbers the gauge needs, counted in SQL rather than by
+  // reading the conversation. What it must not do is read the conversation.
+  const counting = repo.contextEstimate(ctx.id)
+  check('the text of the thread is counted', counting.fromText > 0, counting)
+  check(
+    'and what the provider measured is preferred to counting it',
+    counting.measured === 820,
+    counting
+  )
+
   const full = await shouldCompact(repo.getThread(ctx.id), compactionSettings)
   check('what the provider counted is what is used', full.used >= 820, full)
   check('and past the threshold it asks to be compacted', full.needed === true, full)
@@ -776,6 +848,14 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   repo.recordUsage(ctx.id, stoodIn.id, 'test/ctx', 'test', {
     ...counted, promptTokens: 900, completionTokens: 90, totalTokens: 990
   })
+
+  const settled = repo.contextEstimate(ctx.id)
+  check(
+    'a measurement taken before a compaction is not trusted after it',
+    settled.measured === null,
+    settled
+  )
+  check('so the estimate falls back to the text', settled.fromText > 0, settled)
 
   const after = await shouldCompact(repo.getThread(ctx.id), compactionSettings)
   check('a thread that has just been compacted is not still full', after.needed === false, after)

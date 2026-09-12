@@ -1,7 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useStore } from './store'
 import { buildActions } from './actions'
-import { matchesBinding, parseBinding } from './keybinds'
+import { matchesParsed, parseBinding } from './keybinds'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { CommandPalette } from './components/CommandPalette'
@@ -87,24 +87,50 @@ export function App(): React.JSX.Element {
     document.body.style.fontSize = `${settings.ui.fontSize}px`
   }, [settings])
 
+  /**
+   * Every binding, parsed once, in a stable order.
+   *
+   * Rebuilt only when the bindings themselves change, which is when somebody
+   * edits one in Settings.
+   */
+  const bindings = useMemo(
+    () =>
+      Object.entries(settings?.keybinds ?? {})
+        .filter(([id, binding]) => binding && !COMPOSER_OWNED.has(id))
+        .map(([id, binding]) => ({ id, parsed: parseBinding(binding) })),
+    [settings?.keybinds]
+  )
+
   // Global keybinds.
   useEffect(() => {
     if (!settings) return
 
     const onKeyDown = (event: KeyboardEvent): void => {
-      const actions = buildActions()
       const editable = isEditable(event.target)
 
-      for (const action of actions) {
-        const binding = settings.keybinds[action.id]
-        if (!binding || COMPOSER_OWNED.has(action.id)) continue
-        if (!matchesBinding(event, binding)) continue
-
+      // Which bindings this keystroke answers to, before anything is built.
+      //
+      // Nearly every keystroke this handler sees is somebody typing a message,
+      // and the answer for those is "none". Working that out used to mean
+      // constructing every action in the app — several dozen objects, each
+      // closing over the store — and re-parsing every binding string, on each
+      // character typed. Now it is a walk over pre-parsed bindings and no
+      // allocation at all until something actually matches.
+      const hits = new Set<string>()
+      for (const { id, parsed } of bindings) {
+        if (!matchesParsed(event, parsed)) continue
         // A bare letter shortcut must not fire while the user is typing.
-        const parsed = parseBinding(binding)
-        const isChorded = parsed.mod || parsed.alt || parsed.ctrl || /^f\d+$/.test(parsed.key)
-        if (editable && !isChorded) continue
+        const chorded = parsed.mod || parsed.alt || parsed.ctrl || /^f\d+$/.test(parsed.key)
+        if (editable && !chorded) continue
+        hits.add(id)
+      }
+      if (!hits.size) return
 
+      // In the order the actions are declared, because two of them share a
+      // binding — deleting the thread and deleting its last message — and
+      // which one wins has always been decided by that order.
+      for (const action of buildActions()) {
+        if (!hits.has(action.id)) continue
         event.preventDefault()
         void action.run()
         return
@@ -113,7 +139,7 @@ export function App(): React.JSX.Element {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [settings])
+  }, [settings, bindings])
 
   if (!ready || !settings) {
     return (

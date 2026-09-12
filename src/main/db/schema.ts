@@ -328,5 +328,28 @@ export const MIGRATIONS: string[] = [
    */
   ALTER TABLE threads ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0;
   CREATE INDEX idx_threads_temporary ON threads (id) WHERE temporary = 1;
+  `,
+
+  /* 16 — a temporary chat is one you switch on, not one you start */ `
+  /*
+   * There was briefly a "new temporary chat" of its own, and a separate "keep
+   * this chat" to undo it, each with a binding. Both are now one switch on the
+   * chat you are already in: one fewer way to start a conversation, one fewer
+   * shortcut to remember, and the only moment the choice can honestly be
+   * offered.
+   *
+   * Settings are stored whole, so an install from before the change would keep
+   * a binding for an action that no longer exists forever. Nothing reads it —
+   * the shortcut list is built from the actions rather than from what is
+   * stored — but a saved setting naming something the app has never heard of
+   * is a puzzle to whoever finds it.
+   */
+  UPDATE settings
+     SET value = json_remove(
+           value,
+           '$.keybinds."thread.newTemporary"',
+           '$.keybinds."thread.keep"'
+         )
+   WHERE key = 'settings' AND json_valid(value);
   `
 ]

@@ -175,9 +175,10 @@ suite(
     )
 
     section('and it keeps going, all the way up')
-    // Six goes at the top; a page is forty messages and the thread is 240, so
-    // this reaches the beginning with room to spare if nothing is stuck.
-    for (let i = 0; i < 6; i++) {
+    // A page is sixteen messages and the thread is 240, so fifteen goes would
+    // just reach the beginning; this allows well over that, because the point
+    // is whether it gets stuck rather than how few passes it takes.
+    for (let i = 0; i < 24; i++) {
       await scrollTo(0)
       await settle(700)
     }

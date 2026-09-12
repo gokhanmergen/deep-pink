@@ -115,6 +115,20 @@ export interface MessagePage {
   hasOlder: boolean
 }
 
+/**
+ * Everything the screen needs to open a conversation, in one answer.
+ *
+ * Four separate questions were asked at once and awaited together, which is
+ * four crossings of the process boundary for one click. They are all cheap and
+ * all about the same thread, so they are now one.
+ */
+export interface OpenedThread {
+  page: MessagePage
+  totals: ThreadTotals
+  generating: boolean
+  live: LiveStream[]
+}
+
 /** What a whole thread has cost, however much of it is on screen. */
 export interface ThreadTotals {
   costUsd: number
@@ -181,6 +195,11 @@ export interface ThreadConfig {
    * thread draws them. Null follows the global setting, as web access does.
    */
   chartsEnabled: boolean | null
+  /**
+   * Whether a reply may be a set of documents rather than one. Unset falls
+   * back to the global setting, exactly as charts does.
+   */
+  docsEnabled: boolean | null
 }
 
 /* ------------------------------------------------------------------ *
@@ -198,6 +217,7 @@ export type SystemPromptSource =
   | 'compaction'
   | 'datetime'
   | 'charts'
+  | 'docs'
 
 export interface SystemPromptSegment {
   /** Stable id so a segment can be toggled off and remembered. */
@@ -484,6 +504,7 @@ export interface Settings {
    * feature nobody asked for is not one worth trusting.
    */
   chartsEnabled: boolean
+  docsEnabled: boolean
   web: WebSearchSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */

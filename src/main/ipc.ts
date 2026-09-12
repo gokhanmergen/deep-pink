@@ -7,6 +7,7 @@ import type {
   Folder,
   McpServerConfig,
   Message,
+  OpenedThread,
   SendMessageRequest,
   Settings,
   SettingsPatch,
@@ -159,8 +160,8 @@ export function registerIpc(): void {
     repo.listThreads(includeArchived)
   )
   ipcMain.handle('threads:get', (_e, id: string) => repo.getThread(id))
-  ipcMain.handle('threads:create', (_e, config?: Partial<ThreadConfig>, temporary = false) =>
-    repo.createThread('', config, temporary)
+  ipcMain.handle('threads:create', (_e, config?: Partial<ThreadConfig>) =>
+    repo.createThread('', config)
   )
   // Keeping a chat is a change like any other, so it syncs — this is the first
   // moment the conversation is allowed to leave the machine at all.
@@ -169,6 +170,10 @@ export function registerIpc(): void {
     syncSoon()
     return kept
   })
+  // Null means it was refused: the thread has been spoken in, and what has
+  // been said cannot be un-said from the places it has already reached. No
+  // `syncSoon` — a thread on its way out has nothing to tell anybody.
+  ipcMain.handle('threads:makeTemporary', (_e, id: string) => repo.makeThreadTemporary(id))
   ipcMain.handle(
     'threads:update',
     (
@@ -243,6 +248,28 @@ export function registerIpc(): void {
   // The header's running total, which is about the thread rather than about
   // whichever part of it has been read in.
   ipcMain.handle('messages:totals', (_e, threadId: string) => repo.getThreadTotals(threadId))
+  /*
+   * Opening a conversation, in one crossing.
+   *
+   * These four were asked separately and awaited together, which is four round
+   * trips for one click on a thread. None of them is slow; the cost was in the
+   * going and coming back, paid four times on the one action people do most.
+   */
+  ipcMain.handle('threads:open', (
+    _e,
+    threadId: string,
+    limit: number,
+    // Where the reader left this thread, when they have been in it before.
+    // Reading from there rather than from the end is what lets the transcript
+    // put them back exactly where they were rather than near it.
+    from: number | null = null
+  ): OpenedThread => ({
+    page:
+      from === null ? repo.getMessagePage(threadId, limit, null) : repo.getMessagesFrom(threadId, from),
+    totals: repo.getThreadTotals(threadId),
+    generating: engine.isGenerating(threadId),
+    live: engine.liveStreamsFor(threadId)
+  }))
   ipcMain.handle('messages:delete', (_e, id: string) => {
     repo.deleteMessage(id)
     syncSoon()

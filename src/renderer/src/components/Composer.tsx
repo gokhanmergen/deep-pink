@@ -15,8 +15,10 @@ import {
   FolderCode,
   Globe,
   BarChart3,
+  FileText,
   Image as ImageIcon,
   Paperclip,
+  SlidersHorizontal,
   Square,
   X
 } from 'lucide-react'
@@ -31,6 +33,7 @@ export function Composer(): React.JSX.Element {
   const [images, setImages] = useState<StagedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [attachMenu, setAttachMenu] = useState<{ x: number; y: number } | null>(null)
+  const [extraMenu, setExtraMenu] = useState<{ x: number; y: number } | null>(null)
   const [repos, setRepos] = useState<AttachedRepo[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -51,6 +54,7 @@ export function Composer(): React.JSX.Element {
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   const webOn = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
   const chartsOn = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
+  const docsOn = thread?.config.docsEnabled ?? settings?.docsEnabled ?? false
 
   // Web access works by giving the model tools. A model that cannot call tools
   // will simply ignore them, which looks exactly like search being broken.
@@ -239,6 +243,50 @@ export function Composer(): React.JSX.Element {
     void updateThread(activeThreadId, { config: { chartsEnabled: !chartsOn } })
   }
 
+  const toggleDocs = (): void => {
+    if (!activeThreadId) return
+    void updateThread(activeThreadId, { config: { docsEnabled: !docsOn } })
+  }
+
+  /**
+   * What this thread lets a reply be, and what it lets the model go and do.
+   *
+   * These were three buttons in the row, each carrying its own word for on or
+   * off, and between them they took more of the composer than the thing you
+   * type into. They are also the settings you change least: once a thread is
+   * set up the way you want it, you do not touch them again. So they are a
+   * menu, and the button that opens it says how many are on — which is the
+   * only part you need at a glance.
+   */
+  const extraOptions = (): ContextMenuItem[] => [
+    {
+      id: 'web',
+      label: 'Web access',
+      icon: <Globe {...ICON} />,
+      hint: formatBinding(keybinds['web.toggle'] ?? 'mod+shift+w'),
+      on: webOn,
+      onSelect: toggleWeb
+    },
+    {
+      id: 'charts',
+      label: 'Charts',
+      icon: <BarChart3 {...ICON} />,
+      hint: formatBinding(keybinds['charts.toggle'] ?? 'mod+shift+b'),
+      on: chartsOn,
+      onSelect: toggleCharts
+    },
+    {
+      id: 'docs',
+      label: 'Multiple documents',
+      icon: <FileText {...ICON} />,
+      hint: formatBinding(keybinds['docs.toggle'] ?? 'mod+shift+d'),
+      on: docsOn,
+      onSelect: toggleDocs
+    }
+  ]
+
+  const extrasOn = [webOn, chartsOn, docsOn].filter(Boolean).length
+
   return (
     <div className="composer" ref={rootRef}>
       <div className="composer__inner">
@@ -401,30 +449,17 @@ export function Composer(): React.JSX.Element {
 
             <button
               className="btn"
-              data-on={webOn}
-              onClick={toggleWeb}
-              title={`Web search and fetch — ${formatBinding(keybinds['web.toggle'] ?? 'mod+shift+w')}`}
+              data-on={extrasOn > 0}
+              onClick={(event) => {
+                const r = event.currentTarget.getBoundingClientRect()
+                setExtraMenu({ x: Math.round(r.left), y: Math.round(r.top) })
+              }}
+              title="Web access, charts and multiple documents, for this thread"
               type="button"
               disabled={!activeThreadId}
             >
-              <Globe {...ICON} />
-              Web {webOn ? 'on' : 'off'}
-            </button>
-
-            {/* Sits beside web access because it is the same kind of switch: what
-                this thread lets a reply be, rather than what the model can do. */}
-            <button
-              className="btn"
-              data-on={chartsOn}
-              onClick={toggleCharts}
-              title={`Charts in replies — ${formatBinding(
-                keybinds['charts.toggle'] ?? 'mod+shift+b'
-              )}`}
-              type="button"
-              disabled={!activeThreadId}
-            >
-              <BarChart3 {...ICON} />
-              <span className="btn__label">Charts {chartsOn ? 'on' : 'off'}</span>
+              <SlidersHorizontal {...ICON} />
+              <span className="btn__label">Extras{extrasOn ? ` · ${extrasOn}` : ''}</span>
             </button>
 
             <button
@@ -473,7 +508,21 @@ export function Composer(): React.JSX.Element {
           x={attachMenu.x}
           y={attachMenu.y}
           items={attachOptions()}
+          above
           onClose={() => setAttachMenu(null)}
+        />
+      )}
+
+      {extraMenu && (
+        // Opening upwards: the composer sits at the bottom of the window, and
+        // a menu that opened downwards would be slid back up over the button
+        // that opened it.
+        <ContextMenu
+          x={extraMenu.x}
+          y={extraMenu.y}
+          items={extraOptions()}
+          above
+          onClose={() => setExtraMenu(null)}
         />
       )}
     </div>

@@ -15,6 +15,7 @@ import type {
   ImportResult,
   LiveStream,
   MessagePage,
+  OpenedThread,
   SearchHit,
   PromptPreview,
   CompactionStatus,
@@ -52,10 +53,16 @@ const api = {
     list: (includeArchived = false): Promise<Thread[]> =>
       ipcRenderer.invoke('threads:list', includeArchived),
     get: (id: string): Promise<Thread | null> => ipcRenderer.invoke('threads:get', id),
-    create: (config?: Partial<ThreadConfig>, temporary = false): Promise<Thread> =>
-      ipcRenderer.invoke('threads:create', config, temporary),
+    create: (config?: Partial<ThreadConfig>): Promise<Thread> =>
+      ipcRenderer.invoke('threads:create', config),
     /** Turns a temporary chat into an ordinary one that outlives the session. */
     keep: (id: string): Promise<Thread | null> => ipcRenderer.invoke('threads:keep', id),
+    /**
+     * Turns an ordinary chat into a temporary one. Null when refused, which
+     * means the thread has already been spoken in.
+     */
+    makeTemporary: (id: string): Promise<Thread | null> =>
+      ipcRenderer.invoke('threads:makeTemporary', id),
     update: (
       id: string,
       patch: Partial<Pick<Thread, 'title' | 'pinned' | 'archived'>> & {
@@ -96,6 +103,12 @@ const api = {
     /** What the whole thread cost, however much of it has been read in. */
     totals: (threadId: string): Promise<ThreadTotals> =>
       ipcRenderer.invoke('messages:totals', threadId),
+    /**
+     * Everything opening a conversation needs, in one crossing rather than
+     * four. `from` reopens the range the reader was last in.
+     */
+    open: (threadId: string, limit: number, from: number | null = null): Promise<OpenedThread> =>
+      ipcRenderer.invoke('threads:open', threadId, limit, from),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('messages:delete', id),
     removeAfter: (threadId: string, messageId: string): Promise<void> =>
       ipcRenderer.invoke('messages:deleteAfter', threadId, messageId),

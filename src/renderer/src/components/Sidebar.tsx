@@ -1,10 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useStore } from '../store'
+import { canBecomeTemporary, useStore } from '../store'
 import { dateBucket, formatDateTime, formatRelativeShort, threadLabel } from '../format'
 import {
   BarChart3,
   Blocks,
-  ChevronsDownUp,
   Command,
   FileDown,
   FileJson,
@@ -31,6 +30,16 @@ import type { Folder, SearchHit, Thread } from '@shared/types'
 
 /** What a thread being dragged is carried as. */
 const THREAD_MIME = 'application/x-deep-pink-thread'
+
+/**
+ * How many rows the list starts with, and how many it adds at a time.
+ *
+ * The first number only has to cover the tallest window anybody has; the
+ * second only has to keep ahead of a scroll, and both are cheap enough that
+ * being generous costs nothing.
+ */
+const FIRST_ROWS = 60
+const MORE_ROWS = 60
 
 /**
  * One thread in the list.
@@ -157,6 +166,7 @@ export function Sidebar(): React.JSX.Element {
   const updateThread = useStore((s) => s.updateThread)
   const deleteThread = useStore((s) => s.deleteThread)
   const keepThread = useStore((s) => s.keepThread)
+  const makeThreadTemporary = useStore((s) => s.makeThreadTemporary)
   const showToast = useStore((s) => s.showToast)
   const askConfirm = useStore((s) => s.askConfirm)
   const askPrompt = useStore((s) => s.askPrompt)
@@ -257,6 +267,87 @@ export function Sidebar(): React.JSX.Element {
     return { pinned, buckets }
   }, [entries])
 
+  /**
+   * The list as the sections it is drawn in, in the order they are drawn.
+   *
+   * Collected in one place so there is a single answer to "what is row 200",
+   * which is what lets the render below stop early without the three branches
+   * it used to be spread across.
+   */
+  const sections = useMemo<{ label: string; entries: Entry[] }[]>(() => {
+    const out: { label: string; entries: Entry[] }[] = []
+    if (temporaryThreads.length) {
+      out.push({
+        label: 'Temporary — gone when you leave',
+        entries: temporaryThreads.map((thread) => ({ kind: 'thread', thread, stamp: 0 }))
+      })
+    }
+    if (grouped.pinned.length) out.push({ label: 'Pinned', entries: grouped.pinned })
+    for (const [label, list] of grouped.buckets) out.push({ label, entries: list })
+    return out
+  }, [temporaryThreads, grouped])
+
+  const totalEntries = useMemo(
+    () => sections.reduce((n, section) => n + section.entries.length, 0),
+    [sections]
+  )
+
+  /**
+   * How much of the list is built at all.
+   *
+   * A library of several hundred conversations is several thousand DOM nodes,
+   * and the sidebar builds them the moment it is shown — which is why showing
+   * it again after hiding it took long enough to notice. Almost none of them
+   * are on screen: the list is ordered by how recently a thread was touched,
+   * so what anybody wants is at the top of it.
+   *
+   * So a screenful or two is built, and more is built as it is scrolled
+   * towards. Nothing is thrown away once built — a sidebar that forgot rows
+   * behind you would move the scrollbar under your hand for no reason, and the
+   * rows that are already there cost nothing to leave alone.
+   */
+  const [built, setBuilt] = useState(FIRST_ROWS)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Back to the top of the list for a different library, or a search that has
+  // just been cleared: what was built for one is not what is wanted for another.
+  useEffect(() => {
+    setBuilt(FIRST_ROWS)
+  }, [filter])
+
+  /** Builds the next block of rows if the end of the list is nearly in view. */
+  const buildAhead = useCallback((): void => {
+    const el = listRef.current
+    if (!el) return
+    // Measured in the event rather than on a frame, for the reason the
+    // transcript's own scroll handler gives: a window that is not painting
+    // does not run rAF, and this decides whether there is anything to show.
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (fromBottom > el.clientHeight * 1.5) return
+    setBuilt((n) => n + MORE_ROWS)
+  }, [])
+
+  // Enough to scroll, whatever the window height and however short the rows.
+  useEffect(() => {
+    const el = listRef.current
+    if (!el || built >= totalEntries) return
+    if (el.scrollHeight > el.clientHeight * 2) return
+    setBuilt((n) => n + MORE_ROWS)
+  }, [built, totalEntries, sections])
+
+  /** The sections again, cut off at what has been built. */
+  const shownSections = useMemo(() => {
+    let left = built
+    const out: { label: string; entries: Entry[] }[] = []
+    for (const section of sections) {
+      if (left <= 0) break
+      const entries = section.entries.length <= left ? section.entries : section.entries.slice(0, left)
+      left -= entries.length
+      out.push({ label: section.label, entries })
+    }
+    return out
+  }, [sections, built])
+
   const hitsByThread = useMemo(() => {
     const map = new Map<string, SearchHit>()
     for (const hit of hits) {
@@ -334,17 +425,29 @@ export function Sidebar(): React.JSX.Element {
   const menuItems = (thread: Thread): ContextMenuItem[] => {
     const folder = folders.find((f) => f.id === thread.folderId) ?? null
     return [
-      // Offered first, because it is the only one of these with a deadline.
-      ...(thread.temporary
+      // One entry, both ways, and only where it means anything: a conversation
+      // that has already been had cannot be un-had. Offered first when it is
+      // there, because it is the only one of these with a deadline.
+      ...(thread.temporary || canBecomeTemporary(thread)
         ? [
             {
-              id: 'keep',
-              label: 'Keep this chat',
+              id: 'temporary',
+              label: thread.temporary ? 'Keep this chat' : 'Make temporary',
               icon: <Ghost {...ICON} />,
-              hint: formatBinding(settings?.keybinds['thread.keep'] ?? 'mod+alt+k'),
+              hint: formatBinding(settings?.keybinds['thread.toggleTemporary'] ?? 'mod+alt+t'),
               onSelect: () => {
-                void keepThread(thread.id)
-                showToast('Kept — this chat now stays')
+                if (thread.temporary) {
+                  void keepThread(thread.id)
+                  showToast('Kept — this chat now stays')
+                  return
+                }
+                void makeThreadTemporary(thread.id).then((made) =>
+                  showToast(
+                    made
+                      ? 'Temporary — this chat is deleted when you leave it'
+                      : 'Only a new chat — unnamed, unpinned and unused — can be made temporary'
+                  )
+                )
               }
             }
           ]
@@ -622,34 +725,14 @@ export function Sidebar(): React.JSX.Element {
           <FolderPlus size={12} strokeWidth={ICON.strokeWidth} />
           New folder
         </button>
-        <button
-          className="minor-btn"
-          onClick={() => runAction('thread.newTemporary')}
-          title={`A chat that is deleted when you leave it or close the app — ${formatBinding(
-            settings?.keybinds['thread.newTemporary'] ?? 'mod+alt+n'
-          )}`}
-          type="button"
-        >
-          <Ghost size={12} strokeWidth={ICON.strokeWidth} />
-          Temporary chat
-        </button>
-        {focusing && (
-          <button
-            className="minor-btn"
-            onClick={() => runAction('folder.collapseAll')}
-            title="Close every open folder"
-            type="button"
-          >
-            <ChevronsDownUp size={12} strokeWidth={ICON.strokeWidth} />
-            Close folders
-          </button>
-        )}
       </div>
 
       {/* Dropping anywhere that is not a folder takes the thread out of the one
           it is in, which is how a drag back to the list is meant to read. */}
       <div
         className="sidebar__list"
+        ref={listRef}
+        onScroll={buildAhead}
         data-focusing={focusing}
         data-dropping={dropTarget === ''}
         onDragOver={(event) => {
@@ -696,27 +779,13 @@ export function Sidebar(): React.JSX.Element {
           )
         ) : (
           <>
-            {temporaryThreads.length > 0 && (
-              <>
-                <div className="sidebar__group-label">Temporary — gone when you leave</div>
-                {temporaryThreads.map((thread) => renderThread(thread))}
-              </>
-            )}
-            {grouped.pinned.length > 0 && (
-              <>
-                <div className="sidebar__group-label">Pinned</div>
-                {grouped.pinned.map(renderEntry)}
-              </>
-            )}
-            {[...grouped.buckets.entries()].map(([label, list]) => (
-              <div key={label}>
-                <div className="sidebar__group-label">{label}</div>
-                {list.map(renderEntry)}
+            {shownSections.map((section) => (
+              <div key={section.label}>
+                <div className="sidebar__group-label">{section.label}</div>
+                {section.entries.map(renderEntry)}
               </div>
             ))}
-            {entries.length === 0 && (
-              <div className="sidebar__group-label">No threads yet</div>
-            )}
+            {totalEntries === 0 && <div className="sidebar__group-label">No threads yet</div>}
           </>
         )}
       </div>

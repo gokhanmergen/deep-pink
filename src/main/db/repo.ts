@@ -110,7 +110,8 @@ export const EMPTY_THREAD_CONFIG: ThreadConfig = {
   enabledMcpServers: null,
   repoPaths: [],
   disabledPromptSegments: [],
-  chartsEnabled: null
+  chartsEnabled: null,
+  docsEnabled: null
 }
 
 function jsonOrNull(value: unknown): string | null {
@@ -476,6 +477,59 @@ export function updateThread(
 export function keepThread(id: string): Thread | null {
   getDb().prepare('UPDATE threads SET temporary = 0 WHERE id = ?').run(id)
   return getThread(id)
+}
+
+/**
+ * Turns an ordinary chat into a temporary one, if it has not been used yet.
+ *
+ * Deciding a conversation should leave no trace is a decision to take before
+ * having it, not after: a chat that has already been spoken in has been
+ * counted, indexed, and — if this machine syncs — sent. Making it temporary at
+ * that point would promise to undo all of that, and only the last of the three
+ * is something a delete can reach. So the offer is confined to the one moment
+ * it means anything, which is a thread with nothing in it.
+ *
+ * Returns null when it refuses, which is the same answer as "no such thread":
+ * the caller has nothing useful to tell the two apart.
+ */
+export function makeThreadTemporary(id: string): Thread | null {
+  const thread = getThread(id)
+  if (!thread || thread.temporary) return thread
+  if (!untouched(thread)) return null
+
+  // Every row, not just the ones a reader would see: a message compacted away
+  // was still said, still counted and still sent. "Nothing in it" has to mean
+  // nothing at all.
+  const used = getDb()
+    .prepare('SELECT 1 FROM messages WHERE thread_id = ? LIMIT 1')
+    .get(id)
+  if (used) return null
+
+  getDb().prepare('UPDATE threads SET temporary = 1 WHERE id = ?').run(id)
+  return getThread(id)
+}
+
+/**
+ * A thread nothing has been done to: no name, not pinned, not filed, not
+ * archived. Only these may be made temporary, for two reasons that happen to
+ * agree.
+ *
+ * The first is that pinning, filing and archiving all mean "keep this" —
+ * `updateThread` and `setThreadFolder` treat them that way, and a chat that
+ * was pinned and then made temporary would be the same contradiction from the
+ * other end.
+ *
+ * The second is about sync, and is the sharper of the two. A temporary chat's
+ * deletion leaves no tombstone, which is only safe if no other machine could
+ * know the thread existed. An empty thread with a *name* survives the startup
+ * sweep and therefore travels — so making that one temporary and leaving it
+ * would delete it here, tell nobody, and let the next sync pull it back from
+ * the machine that still has it. Confining this to threads the sweep would
+ * have removed anyway means any copy that does come back is removed again by
+ * the same rule, with an ordinary tombstone, and the two machines agree.
+ */
+function untouched(thread: Thread): boolean {
+  return !thread.title && !thread.pinned && !thread.archived && !thread.folderId
 }
 
 export function touchThread(id: string): void {
@@ -857,6 +911,104 @@ const CONTEXT_ABOVE_A_HIT = 8
 
 /** The page size the main process falls back to when nobody names one. */
 const DEFAULT_PAGE = 40
+
+/**
+ * How full a thread's context window is, without reading the thread.
+ *
+ * The gauge under the title used to be worked out by loading every message in
+ * the conversation — hydrated, with its usage row and its attachments — and
+ * adding up the lengths of the text. That is the one thing on the path of
+ * opening a thread that grew with the size of the thread, which is exactly
+ * what made the big ones slow to open.
+ *
+ * It is all counting, and counting is what the database is for. `estimateTokens`
+ * is `ceil(length / 4)`, which is `(length + 3) / 4` in integer arithmetic.
+ *
+ * One inexactness, deliberately accepted: SQLite's `LENGTH` counts characters
+ * where JavaScript's `.length` counts UTF-16 units, so text outside the basic
+ * plane — emoji, mostly — is counted once here and twice there. This is an
+ * estimate of an estimate; the figure that actually matters is the one the
+ * provider measured, which is read exactly.
+ */
+export interface ContextEstimate {
+  /** Every visible message, counted from its text. */
+  fromText: number
+  /**
+   * What the provider counted on the last turn, plus whatever has been said
+   * since — or null when there is no such measurement to trust.
+   */
+  measured: number | null
+}
+
+export function contextEstimate(threadId: string): ContextEstimate {
+  const db = getDb()
+
+  /*
+   * The same sum `estimateContextTokens` made: the message, whatever a tool
+   * handed back, and the call that asked for it. A missing `tool_calls` was
+   * stringified as `""` before it was counted, which is one token, so it is
+   * still one token here.
+   */
+  const tokensFrom = (extra: string, ...args: unknown[]): number =>
+    (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(
+                    (LENGTH(content) + 3) / 4
+                  + (LENGTH(COALESCE(
+                       CASE WHEN json_valid(tool_result)
+                            THEN json_extract(tool_result, '$.content') END, '')) + 3) / 4
+                  + (LENGTH(COALESCE(tool_calls, '""')) + 3) / 4
+                  ), 0) AS n
+             FROM messages
+            WHERE thread_id = ? AND ${VISIBLE_MESSAGES} ${extra}`
+        )
+        .get(threadId, ...args) as { n: number }
+    ).n
+
+  const fromText = tokensFrom('')
+
+  // The last turn the provider itself counted, which beats any estimate — but
+  // not every usage row is a measurement of this conversation. A compaction
+  // summary's is what summarising cost, over a transcript that is no longer
+  // being sent, and a title marker is not a turn at all.
+  const turn = db
+    .prepare(
+      `SELECT m.seq AS seq, m.created_at AS created_at,
+              u.prompt_tokens AS prompt_tokens, u.completion_tokens AS completion_tokens
+         FROM messages m
+         JOIN usage u ON u.message_id = m.id
+        WHERE m.thread_id = ? AND m.${VISIBLE_MESSAGES}
+          AND m.role = 'assistant' AND m.is_compaction_summary = 0
+        ORDER BY m.seq DESC
+        LIMIT 1`
+    )
+    .get(threadId) as
+    | { seq: number; created_at: number; prompt_tokens: number; completion_tokens: number }
+    | undefined
+
+  if (!turn) return { fromText, measured: null }
+
+  // A compaction since that measurement means it describes messages that have
+  // been replaced by a summary, so it now reads as full forever — which is
+  // exactly the loop that compacts a thread again on every turn.
+  const compactedSince = db
+    .prepare(
+      `SELECT 1 FROM messages
+        WHERE thread_id = ? AND ${VISIBLE_MESSAGES}
+          AND is_compaction_summary = 1 AND created_at >= ?
+        LIMIT 1`
+    )
+    .get(threadId, turn.created_at)
+
+  if (compactedSince) return { fromText, measured: null }
+
+  return {
+    fromText,
+    measured:
+      turn.prompt_tokens + turn.completion_tokens + tokensFrom('AND seq > ?', turn.seq)
+  }
+}
 
 /**
  * What a thread has cost, over all of it.
@@ -1558,6 +1710,20 @@ export function getCache<T>(key: string, maxAgeMs: number): T | null {
   if (!row) return null
   if (Date.now() - row.fetched_at > maxAgeMs) return null
   return parseJson<T | null>(row.payload, null)
+}
+
+/**
+ * When a cached thing was fetched, without reading the thing.
+ *
+ * The model catalogue is a third of a megabyte of JSON, and asking it for one
+ * model's context length meant parsing all of it. This is what lets a caller
+ * keep the parsed copy and check cheaply that it is still the current one.
+ */
+export function cacheStamp(key: string): number | null {
+  const row = getDb().prepare('SELECT fetched_at FROM model_cache WHERE id = ?').get(key) as
+    | { fetched_at: number }
+    | undefined
+  return row?.fetched_at ?? null
 }
 
 export function setCache(key: string, payload: unknown): void {

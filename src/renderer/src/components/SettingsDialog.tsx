@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import {
   BarChart3,
   Database,
+  FileText,
   Pause,
   Play,
   RefreshCw,
@@ -29,6 +30,7 @@ import type {
   SyncScopes
 } from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
+import { DOCS_LIMITS, DOCS_PROMPT } from '@shared/docs'
 
 type Tab =
   | 'account'
@@ -36,6 +38,7 @@ type Tab =
   | 'prompts'
   | 'web'
   | 'charts'
+  | 'docs'
   | 'context'
   | 'appearance'
   | 'keys'
@@ -67,6 +70,7 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     tabs: [
       { id: 'web', label: 'Web access', icon: <Globe {...ICON} /> },
       { id: 'charts', label: 'Charts', icon: <BarChart3 {...ICON} /> },
+      { id: 'docs', label: 'Documents', icon: <FileText {...ICON} /> },
       { id: 'context', label: 'Context', icon: <Layers {...ICON} /> }
     ]
   },
@@ -608,6 +612,61 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </summary>
               <div className="disclosure__content">
                 <pre>{CHARTS_PROMPT}</pre>
+              </div>
+            </details>
+          </>
+        )}
+
+        {tab === 'docs' && (
+          <>
+            <div className="section-title">Replies of several documents</div>
+            <label className="switch" style={{ marginBottom: 14 }}>
+              <input
+                type="checkbox"
+                checked={settings.docsEnabled}
+                onChange={(event) => void saveSettings({ docsEnabled: event.target.checked })}
+              />
+              <span>
+                Let a reply be a set of documents
+                <span className="field__hint">
+                  Can be toggled per thread from the composer. When off the model is not told it
+                  can do this, and a set that arrives anyway — from an import, or a model that
+                  guessed — is shown as the code it is.
+                </span>
+              </span>
+            </label>
+
+            <div className="field">
+              <span className="field__label">What it is for</span>
+              <span className="field__hint">
+                An answer that is genuinely several pieces — one per file reviewed, one per
+                region, one per option being compared — arrives as a list you pick from instead
+                of one long reply you scroll. Each document is ordinary Markdown, rendered the
+                same way the rest of a reply is, so there is nothing a model can do here that it
+                could not do in a paragraph.
+              </span>
+            </div>
+
+            <div className="field">
+              <span className="field__label">What it is not</span>
+              <span className="field__hint">
+                Not a filesystem: no folders, no paths, no nesting, no links between documents.
+                It is a list, and everything that would make it a tree is something you would
+                then have to navigate. Up to {DOCS_LIMITS.documents} documents in a set; a set of
+                fewer than two is shown as an ordinary reply, because the picking is the point.
+              </span>
+            </div>
+
+            <details className="disclosure">
+              <summary className="disclosure__summary">
+                <span className="chip">system prompt</span>
+                <span>
+                  What the model is told — about{' '}
+                  {Math.ceil(DOCS_PROMPT.length / 4).toLocaleString()} tokens per turn
+                </span>
+              </summary>
+              <div className="disclosure__content">
+                <pre>{DOCS_PROMPT}</pre>
               </div>
             </details>
           </>

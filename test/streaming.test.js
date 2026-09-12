@@ -23,6 +23,8 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   // Threads besides the fixture, for the "leave an empty one behind" checks.
   const extraThreads = []
   const removed = []
+  /** Every `messages.open`, so the tests can say where a thread was read from. */
+  const opened = []
   let createdCount = 0
 
   const thread = {
@@ -43,13 +45,27 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       settings: { get: async () => ({ ui: {}, keybinds: {}, web: {}, compaction: {} }) },
       threads: {
         list: async () => extraThreads.concat([thread]).map((t) => ({ ...t })),
-        create: async (_config, temporary = false) => {
+        create: async () => {
           // Counted, not derived from the list's length: a deleted thread would
           // otherwise hand its id to the next one, and "was this deleted?" would
           // answer for the wrong conversation.
-          const made = { ...thread, id: `made-${++createdCount}`, title: '', messageCount: 0, temporary }
+          const made = {
+            ...thread,
+            id: `made-${++createdCount}`,
+            title: '',
+            messageCount: 0,
+            temporary: false
+          }
           extraThreads.push(made)
           return { ...made }
+        },
+        makeTemporary: async (id) => {
+          const one = extraThreads.find((t) => t.id === id)
+          // The main process refuses a thread that has been spoken in, and the
+          // store has to believe it.
+          if (!one || one.messageCount > 0) return null
+          one.temporary = true
+          return { ...one }
         },
         keep: async (id) => {
           const one = extraThreads.find((t) => t.id === id)
@@ -107,7 +123,25 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
           startSeq: id === thread.id && persisted.length ? 0 : null,
           hasOlder: false
         }),
-        totals: async () => ({ costUsd: 0, totalTokens: 0 })
+        totals: async () => ({ costUsd: 0, totalTokens: 0 }),
+        /**
+         * How a thread is actually opened — one crossing carrying all four
+         * answers. `opened` records what it was asked for, because *where* a
+         * thread is read back from is the whole of reopening it in its place.
+         */
+        open: async (id, _limit, from = null) => {
+          opened.push({ id, from })
+          return {
+            page: {
+              messages: id === thread.id ? persisted : [],
+              startSeq: id === thread.id && persisted.length ? 0 : null,
+              hasOlder: false
+            },
+            totals: { costUsd: 0, totalTokens: 0 },
+            generating: false,
+            live: liveStreams
+          }
+        }
       },
       attachments: { images: async () => [] },
       models: { list: async () => [] },
@@ -346,9 +380,18 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   )
 
   section('a temporary chat does not survive being left')
-  const ephemeral = await state().createThread({ temporary: true })
+  // Started as an ordinary chat and turned into one, which is the only way
+  // there is: a chat is made temporary before it is used, not instead of
+  // being made.
+  const ephemeral = await state().createThread()
   check('it opens as the active thread', state().activeThreadId === ephemeral.id, ephemeral)
-  check('and it is marked temporary', ephemeral.temporary === true, ephemeral)
+  check('converting it is allowed while it is empty',
+    (await state().makeThreadTemporary(ephemeral.id)) === true)
+  check(
+    'and it is marked temporary',
+    state().threads.find((t) => t.id === ephemeral.id)?.temporary === true,
+    state().threads.find((t) => t.id === ephemeral.id)
+  )
 
   await state().selectThread('t1')
   check('leaving it deletes it, empty or not', removed.includes(ephemeral.id), removed)
@@ -360,13 +403,28 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
 
   // The one thing that has to be true of a chat that was spoken in: leaving it
   // still ends it. The abandoned-thread sweep above would have kept this one.
-  const usedUp = await state().createThread({ temporary: true })
+  const usedUp = await state().createThread()
+  await state().makeThreadTemporary(usedUp.id)
   extraThreads.find((t) => t.id === usedUp.id).messageCount = 3
   await state().refreshThreads()
   await state().selectThread('t1')
   check('one that was spoken in goes too', removed.includes(usedUp.id), removed)
 
-  const rescued = await state().createThread({ temporary: true })
+  section('a chat that has been used cannot be made temporary')
+  const alreadyUsed = await state().createThread()
+  extraThreads.find((t) => t.id === alreadyUsed.id).messageCount = 4
+  await state().refreshThreads()
+  check('the store reports the refusal',
+    (await state().makeThreadTemporary(alreadyUsed.id)) === false)
+  check(
+    'and the thread is left alone',
+    state().threads.find((t) => t.id === alreadyUsed.id)?.temporary === false
+  )
+  await state().selectThread('t1')
+  check('so leaving it does not delete it', !removed.includes(alreadyUsed.id), removed)
+
+  const rescued = await state().createThread()
+  await state().makeThreadTemporary(rescued.id)
   // Spoken in, so the abandoned-empty-thread sweep has nothing to say about it
   // and only the temporary rule is under test.
   extraThreads.find((t) => t.id === rescued.id).messageCount = 2
@@ -378,6 +436,41 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   )
   await state().selectThread('t1')
   check('and then leaving it leaves it alone', !removed.includes(rescued.id), removed)
+
+  section('a thread reopens where it was left')
+  const { rememberPlace, placeOf, forgetPlace } = require(
+    path.join(__dirname, '..', '.test-build', 'store.js')
+  )
+
+  opened.length = 0
+  await state().selectThread('t1')
+  check(
+    'a thread never read before is read from its end',
+    opened.at(-1)?.from === null,
+    opened.at(-1)
+  )
+
+  // Scrolled back six pages and left there. Only the transcript knows the
+  // offset; what the store has to carry is which part of the conversation was
+  // loaded, because an offset means nothing against a different range.
+  rememberPlace('t1', { startSeq: 120, scrollTop: 2400, atBottom: false })
+  check('the place is kept', placeOf('t1')?.startSeq === 120, placeOf('t1'))
+
+  opened.length = 0
+  await state().selectThread('somewhere-else')
+  await state().selectThread('t1')
+  check(
+    'and coming back reads from there rather than from the end',
+    opened.at(-1)?.from === 120,
+    opened
+  )
+
+  forgetPlace('t1')
+  check('a thread can be forgotten', placeOf('t1') === null)
+  opened.length = 0
+  await state().selectThread('somewhere-else')
+  await state().selectThread('t1')
+  check('after which it opens at the end again', opened.at(-1)?.from === null, opened.at(-1))
 
   section('folders')
   const created = await state().createFolder('Reading')

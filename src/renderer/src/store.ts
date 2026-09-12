@@ -155,10 +155,15 @@ interface State {
   refreshThreads: () => Promise<void>
   refreshSettings: () => Promise<Settings>
   selectThread: (id: string | null) => Promise<void>
-  createThread: (options?: { temporary?: boolean }) => Promise<Thread>
+  createThread: () => Promise<Thread>
   deleteThread: (id: string) => Promise<void>
   /** Stops a temporary chat being temporary, so it outlives the session. */
   keepThread: (id: string) => Promise<void>
+  /**
+   * Makes a chat temporary. Resolves false when it was refused, which means
+   * something has already been said in it.
+   */
+  makeThreadTemporary: (id: string) => Promise<boolean>
   /**
    * Reads in the page before the one on screen. Returns whether anything was
    * added, so the caller can put the view back where the reader left it.
@@ -245,14 +250,15 @@ const api = window.deepPink
 /**
  * How much of a conversation is read at once.
  *
- * Chosen to be several screenfuls of ordinary turns rather than to be small:
- * the point of paging is that opening a thousand-message thread does not have
- * to parse a thousand messages of Markdown, not that the reader should meet a
- * loading edge. The transcript asks for the next page while the one before it
- * is still two screens away, and tops up on open until the view is full — so a
- * page landing late is a page nobody was waiting for.
+ * A page is what has to be parsed and laid out before a conversation appears,
+ * and Markdown is not cheap: tables, maths and code blocks, each message its
+ * own document. So this is deliberately about a screenful rather than several
+ * — the transcript tops itself up on open until there is something to scroll,
+ * and asks for the next page while it is still two screens away, so nobody is
+ * ever waiting at an edge. What it buys is that opening a thread parses what
+ * you are about to read rather than three times that much.
  */
-const PAGE_SIZE = 40
+const PAGE_SIZE = 16
 
 /**
  * Re-reads the part of the transcript that is on screen.
@@ -269,6 +275,132 @@ const PAGE_SIZE = 40
 async function readWindow(threadId: string, get: Getter): Promise<MessagePage | null> {
   const page = await api.messages.from(threadId, get().messageWindowStart)
   return get().activeThreadId === threadId ? page : null
+}
+
+/* ------------------------------------------------------------------ *
+ * Keeping the thread list still
+ * ------------------------------------------------------------------ */
+
+/**
+ * Whether two readings of the same thread say the same thing.
+ *
+ * `config` is compared as text because it is a small object of small values
+ * and this runs once per thread per refresh — a few hundred microseconds for
+ * the whole library, against the alternative of re-rendering it.
+ */
+function unchanged(before: Thread, after: Thread): boolean {
+  return (
+    before.title === after.title &&
+    before.updatedAt === after.updatedAt &&
+    before.createdAt === after.createdAt &&
+    before.pinned === after.pinned &&
+    before.archived === after.archived &&
+    before.folderId === after.folderId &&
+    before.temporary === after.temporary &&
+    before.messageCount === after.messageCount &&
+    (before.config === after.config ||
+      JSON.stringify(before.config) === JSON.stringify(after.config))
+  )
+}
+
+/**
+ * The new list, holding on to every object that did not actually change.
+ *
+ * Almost everything asks for the whole list again: a rename, a new thread, a
+ * name arriving from the model, a folder being dragged into, every sync. The
+ * list *is* the sidebar, and to a memoised row a new object means a changed
+ * row — so a library of several hundred conversations re-rendered all of them
+ * every time one of them moved. Comparing a few thousand fields is orders of
+ * magnitude cheaper than rebuilding a few thousand DOM nodes.
+ *
+ * When nothing at all moved the previous array is returned unchanged, so the
+ * sidebar does not re-render either.
+ */
+function reconcile(current: Thread[], incoming: Thread[]): Thread[] {
+  const held = new Map(current.map((thread) => [thread.id, thread]))
+  let moved = current.length !== incoming.length
+
+  const next = incoming.map((thread, at) => {
+    const before = held.get(thread.id)
+    if (!before || !unchanged(before, thread)) {
+      moved = true
+      return thread
+    }
+    // The same rows in a different order is still a change to the list.
+    if (current[at] !== before) moved = true
+    return before
+  })
+
+  return moved ? next : current
+}
+
+/* ------------------------------------------------------------------ *
+ * Where each conversation was left
+ * ------------------------------------------------------------------ */
+
+/**
+ * A thread reopens where you were reading it, not at some place that depends
+ * on how fast the highlighting finished.
+ *
+ * Two halves, and both are needed. The offset alone is meaningless, because a
+ * thread opens with only the end of itself read in — an offset measured
+ * against six pages of conversation means nothing against one. So the range
+ * that was loaded is remembered with it, and reading the thread back in starts
+ * from there.
+ *
+ * Held for the session rather than written down. Where you were in a
+ * conversation an hour ago is a fact about that sitting; a thread that has
+ * been replied to since has moved on, and opening it at the end is then the
+ * honest answer. Not reactive on purpose — nothing renders differently because
+ * of it, the transcript just reads it as it restores.
+ */
+export interface Place {
+  /** The range that was read in, so the same part of it comes back. */
+  startSeq: number | null
+  scrollTop: number
+  /**
+   * Remembered separately from the offset because it is the thing that has to
+   * survive the conversation changing height. "1,482 pixels down" stops being
+   * the bottom the moment a code block finishes highlighting; "at the end"
+   * never does.
+   */
+  atBottom: boolean
+}
+
+const places = new Map<string, Place>()
+
+export function rememberPlace(threadId: string, place: Place): void {
+  places.set(threadId, place)
+}
+
+export function placeOf(threadId: string): Place | null {
+  return places.get(threadId) ?? null
+}
+
+/**
+ * Whether this chat may still be made temporary.
+ *
+ * The same question the main process settles for real in `makeThreadTemporary`
+ * — repeated here so the offer is not made where it would be refused. A chat
+ * that has been named, pinned, filed, archived or spoken in is one something
+ * has been done to, and the choice to leave no trace is one taken before doing
+ * anything rather than after.
+ */
+export function canBecomeTemporary(thread: Thread | null | undefined): boolean {
+  return Boolean(
+    thread &&
+      !thread.temporary &&
+      !thread.title &&
+      !thread.pinned &&
+      !thread.archived &&
+      !thread.folderId &&
+      thread.messageCount === 0
+  )
+}
+
+/** For a thread that is gone, or whose transcript is no longer the one left. */
+export function forgetPlace(threadId: string): void {
+  places.delete(threadId)
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -370,7 +502,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async refreshThreads() {
-    set({ threads: await api.threads.list() })
+    set({ threads: reconcile(get().threads, await api.threads.list()) })
   },
 
   async refreshSettings() {
@@ -406,6 +538,7 @@ export const useStore = create<State>((set, get) => ({
 
       if (thread.temporary || abandoned) {
         set({ threads: get().threads.filter((t) => t.id !== thread.id) })
+        forgetPlace(thread.id)
         void window.deepPink.threads.remove(thread.id)
       }
     }
@@ -436,12 +569,17 @@ export const useStore = create<State>((set, get) => ({
     // The end of the conversation, not all of it. The rest arrives as it is
     // scrolled towards, and the totals come from the database because the sum
     // of what happens to be on screen is not what the thread cost.
-    const [page, totals, generating, live] = await Promise.all([
-      api.messages.page(id, PAGE_SIZE, null),
-      api.messages.totals(id),
-      api.chat.isGenerating(id),
-      api.chat.liveStreams(id)
-    ])
+    //
+    // One crossing rather than four: these were separate calls awaited
+    // together, which is four round trips for the thing people do most often.
+    //
+    // Reading back from where this thread was last left, when it has been open
+    // before — otherwise from the end, which is where a conversation is.
+    const { page, totals, generating, live } = await api.messages.open(
+      id,
+      PAGE_SIZE,
+      placeOf(id)?.startSeq ?? null
+    )
     const messages = page.messages
 
     // Something else was selected while this was loading; that one wins.
@@ -506,6 +644,9 @@ export const useStore = create<State>((set, get) => ({
   async resetTranscript() {
     const threadId = get().activeThreadId
     if (!threadId) return
+    // Compaction replaces the older part of the thread, so a remembered range
+    // now describes messages that are not there any more.
+    forgetPlace(threadId)
     const [page, totals] = await Promise.all([
       api.messages.page(threadId, PAGE_SIZE, null),
       api.messages.totals(threadId)
@@ -583,8 +724,8 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  async createThread(options = {}) {
-    const thread = await api.threads.create(undefined, options.temporary ?? false)
+  async createThread() {
+    const thread = await api.threads.create()
     await get().refreshThreads()
     await get().selectThread(thread.id)
     return thread
@@ -597,7 +738,18 @@ export const useStore = create<State>((set, get) => ({
     await get().refreshThreads()
   },
 
+  async makeThreadTemporary(id) {
+    const made = await window.deepPink.threads.makeTemporary(id)
+    // Refused: the thread has been spoken in. The caller says so; there is
+    // nothing to change here.
+    if (!made) return false
+    set({ threads: get().threads.map((t) => (t.id === id ? made : t)) })
+    await get().refreshThreads()
+    return true
+  },
+
   async deleteThread(id) {
+    forgetPlace(id)
     await api.threads.remove(id)
     const remaining = get().threads.filter((t) => t.id !== id)
     set({ threads: remaining })

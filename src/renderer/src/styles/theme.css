@@ -469,6 +469,17 @@ svg.lucide {
   text-align: left;
   color: var(--text-muted);
   min-width: 0;
+
+  /* The rows built but scrolled past are not laid out or painted.
+   *
+   * The list only builds what is near the viewport, but what it has built it
+   * keeps, and a long session's worth of scrolling leaves a few hundred rows
+   * behind. This is what stops them costing anything: `auto` on the intrinsic
+   * size means the guess below is only used until a row has been laid out
+   * once, after which the browser remembers what it really was — so the
+   * scrollbar does not breathe as you move. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 53px;
 }
 
 .thread-item:hover {
@@ -608,18 +619,35 @@ svg.lucide {
   min-width: 0;
 }
 
-/* The badge is a button, because the useful thing to do about "this will be
-   deleted" is to say no. Dashed for the same reason the sidebar row is. */
+/* A switch rather than a label, because the useful thing to do about "this
+   will be deleted" is to be able to say no — and about "this will be kept",
+   to be able to say so before saying anything else.
+
+   Off it is an ordinary quiet button offering something. On it is dashed and
+   lit, matching the row in the sidebar, because a conversation that is not
+   being kept should not look settled anywhere it appears. */
 .temp-badge {
   flex: none;
-  border: 1px dashed var(--border-strong);
-  color: var(--text-muted);
+  border: 1px solid transparent;
+  color: var(--text-dim);
 }
 
-.temp-badge:hover {
+.temp-badge[data-on='true'] {
+  border-style: dashed;
   border-color: var(--accent-line);
   background: var(--accent-dim);
   color: var(--text);
+}
+
+.temp-badge:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.temp-badge[data-on='true']:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
 }
 
 .btn__label {
@@ -1405,6 +1433,17 @@ svg.lucide {
 
 .cmditem {
   border: 1px solid transparent;
+}
+
+/* Before the active rule and not after it, so the row the keyboard is on keeps
+   looking like the row the keyboard is on while the pointer crosses it.
+
+   The command palette moves its own selection on mouse-enter, so it had this
+   already by accident; the search results in the sidebar did not, and a list
+   of things you are about to click should say which one. */
+.cmditem:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 .cmditem[data-active='true'] {
@@ -2314,6 +2353,30 @@ svg.lucide {
   cursor: not-allowed;
 }
 
+/* A switch that is on. The accent is for things you act on, and a toggle in a
+   menu is exactly that — but the icon carries it rather than the whole row, so
+   the keyboard's own highlight still reads as the selection. */
+.context-menu__item[data-on='true'] {
+  color: var(--text);
+}
+
+.context-menu__item[data-on='true'] .icon,
+.context-menu__item[data-on='true'] svg {
+  color: var(--accent);
+}
+
+.context-menu__on {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .context-menu__item[data-danger='true'][data-active='true'] {
   background: rgba(242, 85, 90, 0.12);
   color: var(--red);
@@ -2524,6 +2587,246 @@ svg.lucide {
   font-size: 11px;
   color: var(--text-dim);
   line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------ *
+ * Documents
+ * ------------------------------------------------------------------ */
+
+/* Deliberately the same box as a chart. Both are a reply presenting something
+   the app drew rather than something the model wrote directly, and a reader
+   who has learned what that border means should not have to learn it twice. */
+.docsblock {
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.docsblock--failed {
+  border: none;
+  background: none;
+}
+
+.docsblock--failed .codeblock {
+  margin: 0;
+}
+
+/* Sticky, because the way back has to still be there once you have scrolled
+   into a document — which is exactly when you want it. */
+.docsblock__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.docsblock__mark {
+  color: var(--text-dim);
+  flex: none;
+}
+
+.docsblock__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docsblock__spacer {
+  flex: 1;
+}
+
+/* Quiet, and in the accent, because it is the same "working" the caret at the
+   end of a streaming reply means. */
+.docsblock__arriving {
+  flex: none;
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+/* Before the first document has finished arriving there is nothing to list. */
+.docsblock--waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.docsblock__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.docsblock__back:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.docsblock__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  color: var(--text-dim);
+}
+
+.docsblock__count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 2px;
+}
+
+.docsblock__arrow {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 4px;
+  color: var(--text-dim);
+}
+
+.docsblock__arrow:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.docsblock__arrow:disabled {
+  opacity: 0.3;
+}
+
+/* Quiet until the block is pointed at, exactly as the chart's is. */
+.docsblock__source {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--text-dim);
+  opacity: 0;
+  padding: 2px;
+  border-radius: 4px;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.docsblock:hover .docsblock__source,
+.docsblock__source:focus-visible,
+.docsblock__source[aria-pressed='true'] {
+  opacity: 1;
+}
+
+.docsblock__source:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* The list. Full-width rows rather than cards: a title is the thing being
+   chosen between, so nothing should shorten one to make a grid line up. */
+.docsblock__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.docsblock__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  text-align: left;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s, color 0.12s;
+}
+
+.docsblock__item:last-child {
+  border-bottom: none;
+}
+
+.docsblock__item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.docsblock__index {
+  flex: none;
+  width: 20px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.docsblock__itemtext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.docsblock__itemtitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docsblock__itemsummary {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docsblock__go {
+  flex: none;
+  color: var(--text-dim);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.docsblock__item:hover .docsblock__go {
+  opacity: 1;
+}
+
+.docsblock__body {
+  padding: 12px;
+}
+
+/* The margin a document's last paragraph would otherwise add inside the box. */
+.docsblock__body .md > *:last-child {
+  margin-bottom: 0;
+}
+
+.docsblock__note {
+  padding: 0 12px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.docsblock--failed .docsblock__note {
+  padding: 6px 0 0;
 }
 
 .chartblock .codeblock {

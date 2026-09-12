@@ -77,9 +77,8 @@ export const DEFAULT_UI: UiSettings = {
 export const DEFAULT_KEYBINDS: Record<string, string> = {
   // Threads
   'thread.new': 'mod+n',
-  // The other new: a chat that ends when you leave it.
-  'thread.newTemporary': 'mod+alt+n',
-  'thread.keep': 'mod+alt+k',
+  // Turning the chat you are in into one that ends when you leave it, and back.
+  'thread.toggleTemporary': 'mod+alt+t',
   'thread.rename': 'f2',
   // F2 names it yourself; shift asks the model to.
   'thread.retitle': 'shift+f2',
@@ -123,6 +122,7 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   // Capabilities
   'web.toggle': 'mod+shift+w',
   'charts.toggle': 'mod+shift+b',
+  'docs.toggle': 'mod+shift+d',
   'sync.pause': 'mod+shift+u',
   'mcp.panel': 'mod+shift+e',
   'reasoning.toggle': 'mod+shift+r',
@@ -156,6 +156,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxTokens: null,
   streamReasoning: true,
   chartsEnabled: false,
+  docsEnabled: false,
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,

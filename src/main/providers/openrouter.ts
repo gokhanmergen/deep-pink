@@ -6,7 +6,7 @@ import type {
   ToolCall,
   Usage
 } from '@shared/types'
-import { getCache, setCache } from '../db/repo'
+import { cacheStamp, getCache, setCache } from '../db/repo'
 import { getApiKey } from '../secrets'
 
 const BASE = 'https://openrouter.ai/api/v1'
@@ -62,10 +62,29 @@ function toPricing(raw: Record<string, unknown> | undefined): ModelPricing {
  * Catalogue
  * ------------------------------------------------------------------ */
 
+/**
+ * The catalogue, parsed, and the moment the copy it was parsed from was saved.
+ *
+ * A third of a megabyte of JSON sits behind `getCache`, and the app asks for
+ * this whenever it wants one number out of it — the context window of the
+ * model a thread uses, which it wants every time a thread is opened. Parsing
+ * it again each time was most of the cost of opening one. The stamp is checked
+ * against the database on every call, which is a single indexed read, so a
+ * refreshed catalogue is still picked up immediately.
+ */
+let parsed: { at: number; models: OpenRouterModel[] } | null = null
+
 export async function listModels(force = false): Promise<OpenRouterModel[]> {
   if (!force) {
-    const cached = getCache<OpenRouterModel[]>('models', CATALOG_TTL)
-    if (cached) return cached
+    const at = cacheStamp('models')
+    if (at !== null && Date.now() - at <= CATALOG_TTL) {
+      if (parsed && parsed.at === at) return parsed.models
+      const cached = getCache<OpenRouterModel[]>('models', CATALOG_TTL)
+      if (cached) {
+        parsed = { at, models: cached }
+        return cached
+      }
+    }
   }
 
   const res = await fetch(`${BASE}/models`)
@@ -95,6 +114,9 @@ export async function listModels(force = false): Promise<OpenRouterModel[]> {
 
   models.sort((a, b) => a.id.localeCompare(b.id))
   setCache('models', models)
+  // The memo above follows what was just written, so a forced refresh is seen
+  // by the next reader rather than being shadowed by the old parse.
+  parsed = { at: cacheStamp('models') ?? Date.now(), models }
   return models
 }
 

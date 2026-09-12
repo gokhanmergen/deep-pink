@@ -1,5 +1,6 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
+import { DOCS_PROMPT } from '@shared/docs'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
@@ -34,6 +35,10 @@ function webEnabledFor(thread: Thread, settings: Settings): boolean {
 /** The thread's answer if it has one, otherwise the global setting. */
 export function chartsEnabledFor(thread: Thread, settings: Settings): boolean {
   return thread.config.chartsEnabled ?? settings.chartsEnabled
+}
+
+export function docsEnabledFor(thread: Thread, settings: Settings): boolean {
+  return thread.config.docsEnabled ?? settings.docsEnabled
 }
 
 export function activeServerIdsFor(thread: Thread): string[] | null {
@@ -98,6 +103,19 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
       label: 'Chart syntax',
       origin: 'Deep Pink',
       text: CHARTS_PROMPT,
+      removable: true
+    })
+  }
+
+  // Beside charts for the same reason charts sits where it does: both say what
+  // a reply may *be*, rather than what the model may go and do.
+  if (docsEnabledFor(thread, settings)) {
+    push({
+      id: 'docs',
+      source: 'docs',
+      label: 'Multiple documents',
+      origin: 'Deep Pink',
+      text: DOCS_PROMPT,
       removable: true
     })
   }

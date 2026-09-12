@@ -170,7 +170,8 @@ function toConfig(value: unknown): ThreadConfig {
       : null,
     repoPaths: stringList(raw['repoPaths']),
     disabledPromptSegments: stringList(raw['disabledPromptSegments']),
-    chartsEnabled: typeof raw['chartsEnabled'] === 'boolean' ? raw['chartsEnabled'] : null
+    chartsEnabled: typeof raw['chartsEnabled'] === 'boolean' ? raw['chartsEnabled'] : null,
+    docsEnabled: typeof raw['docsEnabled'] === 'boolean' ? raw['docsEnabled'] : null
   }
 }
 
