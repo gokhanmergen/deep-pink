@@ -559,6 +559,21 @@ export interface UiSettings {
    * still anyway.
    */
   animations: boolean
+  /**
+   * Whether the app reads a conversation in as you scroll, or all at once.
+   *
+   * On — which is the default — a thread opens with the screenful you are
+   * about to read and fetches the rest as you go back through it, and the
+   * sidebar builds its rows in batches. That is what keeps a thread of two
+   * thousand messages opening as fast as a thread of five.
+   *
+   * Off, everything arrives in one go. Opening a long thread then costs what
+   * the whole of it costs — seconds, on the largest — but nothing is ever
+   * fetched later, which is what somebody wants who scrolls by dragging the
+   * bar to a point rather than by wheeling towards it, or who wants a whole
+   * conversation in the window's own find.
+   */
+  loadEverythingAtOnce: boolean
 }
 
 /* ------------------------------------------------------------------ *

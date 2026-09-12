@@ -1087,8 +1087,12 @@ svg.lucide {
   gap: 5px;
   padding: 2px var(--s2);
   border-radius: var(--radius-pill);
-  /* Small enough that an outline around it is most of what you see of it. */
+  /* Outlined after all. A chip is a word made into an object, and at this size
+     the fill behind it is a few pixels of shade around each letter — not
+     enough to read as a shape, which is the whole point of a chip. The line is
+     what makes it one. */
   background: var(--bg-elevated);
+  border: 1px solid var(--border);
   font-size: var(--t-micro);
   font-weight: var(--w-ui);
   letter-spacing: var(--track-ui);
@@ -1098,6 +1102,7 @@ svg.lucide {
 
 .chip--accent {
   color: var(--accent);
+  border-color: var(--accent-line);
   background: var(--accent-dim);
 }
 

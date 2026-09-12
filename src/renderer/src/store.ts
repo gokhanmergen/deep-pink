@@ -261,6 +261,23 @@ const api = window.deepPink
 const PAGE_SIZE = 16
 
 /**
+ * A limit that no conversation reaches, which is how "all of it" is asked for.
+ *
+ * The reader who has turned paging off wants the whole thread in the window,
+ * and the query already answers that question: ask for more messages than
+ * exist and it returns from the beginning with nothing before it, so every
+ * path that pages — opening, compacting, jumping to a search hit — becomes a
+ * single whole-thread read without any of them needing to know that is what
+ * happened.
+ */
+const WHOLE_THREAD = 1_000_000
+
+/** How much of a transcript one read asks for, which the reader decides. */
+function pageSize(get: Getter): number {
+  return get().settings?.ui.loadEverythingAtOnce ? WHOLE_THREAD : PAGE_SIZE
+}
+
+/**
  * Re-reads the part of the transcript that is on screen.
  *
  * An edit, a deletion or a tool result changes rows that are already loaded, so
@@ -584,7 +601,7 @@ export const useStore = create<State>((set, get) => ({
     const place = placeOf(id)
     const { page, totals, generating, live } = await api.messages.open(
       id,
-      PAGE_SIZE,
+      pageSize(get),
       place && !place.atBottom ? place.startSeq : null
     )
     const messages = page.messages
@@ -655,7 +672,7 @@ export const useStore = create<State>((set, get) => ({
     // now describes messages that are not there any more.
     forgetPlace(threadId)
     const [page, totals] = await Promise.all([
-      api.messages.page(threadId, PAGE_SIZE, null),
+      api.messages.page(threadId, pageSize(get), null),
       api.messages.totals(threadId)
     ])
     if (get().activeThreadId !== threadId) return
@@ -703,7 +720,7 @@ export const useStore = create<State>((set, get) => ({
 
     set({ loadingOlder: true })
     try {
-      const page = await api.messages.page(threadId, PAGE_SIZE, from)
+      const page = await api.messages.page(threadId, pageSize(get), from)
 
       // Somebody opened another thread, or the window moved underneath this
       // request. Either way the page in hand belongs somewhere else, and

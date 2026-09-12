@@ -17,3 +17,6 @@ npm-debug.log*
 # `nix build` leaves its output symlinked here.
 result
 result-*
+
+# Reference reading, not part of the app. 55MB — GitHub warns on every push.
+ui-design.pdf

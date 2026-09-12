@@ -1539,6 +1539,31 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
               <Revert path="ui.animations" what="animation" />
             </label>
+
+            <div className="section-title">Loading</div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.ui.loadEverythingAtOnce}
+                onChange={(event) =>
+                  void saveSettings({ ui: { loadEverythingAtOnce: event.target.checked } })
+                }
+              />
+              <span>
+                Load everything at once
+                <span className="field__hint">
+                  Off, a conversation opens with the part you are about to read and the rest
+                  arrives as you scroll back through it, and the thread list builds in batches —
+                  which is what makes a thread of two thousand messages open as quickly as one of
+                  five. On, every message and every row is built the moment it is asked for.
+                  Opening a long thread then takes as long as the whole of it takes, but nothing
+                  is ever fetched afterwards — so the scrollbar is the true length of the
+                  conversation from the first frame, and dragging it lands where you aimed rather
+                  than where the loaded part happened to end.
+                </span>
+              </span>
+              <Revert path="ui.loadEverythingAtOnce" what="loading everything at once" />
+            </label>
           </>
         )}
 

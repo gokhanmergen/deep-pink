@@ -307,19 +307,28 @@ export function Sidebar(): React.JSX.Element {
    * behind you would move the scrollbar under your hand for no reason, and the
    * rows that are already there cost nothing to leave alone.
    */
-  const [built, setBuilt] = useState(FIRST_ROWS)
+  /*
+   * Unless the reader has asked for the whole list at once, in which case the
+   * first block *is* the whole list and every mechanism below turns itself
+   * off: `built` never falls short of the total, so nothing is ever cut and
+   * nothing is ever built ahead.
+   */
+  const atOnce = settings?.ui.loadEverythingAtOnce ?? false
+  const firstBlock = atOnce ? Number.POSITIVE_INFINITY : FIRST_ROWS
+
+  const [built, setBuilt] = useState(firstBlock)
   const listRef = useRef<HTMLDivElement>(null)
 
   // Back to the top of the list for a different library, or a search that has
   // just been cleared: what was built for one is not what is wanted for another.
   useEffect(() => {
-    setBuilt(FIRST_ROWS)
-  }, [filter])
+    setBuilt(firstBlock)
+  }, [filter, firstBlock])
 
   /** Builds the next block of rows if the end of the list is nearly in view. */
   const buildAhead = useCallback((): void => {
     const el = listRef.current
-    if (!el) return
+    if (!el || atOnce) return
     // Measured in the event rather than on a frame, for the reason the
     // transcript's own scroll handler gives: a window that is not painting
     // does not run rAF, and this decides whether there is anything to show.
@@ -331,10 +340,10 @@ export function Sidebar(): React.JSX.Element {
   // Enough to scroll, whatever the window height and however short the rows.
   useEffect(() => {
     const el = listRef.current
-    if (!el || built >= totalEntries) return
+    if (!el || atOnce || built >= totalEntries) return
     if (el.scrollHeight > el.clientHeight * 2) return
     setBuilt((n) => n + MORE_ROWS)
-  }, [built, totalEntries, sections])
+  }, [built, totalEntries, sections, atOnce])
 
   /** The sections again, cut off at what has been built. */
   const shownSections = useMemo(() => {

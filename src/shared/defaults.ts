@@ -68,7 +68,8 @@ export const DEFAULT_UI: UiSettings = {
   showReasoningByDefault: false,
   sendOnEnter: true,
   pasteAsFileThreshold: 2000,
-  animations: true
+  animations: true,
+  loadEverythingAtOnce: false
 }
 
 /**
