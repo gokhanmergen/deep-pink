@@ -95,8 +95,17 @@ export const MessageItem = memo(function MessageItem({
       ref={ref}
       style={highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : undefined}
     >
+      {/*
+        * No "YOU" over it.
+        *
+        * A label earns its place when the thing under it would be ambiguous
+        * without one, and this one never is: the reader wrote it, it is the
+        * only thing on the page sitting on a raised surface, and it carries
+        * the accent down its leading edge. Three ways of saying whose words
+        * these are, and the word itself was the one that took a line of the
+        * page to say it.
+        */}
       <div className="message__head">
-        <span className="message__role">You</span>
         <div className="message__actions">
           <button
             className="btn btn--ghost"

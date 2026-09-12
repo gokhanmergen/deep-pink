@@ -75,6 +75,27 @@ export function App(): React.JSX.Element {
     const g = Number.parseInt(hex.slice(2, 4), 16)
     const b = Number.parseInt(hex.slice(4, 6), 16)
     if ([r, g, b].every(Number.isFinite)) {
+      /*
+       * The neutrals follow the accent.
+       *
+       * Greys beside a coloured accent read as two unrelated palettes unless
+       * they carry a trace of the same hue — so the whole ramp is built on
+       * this one number, and a customised accent takes its surfaces with it
+       * rather than leaving them on the hue that shipped.
+       */
+      const max = Math.max(r, g, b)
+      const min = Math.min(r, g, b)
+      if (max !== min) {
+        const d = max - min
+        const hue =
+          max === r
+            ? ((g - b) / d + (g < b ? 6 : 0)) * 60
+            : max === g
+              ? ((b - r) / d + 2) * 60
+              : ((r - g) / d + 4) * 60
+        root.style.setProperty('--tint-h', String(Math.round(hue)))
+      }
+
       root.style.setProperty('--accent-dim', `rgba(${r}, ${g}, ${b}, 0.16)`)
       root.style.setProperty('--accent-line', `rgba(${r}, ${g}, ${b}, 0.38)`)
       // A chart's area fill is the same hue at a tenth, so a custom accent

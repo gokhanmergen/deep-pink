@@ -127,12 +127,18 @@ export const AssistantTurn = memo(function AssistantTurn({
       style={highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : undefined}
     >
       <div className="message__head">
-        <span className="message__role">Assistant</span>
-        {attributed.model && (
-          <span className="chip" title={attributed.model}>
-            {modelShortName(attributed.model)}
-          </span>
-        )}
+        {/*
+          * The model's name where the word "Assistant" was.
+          *
+          * It said "ASSISTANT" and then, in a chip beside it, which model —
+          * a label followed by the only part of the pair anybody reads. The
+          * name identifies the turn perfectly well on its own, so it is what
+          * stands at the head of it, and "Assistant" is left for replies that
+          * have no attribution to show.
+          */}
+        <span className="message__role" title={attributed.model ?? undefined}>
+          {attributed.model ? modelShortName(attributed.model) : 'Assistant'}
+        </span>
         {attributed.provider && <span className="chip">{attributed.provider}</span>}
         {toolCount > 0 && (
           <span className="chip" title="Tool calls made while answering">
