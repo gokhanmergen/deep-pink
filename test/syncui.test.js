@@ -105,11 +105,16 @@ suite(
     })()`)
     check('conversations can be chosen', scopes.some((s) => s.startsWith('Conversations')), scopes)
     check('settings can be chosen separately', scopes.some((s) => s.startsWith('Settings and MCP')), scopes)
-    check(
-      'and it says the OpenRouter key is never included',
-      scopes.join(' ').includes('OpenRouter key is never included'),
-      scopes
-    )
+    /*
+     * The promise, not the sentence that makes it.
+     *
+     * This matched a phrase word for word and broke the day the panel's copy
+     * was shortened — while the panel still said the thing. What has to hold
+     * is that the row about settings names the key and says it does not go;
+     * how that is worded is the copy's business.
+     */
+    const promise = scopes.find((s) => s.includes('OpenRouter key')) ?? ''
+    check('and it says the OpenRouter key never travels', /never/i.test(promise), scopes)
 
     // Which way it goes used to be nowhere on screen and nowhere in the
     // settings either: it was two-way because that is what the code did.
