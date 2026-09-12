@@ -1268,6 +1268,73 @@ svg.lucide {
 }
 
 /*
+ * A paragraph folded away until it is asked for.
+ *
+ * Deliberately not the `.disclosure` a reasoning trace uses: that one is a
+ * box, and a box under every third field would be exactly the clutter this is
+ * meant to remove. This is a word and a caret, at the size and colour of the
+ * hint it replaces, so a panel full of them still reads as a list of settings
+ * rather than a list of boxes.
+ */
+.more {
+  margin: calc(var(--s1) * -1) 0 var(--s4);
+}
+
+.more__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 0;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: var(--t-small);
+  color: var(--text-dim);
+  transition: color var(--quick);
+}
+
+.more__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.more__toggle:hover {
+  color: var(--text-muted);
+}
+
+.more__toggle svg {
+  transition: transform var(--quick);
+}
+
+.more[open] > .more__toggle svg {
+  transform: rotate(90deg);
+}
+
+/* The measure is narrower than the panel's, because this is prose and the
+   fields above it are not. */
+.more__body {
+  max-width: 58ch;
+  margin-top: var(--s1);
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  color: var(--text-dim);
+}
+
+.more__body p {
+  margin: 0 0 var(--s2);
+}
+
+.more__body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Tucked under the label of the switch it belongs to rather than under the
+   control: 34px of track and the 10px gap beside it. Inside a field it is
+   already aligned with everything else, so it stays where it is. */
+.switch + .more {
+  margin-left: 44px;
+}
+
+/*
  * In Settings a switch is a row of a list, so it gets the shape of one: its
  * own padding, its own hover, and a target that reaches the full width rather
  * than ending wherever the sentence happens to end. The panel's own margin is
