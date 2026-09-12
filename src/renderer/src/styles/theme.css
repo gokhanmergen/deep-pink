@@ -6,6 +6,10 @@
      a chart mark and a button without being re-picked for either. */
   --accent: #8a8eff;
   --accent-hover: #a8b6ff;
+  /* What goes *on* the accent. A near-black carrying a trace of the accent's
+     own hue, so a filled button reads as one object lit from the same side
+     rather than as two colours meeting. */
+  --on-accent: #0b0b16;
   --accent-dim: rgba(138, 142, 255, 0.16);
   --accent-line: rgba(138, 142, 255, 0.38);
   /* The area-fill wash: the accent at ~10%, which is a tint of the surface
@@ -39,9 +43,71 @@
   /* Chart furniture: one step off the surface, and never louder than the data. */
   --viz-grid: #1b1b1b;
 
-  --radius: 8px;
-  --radius-sm: 5px;
+  /* ---------------------------------------------------------------- *
+   * Scales
+   *
+   * Everything below exists so that nothing in this app is spaced, weighted
+   * or sized by eye. A value chosen once and reused reads as a system; forty
+   * values each chosen in the moment read as forty decisions, which is what
+   * "busy" actually is.
+   * ---------------------------------------------------------------- */
+
+  /* Space, on a 4px base. Nine steps is enough for an app this size and few
+     enough that reaching for the next one up is a decision rather than a
+     shrug. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+  --s9: 56px;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 9px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Type. Four sizes and three weights, because a scale with nine of each is
+     a scale nobody keeps to: 400 to read with, 510 for interface text, 590
+     for the few things that have to be found without looking. */
   --font-size: 14px;
+  --t-micro: 11px;
+  --t-small: 12px;
+  --t-ui: 13px;
+
+  --w-read: 400;
+  --w-ui: 510;
+  --w-strong: 590;
+
+  /* A dark surface eats the gaps inside letterforms, so small interface text
+     is given a little air back. Uppercase micro-labels need much more of it,
+     since capitals have no ascenders or descenders to be told apart by. */
+  --track-ui: 0.006em;
+  --track-caps: 0.08em;
+
+  /* Depth is carried by surface steps and hairlines rather than by shadow —
+     a drop shadow on an almost-black canvas is a smudge. This is the one
+     exception: a single pixel of light along the top edge of something
+     raised, which is what makes a control feel like an object rather than a
+     rectangle of slightly different grey. */
+  --lift: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  /* For a surface that floats over the app rather than sitting in it. */
+  --shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--border);
+
+  /* One height for controls that sit in a row together, so a row of them has
+     one baseline rather than four. */
+  --control-h: 28px;
+  --control-h-sm: 22px;
+
+  /* How long anything takes. Two speeds: one you do not notice, and one you
+     just barely do. */
+  --quick: 0.1s;
+  --settle: 0.18s;
+
   /* The measure the transcript and the composer share. Set from settings. */
   --chat-width: 780px;
 
@@ -51,6 +117,9 @@
     'Liberation Mono', monospace;
 
   color-scheme: dark;
+  /* Anything the browser draws itself — a checkbox, a range, a spinner — takes
+     the app's colour rather than Chromium's blue. */
+  accent-color: var(--accent);
 }
 
 * {
@@ -69,9 +138,84 @@ body {
   color: var(--text);
   font-family: var(--sans);
   font-size: var(--font-size);
-  line-height: 1.55;
+  /* Generous, because this is a reading surface first. Interface text takes
+     its own tighter leading below rather than inheriting a measure meant for
+     paragraphs. */
+  line-height: 1.6;
+  font-weight: var(--w-read);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Proportional figures read better in prose; anywhere a column of numbers
+     has to line up asks for tabular explicitly. */
+  font-variant-numeric: proportional-nums;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
+}
+
+/*
+ * Nothing in this app animates to tell you something — every transition here
+ * is a softening of a change you asked for. So when motion is unwelcome, all
+ * of it goes, and the app still says exactly the same things, immediately.
+ *
+ * Two switches, and the system's wins. `prefers-reduced-motion` is somebody
+ * telling their whole computer; the setting is somebody telling this app. An
+ * app that respected only its own would be ignoring the louder of the two.
+ *
+ * Killed by duration rather than by `animation: none`, so an animation that
+ * ends somewhere other than where it started still lands there — it just
+ * lands immediately.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-animations='off'] *,
+:root[data-animations='off'] *::before,
+:root[data-animations='off'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * The motion itself
+ *
+ * Every one of these moves opacity and transform and nothing else, because
+ * those are the two the compositor can do without asking the main thread —
+ * which matters in an app that is often laying out a long transcript while
+ * something is arriving.
+ *
+ * One easing for things coming in: a fast start that settles rather than
+ * decelerating evenly, which is what makes a panel feel placed instead of
+ * slid. And short — the longest thing here is under a fifth of a second.
+ * ------------------------------------------------------------------ */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
 }
 
 button,
@@ -93,10 +237,25 @@ button {
   background: var(--accent-dim);
 }
 
+/*
+ * One focus ring, everywhere, and only for the keyboard.
+ *
+ * Offset so it sits clear of the control rather than on its edge, where it
+ * reads as a border that changed colour. Two pixels because one disappears
+ * against a hairline.
+ */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+
+/* A text field already has a lit border when focused; a ring outside it as
+   well is two rings. */
+.input:focus-visible,
+.textarea:focus-visible,
+.select:focus-visible {
+  outline: none;
 }
 
 /* Scrollbars — present but quiet. */
@@ -108,14 +267,19 @@ button {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2a34;
-  border-radius: 6px;
-  border: 2px solid transparent;
+  background: #232330;
+  border-radius: var(--radius-sm);
+  border: 3px solid transparent;
   background-clip: content-box;
+  transition: background var(--quick);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a48;
+  background: #3a3a4a;
   background-clip: content-box;
+}
+/* Where two scrollbars meet, and the little box Chromium draws between them. */
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ------------------------------------------------------------------ *
@@ -140,6 +304,9 @@ button {
  * ------------------------------------------------------------------ */
 
 .sidebar {
+  /* Mounted and unmounted outright rather than hidden, so it can come from
+     the edge it lives on. */
+  animation: slide-from-left 0.16s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
   background: var(--bg-sidebar);
@@ -186,18 +353,66 @@ button {
   -webkit-app-region: no-drag;
 }
 
-.sidebar__brand-mark {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  background: var(--accent);
+/*
+ * The app's icon, cut to the shape a dock icon is cut to.
+ *
+ * `corner-shape: squircle` is the real thing rather than an approximation of
+ * it: a continuous curve where a plain radius is an arc spliced between two
+ * straight edges, which at this size is the difference between a mark that
+ * looks drawn and one that looks cropped. Chromium falls back to the plain
+ * radius where it does not know the property, which is a rounded square —
+ * not wrong, just less right.
+ *
+ * Apple's own icon grid works out at 22.37%; this is rounder than that on
+ * purpose. A squircle at a given radius reads *less* round than an arc at the
+ * same number, because the curve hugs the corner for longer before it turns —
+ * so matching the platform's figure comes out looking squarer than the
+ * platform does. 50% would be a circle.
+ *
+ * The hairline is a ring just *outside* the tile rather than inside it. An
+ * inset shadow on an `<img>` paints behind the image — the picture is replaced
+ * content and sits above the element's own background and shadows — so a rim
+ * drawn that way is a rim nobody ever sees. A zero-blur spread outside follows
+ * the same curve, is drawn over nothing, and takes none of the artwork.
+ */
+.logo {
   flex: none;
+  border-radius: 28%;
+  corner-shape: squircle;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07);
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/*
+ * The mark on the cold-start screen.
+ *
+ * Given a real shadow, which nothing else in this app gets: for the second it
+ * is on screen it is the only thing on it, sitting on the canvas rather than
+ * in a layout, and a tile with nothing under it reads as a sticker.
+ */
+.logo--splash {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 18px 40px -12px rgba(0, 0, 0, 0.8);
+  animation: splash-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Nothing is waiting on this, so it settles rather than announcing itself. */
+.splash {
+  gap: var(--s5);
+}
+
+@keyframes splash-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
 }
 
 .sidebar__brand-name {
-  font-size: 13px;
-  font-weight: 550;
-  letter-spacing: -0.01em;
+  font-size: var(--t-ui);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.012em;
   color: var(--text-muted);
 }
 
@@ -256,13 +471,26 @@ button {
   background-clip: content-box;
 }
 
+/*
+ * "Today", "Previous 7 days", "Pinned".
+ *
+ * More space above than below, because the label belongs to the rows under it
+ * — the same rule the headings inside a reply follow. Small, tracked and dim:
+ * it is a divider that happens to have a word on it.
+ */
 .sidebar__group-label {
-  padding: 10px 8px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  padding: var(--s4) var(--s2) var(--s1);
+  font-size: 10px;
+  font-weight: var(--w-strong);
+  letter-spacing: var(--track-caps);
   text-transform: uppercase;
   color: var(--text-dim);
+}
+
+/* Except the first, which would otherwise push the whole list down. */
+.sidebar__list > *:first-child > .sidebar__group-label,
+.sidebar__list > .sidebar__group-label:first-child {
+  padding-top: var(--s2);
 }
 
 /* A quieter row than the buttons above it: filing threads is housekeeping, and
@@ -362,7 +590,7 @@ svg.lucide {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 550;
+  font-weight: var(--w-ui);
 }
 
 .folder__count {
@@ -375,6 +603,8 @@ svg.lucide {
 /* Indented, and hung off a line, so a thread reads as being inside the folder
    rather than merely under it. */
 .folder__contents {
+  /* Opening a folder is a thing you did; the rows arriving say it happened. */
+  animation: fade-in 0.16s ease-out;
   margin: 2px 0 4px 13px;
   padding-left: 7px;
   border-left: 1px solid var(--border-strong);
@@ -457,11 +687,15 @@ svg.lucide {
    still means something. */
 
 .thread-item {
+  /* Rows arrive in blocks as the list is built and as it is scrolled, so this
+     runs sixty at a time. Opacity only, and short: sixty things moving at once
+     is a list that shuffles. */
+  animation: fade-in 0.18s ease-out;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--s2) 10px;
   border-radius: var(--radius-sm);
   /* Transparent rather than absent, so gaining a border on selection does not
      move the row by a pixel. */
@@ -469,6 +703,7 @@ svg.lucide {
   text-align: left;
   color: var(--text-muted);
   min-width: 0;
+  transition: background var(--quick), color var(--quick);
 
   /* The rows built but scrolled past are not laid out or painted.
    *
@@ -487,15 +722,35 @@ svg.lucide {
   color: var(--text);
 }
 
+/*
+ * The open conversation.
+ *
+ * It was a lifted surface with a drawn border, which in a list of two hundred
+ * rows is a box floating in the middle of a column — the heaviest thing in
+ * the sidebar, marking the one row you already know you are on. A filled
+ * surface and a lit edge say it without the outline.
+ */
 .thread-item[data-active='true'] {
   background: var(--bg-elevated);
-  border-color: var(--border-strong);
+  border-color: transparent;
   color: var(--text);
+  position: relative;
+}
+
+.thread-item[data-active='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
 }
 
 .thread-item[data-active='true'] .thread-item__title {
   color: var(--text);
-  font-weight: 650;
+  font-weight: var(--w-strong);
 }
 
 .thread-item[data-active='true'] .thread-item__sub,
@@ -519,7 +774,9 @@ svg.lucide {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
+  font-size: var(--t-ui);
+  font-weight: var(--w-ui);
+  letter-spacing: var(--track-ui);
 }
 
 .thread-item__pin {
@@ -589,18 +846,30 @@ svg.lucide {
   height: 100%;
 }
 
+/*
+ * The bar over the conversation.
+ *
+ * On the same surface as the composer at the other end of the window, so the
+ * reading sits between two pieces of chrome that are visibly the same thing
+ * rather than three surfaces stacked.
+ */
 .topbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: var(--s2);
+  min-height: 46px;
+  padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex: none;
 }
 
 .topbar__title {
-  font-weight: 550;
+  font-size: var(--t-ui);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.008em;
+  color: var(--text);
+  padding: 0 var(--s1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -661,18 +930,33 @@ svg.lucide {
  * Buttons & chips
  * ------------------------------------------------------------------ */
 
+/*
+ * One control height, one radius, one transition.
+ *
+ * A row of buttons whose heights come out of their padding is a row of
+ * buttons with four baselines — which is the sort of thing nobody can name
+ * and everybody can see. `min-height` rather than `height` so a button that
+ * wraps or carries something tall still grows.
+ */
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: var(--control-h);
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-elevated);
+  box-shadow: var(--lift);
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--t-ui);
+  font-weight: var(--w-ui);
+  letter-spacing: var(--track-ui);
+  line-height: 1.2;
   white-space: nowrap;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--quick), color var(--quick), border-color var(--quick),
+    box-shadow var(--quick);
 }
 
 .btn:hover {
@@ -681,22 +965,31 @@ svg.lucide {
   border-color: var(--border-strong);
 }
 
+/* Pressed, and it says so. A control that only reacts on hover feels like a
+   picture of a control. */
+.btn:active {
+  box-shadow: none;
+  transform: translateY(0.5px);
+}
+
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #14040c;
-  font-weight: 600;
+  color: var(--on-accent);
+  font-weight: var(--w-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .btn--primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  color: #14040c;
+  color: var(--on-accent);
 }
 
 .btn--ghost {
   background: transparent;
   border-color: transparent;
+  box-shadow: none;
 }
 
 .btn--ghost:hover {
@@ -707,13 +1000,15 @@ svg.lucide {
 /* For a button that sits inside a line of information rather than in a bar of
    its own — the context gauge's, which must not out-shout the reading. */
 .btn--small {
-  padding: 2px 8px;
-  font-size: 11px;
+  min-height: var(--control-h-sm);
+  padding: 0 var(--s2);
+  font-size: var(--t-micro);
 }
 
 .btn--danger:hover {
   color: var(--red);
   border-color: var(--red);
+  background: rgba(226, 106, 92, 0.1);
 }
 
 .btn[data-on='true'] {
@@ -723,19 +1018,28 @@ svg.lucide {
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn:disabled:hover {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border-color: var(--border);
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 7px;
-  border-radius: 999px;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--t-micro);
+  font-weight: var(--w-ui);
+  letter-spacing: var(--track-ui);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -746,14 +1050,22 @@ svg.lucide {
   background: var(--accent-dim);
 }
 
+/* Drawn as the key it stands for: a face lit along its top edge and a slightly
+   darker line under it, which is the whole of what makes a rectangle read as
+   something that can be pressed. */
 .kbd {
   display: inline-block;
-  padding: 1px 5px;
-  border-radius: 4px;
+  min-width: 18px;
+  padding: 1px var(--s1) 2px;
+  border-radius: var(--radius-xs);
   border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
   background: var(--bg-elevated);
+  box-shadow: var(--lift);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -766,18 +1078,27 @@ svg.lucide {
 .textarea,
 .select {
   width: 100%;
-  padding: 7px 10px;
+  min-height: var(--control-h);
+  padding: var(--s1) 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-input);
   color: var(--text);
+  font-size: var(--t-ui);
   outline: none;
+  /* Sunk rather than raised: a field is a hole in the surface, which is the
+     one place the light goes the other way. */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: border-color var(--quick), box-shadow var(--quick);
 }
 
+/* A ring outside the border rather than a heavier border, so nothing inside
+   the field moves by a pixel when it takes focus. */
 .input:focus,
 .textarea:focus,
 .select:focus {
   border-color: var(--accent-line);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 3px var(--accent-dim);
 }
 
 .input::placeholder,
@@ -799,8 +1120,9 @@ svg.lucide {
 }
 
 .field__label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--t-small);
+  font-weight: var(--w-strong);
+  letter-spacing: var(--track-ui);
   color: var(--text);
 }
 
@@ -919,13 +1241,13 @@ svg.lucide {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 22px 0 8px;
+  padding: var(--s7) 0 var(--s2);
 }
 
 .transcript__inner {
   max-width: var(--chat-width);
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 var(--s6);
 }
 
 /* The top of a conversation that has more above it. Deliberately quiet and
@@ -944,8 +1266,25 @@ svg.lucide {
   user-select: none;
 }
 
+/*
+ * The turn, and the space around it.
+ *
+ * A conversation is read down the page, so what separates one turn from the
+ * next has to be bigger than anything inside a turn — otherwise a reply with
+ * two paragraphs looks like two turns. This is the largest gap in the app for
+ * that reason, and everything within a message is spaced well under it.
+ */
 .message {
-  margin-bottom: 22px;
+  margin-bottom: var(--s7);
+
+  /* Deliberately a fade and not a rise.
+   *
+   * `content-visibility` below means a message off screen is not rendered, and
+   * an animation on something not rendered does not run — it starts when the
+   * message is scrolled to. A fade arriving that way reads as the page
+   * catching up; anything that also *moved* would read as the page shifting
+   * under a reader who is only scrolling. */
+  animation: fade-in 0.22s ease-out;
 
   /* The browser is told it may skip a message it is not showing.
    *
@@ -965,34 +1304,51 @@ svg.lucide {
 }
 
 .message[data-density='compact'] {
-  margin-bottom: 14px;
+  margin-bottom: var(--s5);
 }
 
 .message__head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--s2);
+  min-height: 20px;
+  margin-bottom: var(--s2);
 }
 
+/*
+ * Who is speaking, said as quietly as it can be while still being findable.
+ *
+ * It was set in bold capitals, which on a page of prose is the loudest thing
+ * on screen — and it is the least interesting: by the second turn the reader
+ * knows the pattern and is looking at the words. Capitals still, because a
+ * micro-label wants a shape of its own, but at a weight and a colour that let
+ * the eye pass over them.
+ *
+ * The accent is gone from "you" as well. The user's own words already sit on
+ * a surface of their own, which says the same thing without spending the one
+ * colour this app keeps for things you can act on.
+ */
 .message__role {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
+  font-size: 10px;
+  font-weight: var(--w-strong);
+  letter-spacing: var(--track-caps);
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
-.message[data-role='user'] .message__role {
-  color: var(--accent);
-}
-
+/*
+ * What you can do to a message, kept off the page until you are near it.
+ *
+ * Held at zero opacity rather than removed so nothing reflows when they
+ * appear — a row of controls that pushes the text sideways on hover is worse
+ * than a row that was always there.
+ */
 .message__actions {
   display: flex;
   gap: 2px;
   margin-left: auto;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--quick);
 }
 
 .message:hover .message__actions,
@@ -1005,12 +1361,24 @@ svg.lucide {
   overflow-wrap: anywhere;
 }
 
+/*
+ * The user's own words, on a surface of their own.
+ *
+ * It was a fully bordered box with a bright accent rule down one side, which
+ * made every question the reader asked louder than every answer they got
+ * back. A conversation should read as the answers with the questions in
+ * between, not the other way round.
+ *
+ * So: a raised surface, one hairline, and the accent reduced to a trace along
+ * the leading edge — enough to say "this one is yours" at a glance down the
+ * page, not enough to be read before the text is.
+ */
 .message[data-role='user'] .message__body {
-  background: var(--bg-elevated);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--accent-line);
   border-radius: var(--radius);
-  padding: 10px 14px;
+  padding: var(--s3) var(--s4);
 }
 
 .message__footer {
@@ -1030,45 +1398,75 @@ svg.lucide {
   font-size: 13px;
 }
 
+/*
+ * The cursor at the end of a reply still being written.
+ *
+ * A soft pulse rather than a hard blink: a square switching on and off at the
+ * end of a paragraph is hard to read past, and this sits next to text somebody
+ * is trying to read while it moves. Under reduced motion it simply stays lit,
+ * which says the same thing.
+ */
 .caret {
   display: inline-block;
-  width: 7px;
-  height: 15px;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  border-radius: 1px;
   vertical-align: text-bottom;
   background: var(--accent);
-  animation: blink 1s steps(2, start) infinite;
+  animation: caret 1.1s ease-in-out infinite;
 }
 
-@keyframes blink {
-  to {
-    visibility: hidden;
+@keyframes caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
   }
 }
 
 /* Reasoning & tool disclosures */
 
+/*
+ * Reasoning, tool calls, anything folded away.
+ *
+ * These sit inside a reply, so they must read as an aside rather than as
+ * another reply: one step down in surface, one hairline, and a summary line
+ * that is the same size as the metadata around it rather than the prose.
+ */
 .disclosure {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-panel);
-  margin: 8px 0;
+  margin: var(--s3) 0;
   overflow: hidden;
 }
 
 .disclosure__summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: var(--s2);
+  min-height: var(--control-h);
+  padding: var(--s1) 10px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--t-small);
+  letter-spacing: var(--track-ui);
   color: var(--text-muted);
   list-style: none;
   user-select: none;
+  transition: background var(--quick), color var(--quick);
 }
 
 .disclosure__summary::-webkit-details-marker {
   display: none;
+}
+
+/* The one rotation in the app: a marker that turns to point at what it has
+   opened, which is the convention this control has had for thirty years. */
+.disclosure__summary svg:first-of-type {
+  transition: transform var(--settle) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .disclosure__summary:hover {
@@ -1077,6 +1475,7 @@ svg.lucide {
 }
 
 .disclosure__content {
+  animation: fade-in 0.14s ease-out;
   padding: 8px 12px 12px;
   border-top: 1px solid var(--border);
   font-size: 13px;
@@ -1092,6 +1491,70 @@ svg.lucide {
   margin: 0;
 }
 
+/*
+ * "Back to the latest."
+ *
+ * A chat scrolled up during a reply strands the reader: the text they want is
+ * being written somewhere below them and the only way back is to drag. This
+ * appears when they are away from the end and goes when they return, which
+ * are the only two states it has.
+ *
+ * Anchored to the transcript rather than the window so it sits over the
+ * conversation and not over the composer.
+ */
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: var(--s4);
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--control-h);
+  padding: 0 var(--s3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.7), var(--lift);
+  color: var(--text-muted);
+  font-size: var(--t-small);
+  font-weight: var(--w-ui);
+  letter-spacing: var(--track-ui);
+  white-space: nowrap;
+  animation: jump-in var(--settle) cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color var(--quick), border-color var(--quick), background var(--quick);
+}
+
+.jump-latest:hover {
+  color: var(--text);
+  border-color: var(--accent-line);
+  background: var(--bg-input);
+}
+
+/* Something arrived while you were reading further up. */
+.jump-latest[data-new='true'] {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-dim);
+}
+
+@keyframes jump-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+}
+
+/* What the button is positioned against: the reading, not the window. */
+.transcript-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 /* ------------------------------------------------------------------ *
  * Markdown
  * ------------------------------------------------------------------ */
@@ -1104,37 +1567,59 @@ svg.lucide {
 }
 
 .md p {
-  margin: 0 0 12px;
+  margin: 0 0 var(--s3);
 }
 
+/*
+ * Headings inside a reply.
+ *
+ * The gap above one is much larger than the gap below it, because a heading
+ * belongs to what follows it rather than floating between two blocks — which
+ * is the difference between prose that is sectioned and prose with lines of
+ * bold text in it. Tracking tightens as size grows, the way it has to: the
+ * same spacing that opens up small text pulls large text apart.
+ */
 .md h1,
 .md h2,
 .md h3,
 .md h4 {
-  margin: 22px 0 10px;
-  line-height: 1.3;
-  font-weight: 620;
-  letter-spacing: -0.01em;
+  margin: var(--s6) 0 var(--s2);
+  line-height: 1.25;
+  font-weight: var(--w-strong);
+  letter-spacing: -0.014em;
+  color: var(--text);
 }
 
 .md h1 {
-  font-size: 1.4em;
+  font-size: 1.35em;
+  letter-spacing: -0.02em;
 }
 .md h2 {
-  font-size: 1.22em;
+  font-size: 1.2em;
+  letter-spacing: -0.016em;
 }
 .md h3 {
-  font-size: 1.08em;
+  font-size: 1.06em;
+}
+.md h4 {
+  font-size: 1em;
+  color: var(--text-muted);
 }
 
 .md ul,
 .md ol {
-  margin: 0 0 12px;
-  padding-left: 22px;
+  margin: 0 0 var(--s3);
+  padding-left: var(--s5);
 }
 
 .md li {
-  margin: 3px 0;
+  margin: var(--s1) 0;
+}
+
+/* A list inside a list is part of its parent item, not a new block. */
+.md li > ul,
+.md li > ol {
+  margin: var(--s1) 0 0;
 }
 
 .md li::marker {
@@ -1152,8 +1637,8 @@ svg.lucide {
 }
 
 .md blockquote {
-  margin: 0 0 12px;
-  padding: 2px 0 2px 14px;
+  margin: 0 0 var(--s3);
+  padding: 2px 0 2px var(--s4);
   border-left: 2px solid var(--border-strong);
   color: var(--text-muted);
 }
@@ -1161,43 +1646,67 @@ svg.lucide {
 .md hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 20px 0;
+  margin: var(--s6) 0;
 }
 
+/* Inline code, which sits inside a line of prose and must not change its
+   height. No border: at this size a hairline around three words is noise, and
+   the surface step alone is enough to set it apart. */
 .md code {
   font-family: var(--mono);
-  font-size: 0.88em;
-  padding: 1.5px 5px;
-  border-radius: 4px;
+  font-size: 0.86em;
+  padding: 0.1em 0.34em;
+  border-radius: var(--radius-xs);
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  color: var(--text);
 }
 
+/*
+ * Tables: ruled along the rows only.
+ *
+ * A full grid draws a box around every cell, which makes the lines the first
+ * thing read and the figures the second. Horizontal rules alone are enough to
+ * follow a row across, and the header earns the one heavier line.
+ */
 .md table {
   width: 100%;
   border-collapse: collapse;
-  margin: 0 0 14px;
-  font-size: 13px;
+  margin: 0 0 var(--s4);
+  font-size: var(--t-ui);
   display: block;
   overflow-x: auto;
 }
 
 .md th,
 .md td {
-  border: 1px solid var(--border);
-  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: var(--s2) var(--s3);
   text-align: left;
 }
 
 .md th {
-  background: var(--bg-elevated);
-  font-weight: 600;
+  border-bottom: 1px solid var(--border-strong);
+  font-weight: var(--w-strong);
+  font-size: var(--t-small);
+  letter-spacing: var(--track-ui);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.md tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Figures line up when they are meant to be compared down a column. */
+.md td {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Code blocks */
 
 .codeblock {
-  margin: 0 0 14px;
+  margin: 0 0 var(--s4);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-elevated);
@@ -1207,11 +1716,15 @@ svg.lucide {
 .codeblock__head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
+  gap: var(--s2);
+  min-height: 30px;
+  padding: 0 var(--s3);
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: var(--w-ui);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
   color: var(--text-dim);
 }
 
@@ -1220,12 +1733,24 @@ svg.lucide {
   text-transform: lowercase;
 }
 
+/* Quiet until the block is pointed at — the same rule the chart and document
+   source switches follow, so every "there is something here" in a reply
+   behaves the same way. */
 .codeblock__copy {
   margin-left: auto;
   color: var(--text-dim);
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: 10px;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-xs);
+  opacity: 0;
+  transition: opacity var(--quick), color var(--quick), background var(--quick);
+}
+
+.codeblock:hover .codeblock__copy,
+.codeblock__copy:focus-visible {
+  opacity: 1;
 }
 
 .codeblock__copy:hover {
@@ -1235,7 +1760,7 @@ svg.lucide {
 
 .codeblock pre {
   margin: 0;
-  padding: 12px 14px;
+  padding: var(--s3) var(--s4);
   overflow-x: auto;
   font-family: var(--mono);
   font-size: 12.5px;
@@ -1266,7 +1791,7 @@ svg.lucide {
   flex: none;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
-  padding: 12px 24px 14px;
+  padding: var(--s3) var(--s6) var(--s4);
 }
 
 .composer__inner {
@@ -1274,39 +1799,71 @@ svg.lucide {
   margin: 0 auto;
 }
 
+/*
+ * The box you type into: the one thing on screen that should always look
+ * ready. A larger radius than anything else in the app, because it is the
+ * largest single surface in the chrome and the same corner at this size reads
+ * as a sharper one.
+ */
 .composer__box {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
   background: var(--bg-input);
-  transition: border-color 0.12s;
+  box-shadow: var(--lift);
+  transition: border-color var(--settle), box-shadow var(--settle);
 }
 
 .composer__box:focus-within {
   border-color: var(--accent-line);
+  /* A ring rather than a thicker border, so nothing inside the box moves by a
+     pixel when it takes focus. */
+  box-shadow: var(--lift), 0 0 0 3px var(--accent-dim);
 }
 
 .composer__textarea {
   width: 100%;
   border: none;
   background: none;
-  padding: 11px 13px;
+  padding: var(--s3) var(--s4);
   resize: none;
   outline: none;
   max-height: 320px;
-  min-height: 44px;
+  min-height: 46px;
   line-height: 1.55;
   font-family: inherit;
+}
+
+.composer__textarea::placeholder {
+  color: var(--text-dim);
 }
 
 .composer__bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px 8px;
+  gap: var(--s1);
+  padding: var(--s1) var(--s2) var(--s2);
   flex-wrap: wrap;
 }
 
+/* Send sits at the far end on its own, which is the whole of what the row of
+   text beside it used to say. */
+.composer__bar .btn--primary,
+.composer__bar .btn--danger {
+  margin-left: auto;
+}
+
+/* Drawn as buttons, because they are buttons. Stripping the border made them
+   read as labels with an icon — you could not tell what was pressable without
+   pointing at it, and a row of controls you have to hunt over is worse than a
+   row of controls that is visibly a row of controls. */
+.composer__bar .btn[data-on='true'] {
+  background: var(--accent-dim);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
 .composer__notice {
+  animation: rise-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   margin-bottom: 8px;
   padding: 7px 11px;
   border-radius: var(--radius-sm);
@@ -1317,12 +1874,6 @@ svg.lucide {
   line-height: 1.5;
 }
 
-.composer__hint {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
 /* ------------------------------------------------------------------ *
  * Overlays
  * ------------------------------------------------------------------ */
@@ -1330,13 +1881,23 @@ svg.lucide {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5, 5, 8, 0.68);
-  backdrop-filter: blur(3px);
+  background: rgba(4, 4, 7, 0.72);
+  /* Enough to push the app behind out of focus without becoming a second
+     thing being rendered: this covers the whole window, and the app it covers
+     is often mid-reply. */
+  backdrop-filter: blur(5px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 8vh 20px 20px;
+  padding: 8vh var(--s5) var(--s5);
   z-index: 100;
+  animation: overlay-in var(--settle) ease-out;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .overlay--center {
@@ -1344,18 +1905,32 @@ svg.lucide {
   padding: 40px 20px;
 }
 
+/*
+ * A panel floats, so it is the one place a shadow earns its keep — and it gets
+ * the light along its top edge for the same reason a button does.
+ */
 .panel {
   container: panel / inline-size;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.7), var(--lift);
   width: 100%;
   max-width: 640px;
   max-height: 82vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* A short rise rather than a fade alone: it says the panel came from in
+     front of the app rather than appearing in place. */
+  animation: panel-in var(--settle) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
 }
 
 .panel--wide {
@@ -1365,18 +1940,21 @@ svg.lucide {
 .panel__head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: var(--s3);
+  min-height: 48px;
+  padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--border);
   flex: none;
 }
 
 .panel__title {
-  font-weight: 600;
+  font-size: var(--t-ui);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.008em;
 }
 
 .panel__body {
-  padding: 16px;
+  padding: var(--s4);
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -1414,13 +1992,14 @@ svg.lucide {
 .cmdlist__section {
   padding: 8px 10px 4px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
 .cmditem {
+  animation: fade-in 0.14s ease-out;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1504,7 +2083,7 @@ svg.lucide {
 .tabs__label {
   padding: 0 8px 4px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -1569,7 +2148,7 @@ svg.lucide {
 
 .section-title {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: var(--w-strong);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -1608,7 +2187,7 @@ svg.lucide {
 
 .stat__value {
   font-size: 20px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
@@ -1636,7 +2215,7 @@ svg.lucide {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-dim);
-  font-weight: 600;
+  font-weight: var(--w-strong);
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
 }
@@ -1657,18 +2236,19 @@ svg.lucide {
 }
 
 .meter {
-  height: 6px;
-  border-radius: 999px;
+  height: 4px;
+  border-radius: var(--radius-pill);
   background: var(--bg-input);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: var(--s1);
 }
 
 .meter__fill {
   height: 100%;
   background: var(--accent);
-  border-radius: 999px;
-  transition: width 0.3s;
+  border-radius: var(--radius-pill);
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), background var(--settle);
 }
 
 .meter__fill[data-warn='true'] {
@@ -1759,7 +2339,7 @@ svg.lucide {
    chart they are pointing at, and came for the number. */
 .viz__tip-value {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1836,7 +2416,7 @@ svg.lucide {
 
 .hero__value {
   font-size: 34px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
@@ -1878,7 +2458,7 @@ svg.lucide {
 
 .tile__value {
   font-size: 19px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -1954,7 +2534,7 @@ svg.lucide {
   padding: 4px 11px;
   border-radius: 4px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: 0.04em;
   line-height: 1.3;
   text-transform: uppercase;
@@ -2002,7 +2582,7 @@ svg.lucide {
 }
 
 .viz-head__title {
-  font-weight: 600;
+  font-weight: var(--w-strong);
 }
 
 .bar-row {
@@ -2031,22 +2611,36 @@ svg.lucide {
  * Misc
  * ------------------------------------------------------------------ */
 
+/*
+ * Nothing here yet.
+ *
+ * The measure is the thing that matters: an empty state centred across the
+ * full width of a window puts eight words on one line and reads as a system
+ * message. Held to a paragraph's width it reads as a sentence somebody wrote.
+ */
 .empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: var(--s3);
   height: 100%;
   color: var(--text-dim);
   text-align: center;
-  padding: 40px;
+  padding: var(--s8) var(--s5);
+}
+
+.empty p {
+  max-width: 46ch;
+  margin: 0;
+  line-height: 1.6;
 }
 
 .empty__title {
-  font-size: 17px;
-  color: var(--text-muted);
-  font-weight: 550;
+  font-size: 19px;
+  letter-spacing: -0.016em;
+  color: var(--text);
+  font-weight: var(--w-strong);
 }
 
 .muted {
@@ -2120,11 +2714,19 @@ svg.lucide {
   border: 1px solid var(--border-strong);
   border-left: 2px solid var(--accent);
   border-radius: var(--radius);
-  padding: 9px 14px;
-  font-size: 13px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  padding: var(--s2) var(--s4);
+  font-size: var(--t-ui);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.7), var(--lift);
+  animation: toast-in var(--settle) cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 200;
   max-width: 70vw;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
 }
 
 .toast[data-tone='error'] {
@@ -2218,6 +2820,7 @@ svg.lucide {
 }
 
 .attachment {
+  animation: rise-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   display: block;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -2255,7 +2858,7 @@ svg.lucide {
 .textchip__name {
   display: block;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   padding-right: 18px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2321,12 +2924,20 @@ svg.lucide {
 
 .context-menu {
   position: fixed;
-  min-width: 176px;
-  padding: 4px;
+  min-width: 188px;
+  padding: var(--s1);
   border-radius: var(--radius);
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.7), var(--lift);
+  animation: menu-in var(--quick) ease-out;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 
 .context-menu__item {
@@ -2372,7 +2983,7 @@ svg.lucide {
   background: var(--accent-dim);
   color: var(--accent);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -2411,7 +3022,7 @@ svg.lucide {
 
 .dialog__title {
   font-size: 15px;
-  font-weight: 620;
+  font-weight: var(--w-strong);
   letter-spacing: -0.01em;
   margin-bottom: 6px;
 }
@@ -2434,7 +3045,7 @@ svg.lucide {
   background: var(--red);
   border-color: var(--red);
   color: #1a0406;
-  font-weight: 600;
+  font-weight: var(--w-strong);
 }
 
 .btn--danger-solid:hover {
@@ -2480,7 +3091,7 @@ svg.lucide {
 }
 
 .repochip__name {
-  font-weight: 550;
+  font-weight: var(--w-ui);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2515,6 +3126,7 @@ svg.lucide {
  * ------------------------------------------------------------------ */
 
 .chartblock {
+  animation: rise-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   margin: 0 0 14px;
   padding: 10px 12px 12px;
   border: 1px solid var(--border);
@@ -2543,7 +3155,7 @@ svg.lucide {
 
 .chartblock__title {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: 0.01em;
   color: var(--text);
 }
@@ -2597,6 +3209,7 @@ svg.lucide {
    the app drew rather than something the model wrote directly, and a reader
    who has learned what that border means should not have to learn it twice. */
 .docsblock {
+  animation: rise-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   margin: 0 0 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -2634,7 +3247,7 @@ svg.lucide {
 
 .docsblock__title {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   letter-spacing: 0.01em;
   color: var(--text);
   overflow: hidden;
@@ -2744,7 +3357,16 @@ svg.lucide {
   flex-direction: column;
 }
 
+/*
+ * A document at a time, in the order they were written.
+ *
+ * The one place in the app a stagger earns its keep: the list is short, it is
+ * built once, and its whole point is that it is several separate things — so
+ * they arrive as several separate things. Capped at the first eight, after
+ * which the delay would be longer than anybody waits.
+ */
 .docsblock__item {
+  animation: rise-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) backwards;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2754,6 +3376,28 @@ svg.lucide {
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   transition: background 0.12s, color 0.12s;
+}
+
+.docsblock__item:nth-child(2) {
+  animation-delay: 0.03s;
+}
+.docsblock__item:nth-child(3) {
+  animation-delay: 0.06s;
+}
+.docsblock__item:nth-child(4) {
+  animation-delay: 0.09s;
+}
+.docsblock__item:nth-child(5) {
+  animation-delay: 0.12s;
+}
+.docsblock__item:nth-child(6) {
+  animation-delay: 0.15s;
+}
+.docsblock__item:nth-child(7) {
+  animation-delay: 0.18s;
+}
+.docsblock__item:nth-child(n + 8) {
+  animation-delay: 0.21s;
 }
 
 .docsblock__item:last-child {
@@ -2783,7 +3427,7 @@ svg.lucide {
 
 .docsblock__itemtitle {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: var(--w-ui);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2810,6 +3454,7 @@ svg.lucide {
 }
 
 .docsblock__body {
+  animation: fade-in 0.16s ease-out;
   padding: 12px;
 }
 
@@ -2839,7 +3484,7 @@ svg.lucide {
 
 .chart-bar__value {
   fill: var(--text-muted);
-  font-weight: 550;
+  font-weight: var(--w-ui);
 }
 
 /* ------------------------------------------------------------------ *
@@ -2878,7 +3523,7 @@ svg.lucide {
 
 .viewer__name {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--w-strong);
   max-width: 40vw;
   overflow: hidden;
   text-overflow: ellipsis;

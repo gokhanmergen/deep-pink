@@ -16,6 +16,7 @@ import { KeybindCheatsheet } from './components/KeybindCheatsheet'
 import { ToolApprovalDialog } from './components/ToolApprovalDialog'
 import { Dialog } from './components/Dialog'
 import { ImageViewer } from './components/ImageViewer'
+import { Logo } from './components/Logo'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -85,6 +86,9 @@ export function App(): React.JSX.Element {
       )
     }
     document.body.style.fontSize = `${settings.ui.fontSize}px`
+    // On the root rather than in a class on the app, so it reaches overlays,
+    // menus and toasts too — all of which render outside the app's own tree.
+    document.documentElement.dataset.animations = settings.ui.animations ? 'on' : 'off'
   }, [settings])
 
   /**
@@ -143,8 +147,8 @@ export function App(): React.JSX.Element {
 
   if (!ready || !settings) {
     return (
-      <div className="empty">
-        <span className="sidebar__brand-mark" />
+      <div className="empty splash">
+        <Logo size={72} className="logo--splash" />
         <div className="empty__title">Deep Pink</div>
       </div>
     )

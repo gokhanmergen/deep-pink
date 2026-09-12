@@ -549,6 +549,16 @@ export interface UiSettings {
    * composer. 0 disables the behaviour.
    */
   pasteAsFileThreshold: number
+  /**
+   * Whether things move.
+   *
+   * Nothing in this app animates to tell you something — every bit of motion
+   * is a softening of a change you asked for — so switching it off costs no
+   * information. The system's own "reduce motion" already turns all of it off;
+   * this is for somebody whose system does not say that but who wants the app
+   * still anyway.
+   */
+  animations: boolean
 }
 
 /* ------------------------------------------------------------------ *

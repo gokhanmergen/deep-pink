@@ -491,14 +491,6 @@ export function Composer(): React.JSX.Element {
                 Send
               </button>
             )}
-
-            <span className="composer__hint">
-              <span className="kbd">{formatBinding(sendBinding)}</span> to send ·{' '}
-              <span className="kbd">
-                {formatBinding(keybinds['message.newline'] ?? 'shift+enter')}
-              </span>{' '}
-              for a newline
-            </span>
           </div>
         </div>
       </div>

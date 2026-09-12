@@ -5,7 +5,7 @@ import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
-import { BarChart3, Cpu, FileText, Ghost, PanelLeft, Plus, Route } from 'lucide-react'
+import { ArrowDown, BarChart3, Cpu, FileText, Ghost, PanelLeft, Plus, Route } from 'lucide-react'
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, modelShortName, threadLabel } from '../format'
@@ -36,6 +36,14 @@ export function ChatView(): React.JSX.Element {
   const [renaming, setRenaming] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [context, setContext] = useState<CompactionStatus | null>(null)
+  /**
+   * Whether the reader has scrolled away from the end of the conversation.
+   *
+   * State rather than a ref, because something has to be drawn because of it —
+   * the one thing on this screen that is true of where you are looking rather
+   * than of what is on the page.
+   */
+  const [awayFromEnd, setAwayFromEnd] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedToBottom = useRef(true)
@@ -127,6 +135,11 @@ export function ChatView(): React.JSX.Element {
     if (!el) return
     pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
 
+    // Far enough up that the end of the conversation is somewhere else. The
+    // threshold is deliberately past the one above: an offer to go back to
+    // the bottom that appears the moment you nudge away from it is noise.
+    setAwayFromEnd(el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight * 0.6)
+
     // Where this conversation is being read, kept current as it is read. No
     // "before you leave" hook is needed this way, and there is no such hook
     // worth trusting: the thread changes under this component rather than
@@ -188,6 +201,7 @@ export function ChatView(): React.JSX.Element {
     pinnedToBottom.current = true
     anchor.current = null
     restoring.current = activeThreadId
+    setAwayFromEnd(false)
   }, [activeThreadId])
 
   /**
@@ -265,6 +279,15 @@ export function ChatView(): React.JSX.Element {
   // upwards as you scrolled back would be a lie about what anything cost.
   const totalCost = threadTotals?.costUsd ?? 0
   const totalTokens = threadTotals?.totalTokens ?? 0
+
+  /** Back to the end of the conversation, and pinned there again. */
+  const toLatest = (): void => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    pinnedToBottom.current = true
+    setAwayFromEnd(false)
+  }
 
   /**
    * Both halves of the switch. The same thing the shortcut does, because a
@@ -442,74 +465,94 @@ export function ChatView(): React.JSX.Element {
         </div>
       ) : null}
 
-      <div className="transcript" ref={scrollRef} onScroll={onScroll}>
-        <div className="transcript__inner">
-          {/* A fixed height, held for as long as there is anything above — so
-              it cannot change size as pages arrive, and so nothing below it can
-              be moved by one. Meant to be scrolled past rather than read: by
-              the time it is on screen the page it stands for is usually already
-              rendered above it. */}
-          {hasOlderMessages && (
-            <div className="transcript__earlier" aria-hidden="true">
-              earlier messages
-            </div>
-          )}
-          {!thread ? (
-            <div className="empty" style={{ height: '50vh' }}>
-              <div className="empty__title">Nothing open</div>
-              <p>Start a thread to begin.</p>
-              <button className="btn btn--primary" onClick={() => void createThread()} type="button">
-                <Plus {...ICON} />
-                New thread
-              </button>
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="empty" style={{ height: '46vh' }}>
-              <div className="empty__title">
-                {thread.temporary ? 'Ask, and forget' : 'Ask anything'}
+      {/* The transcript and the one control that belongs over it. A wrapper
+          rather than positioning against the whole column, so "the bottom"
+          means the bottom of the reading rather than the bottom of the window
+          — which is where the composer is. */}
+      <div className="transcript-area">
+        <div className="transcript" ref={scrollRef} onScroll={onScroll}>
+          <div className="transcript__inner">
+            {/* A fixed height, held for as long as there is anything above — so
+                it cannot change size as pages arrive, and so nothing below it can
+                be moved by one. Meant to be scrolled past rather than read: by
+                the time it is on screen the page it stands for is usually already
+                rendered above it. */}
+            {hasOlderMessages && (
+              <div className="transcript__earlier" aria-hidden="true">
+                earlier messages
               </div>
-              {thread.temporary && (
+            )}
+            {!thread ? (
+              <div className="empty" style={{ height: '50vh' }}>
+                <div className="empty__title">Nothing open</div>
+                <p>Start a thread to begin.</p>
+                <button className="btn btn--primary" onClick={() => void createThread()} type="button">
+                  <Plus {...ICON} />
+                  New thread
+                </button>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="empty" style={{ height: '46vh' }}>
+                <div className="empty__title">
+                  {thread.temporary ? 'Ask, and forget' : 'Ask anything'}
+                </div>
+                {thread.temporary && (
+                  <p>
+                    Nothing said here is kept. It is deleted when you open another
+                    chat or close the app, and it is never synced.
+                  </p>
+                )}
                 <p>
-                  Nothing said here is kept. It is deleted when you open another
-                  chat or close the app, and it is never synced.
+                  Using <strong>{modelShortName(model)}</strong>. Press{' '}
+                  <span className="kbd">{formatBinding(keybinds['palette.open'])}</span> for the
+                  command palette, or <span className="kbd">{formatBinding(keybinds['keybinds.cheatsheet'])}</span>{' '}
+                  for every shortcut.
                 </p>
-              )}
-              <p>
-                Using <strong>{modelShortName(model)}</strong>. Press{' '}
-                <span className="kbd">{formatBinding(keybinds['palette.open'])}</span> for the
-                command palette, or <span className="kbd">{formatBinding(keybinds['keybinds.cheatsheet'])}</span>{' '}
-                for every shortcut.
-              </p>
-              {/* Said here because here is the only place it can be done: a
-                  chat can be made temporary before it is used and not after. */}
-              {!thread.temporary && (
-                <p>
-                  <span className="kbd">{formatBinding(keybinds['thread.toggleTemporary'])}</span>{' '}
-                  makes this one temporary — deleted when you leave it, and never synced.
-                </p>
-              )}
-            </div>
-          ) : (
-            groupIntoTurns(messages).map((block, index, blocks) =>
-              block.kind === 'message' ? (
-                <MessageItem key={block.id} message={block.message} ui={settings.ui} />
-              ) : (
-                <AssistantTurn
-                  key={block.id}
-                  messages={block.messages}
-                  ui={settings.ui}
-                  isLast={index === blocks.length - 1}
-                />
+                {/* Said here because here is the only place it can be done: a
+                    chat can be made temporary before it is used and not after. */}
+                {!thread.temporary && (
+                  <p>
+                    <span className="kbd">{formatBinding(keybinds['thread.toggleTemporary'])}</span>{' '}
+                    makes this one temporary — deleted when you leave it, and never synced.
+                  </p>
+                )}
+              </div>
+            ) : (
+              groupIntoTurns(messages).map((block, index, blocks) =>
+                block.kind === 'message' ? (
+                  <MessageItem key={block.id} message={block.message} ui={settings.ui} />
+                ) : (
+                  <AssistantTurn
+                    key={block.id}
+                    messages={block.messages}
+                    ui={settings.ui}
+                    isLast={index === blocks.length - 1}
+                  />
+                )
               )
-            )
-          )}
+            )}
 
-          {compacting && (
-            <div className="row" style={{ margin: '10px 0' }}>
-              <span className="chip chip--accent">compacting context…</span>
-            </div>
-          )}
+            {compacting && (
+              <div className="row" style={{ margin: '10px 0' }}>
+                <span className="chip chip--accent">compacting context…</span>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Only while there is a conversation to be at the end of. */}
+        {thread && messages.length > 0 && awayFromEnd && (
+          <button
+            className="jump-latest"
+            data-new={generating}
+            onClick={toLatest}
+            title="Back to the end of the conversation"
+            type="button"
+          >
+            <ArrowDown {...ICON} />
+            {generating ? 'Replying below' : 'Latest'}
+          </button>
+        )}
       </div>
 
       <Composer />

@@ -12,6 +12,15 @@ const { suite } = require('./support/harness')
  *
  * The rule that tells them apart is shape, so these are about shape.
  */
+/*
+ * The renderer bundle reads `window.deepPink` as it loads — the store takes the
+ * bridge at module scope and the keybinds read the platform off it — so there
+ * has to be a window before it is required, even for a suite that only wants a
+ * pure function out of it. Nothing here calls through the bridge, so the
+ * shallowest possible stub is the honest one.
+ */
+global.window = { deepPink: { platform: 'linux' } }
+
 suite('markdown — what is maths and what is a dollar sign', async ({ check, section }) => {
   const {
     isPlausibleMath,

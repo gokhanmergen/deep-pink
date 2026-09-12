@@ -1344,6 +1344,23 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </span>
               </span>
             </label>
+
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.ui.animations}
+                onChange={(event) => void saveSettings({ ui: { animations: event.target.checked } })}
+              />
+              <span>
+                Animate
+                <span className="field__hint">
+                  Replies arriving, panels opening, rows appearing. Nothing here tells you
+                  anything on its own, so turning it off costs no information — the app says the
+                  same things, immediately. Your system&rsquo;s own &ldquo;reduce motion&rdquo;
+                  setting already switches this off whatever is chosen here.
+                </span>
+              </span>
+            </label>
           </>
         )}
 

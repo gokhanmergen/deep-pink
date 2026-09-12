@@ -465,6 +465,18 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     opened
   )
 
+  // Left at the end, and the end is not somewhere: whatever range happened to
+  // be loaded on the way down is not worth reading in again.
+  rememberPlace('t1', { startSeq: 120, scrollTop: 99999, atBottom: true })
+  opened.length = 0
+  await state().selectThread('somewhere-else')
+  await state().selectThread('t1')
+  check(
+    'a thread left at the end opens at the end, not at the range it had loaded',
+    opened.at(-1)?.from === null,
+    opened.at(-1)
+  )
+
   forgetPlace('t1')
   check('a thread can be forgotten', placeOf('t1') === null)
   opened.length = 0

@@ -227,12 +227,25 @@ suite(
     check('the chart becomes its own JSON', source.code === 1 && source.svg === 0, source)
 
     section('switching charts off puts the code back')
-    await run(`(() => {
-      const button = [...document.querySelectorAll('button')].find((b) =>
-        (b.getAttribute('title') || '').startsWith('Charts in replies')
+    // Charts, web access and documents share one Extras menu in the composer
+    // now, so switching one off is two clicks: the menu, then the item.
+    check('the composer offers the extras', await run(`(() => {
+      const extras = [...document.querySelectorAll('button')].find((b) =>
+        (b.getAttribute('title') || '').includes('charts and multiple documents')
       )
-      button.click()
-    })()`)
+      if (!extras) return false
+      extras.click()
+      return true
+    })()`))
+    await settle(300)
+    check('and the menu has charts in it', await run(`(() => {
+      const item = [...document.querySelectorAll('.context-menu__item')].find((b) =>
+        b.textContent.trim().startsWith('Charts')
+      )
+      if (!item) return false
+      item.click()
+      return true
+    })()`))
     await settle(600)
     const off = await run(`({
       blocks: document.querySelectorAll('.chartblock:not(.chartblock--failed)').length,

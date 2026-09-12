@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { ICON, ICON_LG } from '../icons'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { Logo } from './Logo'
 import { buildActions, exportThread } from '../actions'
 import { formatBinding } from '../keybinds'
 import type { Folder, SearchHit, Thread } from '@shared/types'
@@ -672,7 +673,7 @@ export function Sidebar(): React.JSX.Element {
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
-        <span className="sidebar__brand-mark" />
+        <Logo size={18} />
         <span className="sidebar__brand-name">Deep Pink</span>
       </div>
 

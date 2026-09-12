@@ -67,7 +67,8 @@ export const DEFAULT_UI: UiSettings = {
   codeTheme: 'github-dark-default',
   showReasoningByDefault: false,
   sendOnEnter: true,
-  pasteAsFileThreshold: 2000
+  pasteAsFileThreshold: 2000,
+  animations: true
 }
 
 /**

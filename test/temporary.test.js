@@ -128,7 +128,7 @@ suite(
     check('it is not drawn as temporary either', refused.temporaryRows === 0, refused)
     check(
       'and the refusal is explained rather than silent',
-      (refused.toast ?? '').includes('nothing in it'),
+      (refused.toast ?? '').includes('Only a new chat'),
       refused.toast
     )
 

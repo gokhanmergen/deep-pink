@@ -573,12 +573,19 @@ export const useStore = create<State>((set, get) => ({
     // One crossing rather than four: these were separate calls awaited
     // together, which is four round trips for the thing people do most often.
     //
-    // Reading back from where this thread was last left, when it has been open
-    // before — otherwise from the end, which is where a conversation is.
+    // Reading back from where this thread was last left, when it was left
+    // somewhere — otherwise from the end, which is where a conversation is.
+    //
+    // "At the end" is not somewhere: a reader who scrolled to the top of a
+    // long thread and then came back down does not want the whole of it read
+    // in again every time they open it, and the range they happened to have
+    // loaded on the way is beside the point. The range is only worth restoring
+    // when the offset into it is.
+    const place = placeOf(id)
     const { page, totals, generating, live } = await api.messages.open(
       id,
       PAGE_SIZE,
-      placeOf(id)?.startSeq ?? null
+      place && !place.atBottom ? place.startSeq : null
     )
     const messages = page.messages
 

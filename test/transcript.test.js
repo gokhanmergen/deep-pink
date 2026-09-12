@@ -196,8 +196,16 @@ suite(
     )
 
     section('a search result reaches a message the transcript has not read in')
-    // Everything is loaded by now. Reopening the thread puts it back to its
-    // last page, which is where somebody arriving from a search starts.
+    // Everything is loaded by now, and the reader is at the top of it. Back to
+    // the end first — a thread reopens where it was left, and left at the end
+    // means the end, which is where somebody arriving from a search starts.
+    await run(`(() => {
+      const el = document.querySelector('.transcript')
+      el.scrollTop = el.scrollHeight
+      el.dispatchEvent(new Event('scroll'))
+      return true
+    })()`)
+    await settle(400)
     await run(`document.querySelector('.sidebar .thread-item').click()`)
     await settle(900)
     check(
