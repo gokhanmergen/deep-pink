@@ -1166,15 +1166,58 @@ svg.lucide {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-bottom: 16px;
+  gap: var(--s1);
+  margin-bottom: var(--s5);
 }
 
+/* A row rather than a line of text, because it may have an undo at the end of
+   it. `min-height` so a field that has one and a field that does not still
+   line up down the column. */
 .field__label {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 19px;
   font-size: var(--t-small);
   font-weight: var(--w-strong);
   letter-spacing: var(--track-ui);
   color: var(--text);
+}
+
+/*
+ * Undo for one setting.
+ *
+ * Quiet enough to ignore — it is not what you came to the panel for — but in
+ * the accent, because the accent is this app's word for "you can act on
+ * this", and because a row that has one needs to be findable in a column of
+ * rows that do not. It is the only thing in a label row that is coloured, so
+ * scanning down the page for what you have changed costs nothing.
+ */
+.revert {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-left: auto;
+  padding: 1px var(--s2) 2px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: var(--w-ui);
+  letter-spacing: var(--track-ui);
+  color: var(--accent);
+  background: var(--accent-dim);
+  opacity: 0.75;
+  transition: opacity var(--quick), background var(--quick);
+}
+
+.revert:hover {
+  opacity: 1;
+  background: var(--accent-line);
+  color: var(--text);
+}
+
+.revert:focus-visible {
+  opacity: 1;
 }
 
 /* A field that belongs to the switch above it — indented so it reads as part
@@ -1212,9 +1255,34 @@ svg.lucide {
   user-select: none;
 }
 
-/* The label block beside the control. */
+/* The label block beside the control. Takes the width, so an undo at the end
+   of its first line has a right edge to sit against. */
 .switch > span {
   min-width: 0;
+  flex: 1;
+}
+
+/*
+ * In Settings a switch is a row of a list, so it gets the shape of one: its
+ * own padding, its own hover, and a target that reaches the full width rather
+ * than ending wherever the sentence happens to end. The panel's own margin is
+ * pulled back by the same amount, so the rows still line up with the fields
+ * above and below them.
+ */
+.panel__body > .switch {
+  margin: 0 calc(var(--s2) * -1) var(--s4);
+  padding: var(--s2);
+  border-radius: var(--radius-sm);
+  transition: background var(--quick);
+}
+
+.panel__body > .switch:hover {
+  background: var(--bg-hover);
+}
+
+/* Against the first line of the label, like the control opposite it. */
+.switch .revert {
+  margin-top: 1px;
 }
 
 .switch input {
@@ -1497,7 +1565,15 @@ svg.lucide {
  * another reply: one step down in surface, one hairline, and a summary line
  * that is the same size as the metadata around it rather than the prose.
  */
+/* Outlined, unlike the other blocks in a reply.
+ *
+ * Collapsed — which is how it spends nearly all of its life — it is a single
+ * row spanning the full width, and a shade on its own is not enough to make a
+ * strip that thin read as an object rather than as a band the page happens to
+ * have. Height is what lets a surface bound itself; this one has none until
+ * you open it. */
 .disclosure {
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   margin: var(--s3) 0;
@@ -1537,6 +1613,7 @@ svg.lucide {
 .disclosure__content {
   animation: fade-in 0.14s ease-out;
   padding: 8px 12px 12px;
+  border-top: 1px solid var(--border);
   font-size: 13px;
   color: var(--text-muted);
   max-height: 420px;
@@ -2143,11 +2220,21 @@ svg.lucide {
   min-height: 0;
 }
 
+/*
+ * The column of sections, recessed rather than ruled off.
+ *
+ * It is the same relationship the sidebar has to the chat — navigation sits
+ * lower than the thing it navigates — so it is drawn the same way, and the
+ * line that used to divide the two is what the shade now does. It also buys
+ * the selected row a real step: a filled tab on a recessed column reads as
+ * lifted out of it, where the same fill on the panel's own colour was barely
+ * a tint.
+ */
 .tabs {
   flex: none;
   width: 178px;
-  padding: 10px 8px 14px;
-  border-right: 1px solid var(--border);
+  padding: var(--s3) var(--s2) var(--s4);
+  background: var(--bg);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -2193,11 +2280,37 @@ svg.lucide {
   background: var(--bg-elevated);
   border-left-color: var(--accent);
   color: var(--text);
+  font-weight: var(--w-ui);
+}
+
+/* The icon carries the selection too. Colour on the mark rather than more
+   weight on the word: the row is already the only filled one in the column,
+   and this is what tells you which at a glance sideways. */
+.tab[data-active='true'] svg {
+  color: var(--accent);
 }
 
 .settings-split .panel__body {
   flex: 1;
   min-width: 0;
+  padding: var(--s5) var(--s6);
+}
+
+/*
+ * A measure, not a width.
+ *
+ * The panel is deliberately wide — it has a column of sections down the side —
+ * and everything in it was inheriting that width, so a text field for a number
+ * ran nine hundred pixels across and a hint under it was a single line the eye
+ * has to travel the whole window to read. Capping each row at a readable
+ * measure fixes both, and leaves the right of the panel as the quiet margin a
+ * settings page should have.
+ *
+ * Per child rather than on a wrapper, because the sections are rendered as
+ * fragments and there is no wrapper to put it on.
+ */
+.settings-split .panel__body > * {
+  max-width: 620px;
 }
 
 /* A narrow panel gives the column back to the content: the icons alone still
@@ -2222,17 +2335,34 @@ svg.lucide {
   }
 }
 
+/*
+ * The heading over a group of settings.
+ *
+ * It was small capitals with space above them, which on a page of a dozen
+ * fields reads as one continuous list with occasional larger gaps — you find
+ * the boundary by noticing the gap, and a gap is the hardest thing on a page
+ * to notice. A rule across the top makes the groups actual groups, and the
+ * space that used to be doing that job alone now has something to do it with.
+ */
 .section-title {
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s6) 0 var(--s3);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--border);
+  font-size: var(--t-small);
   font-weight: var(--w-strong);
-  letter-spacing: 0.06em;
+  letter-spacing: var(--track-caps);
   text-transform: uppercase;
-  color: var(--text-dim);
-  margin: 22px 0 10px;
+  color: var(--text-muted);
 }
 
+/* Nothing above the first one to be separated from. */
 .section-title:first-child {
   margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 /* ------------------------------------------------------------------ *
@@ -2750,6 +2880,40 @@ svg.lucide {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+/*
+ * One shortcut: what it does, and the keys that do it.
+ *
+ * A row rather than a pair of things that happen to be on the same line — it
+ * takes a hover like the rows in the sidebar do, which is what says the whole
+ * width is the thing you are pointing at and not just the button on the end.
+ * The undo, when there is one, sits between them: to the right of the words
+ * so the column of them lines up, and to the left of the key so the keys stay
+ * flush with each other down the page.
+ */
+.keybind {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 calc(var(--s2) * -1);
+  padding: 3px var(--s2);
+  border-radius: var(--radius-sm);
+  transition: background var(--quick);
+}
+
+.keybind:hover {
+  background: var(--bg-hover);
+}
+
+.keybind > .muted {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Already pushed right by the label taking the width. */
+.keybind .revert {
+  margin-left: 0;
 }
 
 .list-card {
@@ -3535,15 +3699,22 @@ svg.lucide {
   margin-bottom: 0;
 }
 
+/* Ruled off from the set above it, because it is not part of it: the list is
+   what arrived and this is the app saying something about the list. Without
+   the line it reads as one more row that happens to be in a smaller type. */
 .docsblock__note {
-  padding: 0 12px 10px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
   font-size: 11px;
   color: var(--text-dim);
-  line-height: 1.5;
+  line-height: var(--lh-small);
 }
 
+/* No box to be ruled off from — the failed variant is a bare code block with
+   the reason under it. */
 .docsblock--failed .docsblock__note {
   padding: 6px 0 0;
+  border-top: none;
 }
 
 .chartblock .codeblock {

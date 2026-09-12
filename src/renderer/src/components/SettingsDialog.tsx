@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
   BarChart3,
   Database,
@@ -13,17 +13,20 @@ import {
   MessageSquareText,
   Palette,
   Cpu,
+  Undo2,
   X
 } from 'lucide-react'
 import { ICON } from '../icons'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
-import { DEFAULT_KEYBINDS, DEFAULT_UI } from '@shared/defaults'
+import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS, DEFAULT_UI } from '@shared/defaults'
 import { formatRelative, modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 import type {
   AppInfo,
+  Settings,
+  SettingsPatch,
   ImportPreview,
   ImportResult,
   SyncDirection,
@@ -85,6 +88,158 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
   }
 ]
 
+/*
+ * Putting one setting back, and only one.
+ *
+ * Every panel of this size accumulates settings somebody changed once, for a
+ * reason they no longer remember, and then lives with — because the only way
+ * back is to know what the value used to be. Nothing in the app knew that
+ * either; it knew the current value and a file of defaults nobody reads.
+ *
+ * So the defaults are brought to where the setting is. The control appears
+ * only when there is something to undo, which means a panel with nothing out
+ * of place looks exactly as it did before — and a panel with three of these
+ * showing is answering "what have I changed here?" without being asked.
+ */
+
+type Path = string
+
+/*
+ * Split at the *first* dot and no further.
+ *
+ * The shape is two levels deep at most — `web.maxResults`, `ui.accent` — but
+ * one of those levels is `keybinds`, whose own keys are `thread.new` and
+ * `message.send`. Splitting on every dot would read `settings.keybinds.thread`
+ * for that one, find nothing, and quietly decide every shortcut in the app was
+ * at its default.
+ */
+function splitPath(path: Path): [string, string | null] {
+  const dot = path.indexOf('.')
+  return dot === -1 ? [path, null] : [path.slice(0, dot), path.slice(dot + 1)]
+}
+
+function valueAt(source: Settings, path: Path): unknown {
+  const [head, tail] = splitPath(path)
+  const value = (source as unknown as Record<string, unknown>)[head]
+  if (tail === null) return value
+  return (value as Record<string, unknown> | undefined)?.[tail]
+}
+
+/** The patch that writes one back, in the shape `saveSettings` merges. */
+function patchFor(path: Path, value: unknown): SettingsPatch {
+  const [head, tail] = splitPath(path)
+  return (tail === null ? { [head]: value } : { [head]: { [tail]: value } }) as SettingsPatch
+}
+
+/*
+ * Values here are numbers, strings, booleans, nulls and the odd array of
+ * domains — no cycles and nothing exotic — so the cheap comparison is the
+ * correct one. Key order comes from the same literal on both sides, since the
+ * current value was written from a patch built out of the defaults.
+ */
+function same(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * The default, said the way a person would say it.
+ *
+ * A confirmation that reads "It goes back to false" is a confirmation nobody
+ * can act on, and one that quotes six hundred words of prompt at you is worse.
+ */
+function describe(value: unknown): string {
+  if (value === null || value === undefined) return 'the provider default'
+  if (typeof value === 'boolean') return value ? 'on' : 'off'
+  if (Array.isArray(value)) return value.length ? value.join(', ') : 'empty'
+  const text = String(value)
+  if (!text.trim()) return 'empty'
+  if (text.length > 60) return 'the wording it shipped with'
+  return `“${text}”`
+}
+
+/**
+ * Undo for a single setting, shown only once there is something to undo.
+ *
+ * `what` is the setting named as a sentence can name it, because it is read
+ * back in the confirmation — "Revert the temperature?" — where the label above
+ * the field is no longer on screen to supply the context.
+ */
+function Revert({
+  path,
+  what,
+  format = describe
+}: {
+  path: Path
+  what: string
+  /** How to read the default aloud, when `describe` does not know the shape. */
+  format?: (value: unknown) => string
+}): React.JSX.Element | null {
+  const settings = useStore((s) => s.settings)
+  const saveSettings = useStore((s) => s.saveSettings)
+  const askConfirm = useStore((s) => s.askConfirm)
+  const showToast = useStore((s) => s.showToast)
+
+  if (!settings) return null
+  const fallback = valueAt(DEFAULT_SETTINGS, path)
+  if (same(valueAt(settings, path), fallback)) return null
+
+  const revert = async (event: React.MouseEvent): Promise<void> => {
+    /*
+     * Several of these sit inside the `<label>` of a switch, where a click on
+     * anything at all is forwarded to the checkbox the label is for. Without
+     * this, asking to revert a toggle would also flip it.
+     */
+    event.preventDefault()
+    event.stopPropagation()
+
+    const ok = await askConfirm({
+      title: `Revert ${what}?`,
+      body: `It goes back to ${format(fallback)}. Nothing else in Settings changes.`,
+      confirmLabel: 'Revert'
+    })
+    if (!ok) return
+    await saveSettings(patchFor(path, fallback))
+    showToast('Reverted to the default')
+  }
+
+  return (
+    <button
+      className="revert"
+      onClick={(event) => void revert(event)}
+      title={`Changed from the default — put ${what} back`}
+      type="button"
+    >
+      <Undo2 size={12} strokeWidth={2} />
+      Revert
+    </button>
+  )
+}
+
+/**
+ * A field's label with its undo beside it.
+ *
+ * The button goes to the far end of the row rather than next to the words: it
+ * is the same distance from the left edge in every field that has one, so a
+ * column of them is scannable, and it never pushes a label around when it
+ * appears.
+ */
+function FieldLabel({
+  path,
+  what,
+  children
+}: {
+  path: Path
+  what: string
+  children: ReactNode
+}): React.JSX.Element {
+  return (
+    <span className="field__label">
+      {children}
+      <Revert path={path} what={what} />
+    </span>
+  )
+}
+
 /** Nine in the morning, tomorrow — which is what "until tomorrow" means. */
 function tomorrowMorning(): number {
   const at = new Date()
@@ -142,6 +297,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const refreshSettings = useStore((s) => s.refreshSettings)
   const setOverlay = useStore((s) => s.setOverlay)
   const showToast = useStore((s) => s.showToast)
+  const askConfirm = useStore((s) => s.askConfirm)
 
   const [tab, setTab] = useState<Tab>(settings?.hasApiKey ? 'models' : 'account')
   const [apiKey, setApiKey] = useState('')
@@ -328,13 +484,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   leaderboards. Turn it off and requests go out anonymously.
                 </span>
               </span>
+              <Revert path="sendAppAttribution" what="the attribution header" />
             </label>
           </>
         )}
 
         {tab === 'models' && (
           <>
-            <div className="section-title">Default model</div>
+            <div className="section-title">
+              Default model
+              <Revert path="defaultModel" what="the default model" />
+            </div>
             <div className="field">
               <div className="row">
                 <button
@@ -353,7 +513,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="section-title">Thread names</div>
-            <label className="switch" style={{ marginBottom: 12 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.titleGenerationEnabled}
@@ -367,10 +527,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   Runs once after the first exchange. Its cost is included in your statistics.
                 </span>
               </span>
+              <Revert path="titleGenerationEnabled" what="automatic naming" />
             </label>
 
             <div className="field">
-              <span className="field__label">Model used to generate thread names</span>
+              <FieldLabel path="titleModel" what="the naming model">Model used to generate thread names</FieldLabel>
               <div className="row">
                 <button
                   className="btn"
@@ -384,7 +545,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Naming prompt</span>
+              <FieldLabel path="titlePrompt" what="the naming prompt">Naming prompt</FieldLabel>
               <DebouncedTextarea
                 className="textarea"
                 rows={6}
@@ -395,7 +556,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
             <div className="section-title">Generation</div>
             <div className="field">
-              <span className="field__label">Temperature — {settings.temperature.toFixed(2)}</span>
+              <FieldLabel path="temperature" what="the temperature">
+                Temperature — {settings.temperature.toFixed(2)}
+              </FieldLabel>
               <input
                 type="range"
                 min={0}
@@ -406,7 +569,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
             </div>
             <div className="field">
-              <span className="field__label">Maximum output tokens</span>
+              <FieldLabel path="maxTokens" what="the output limit">Maximum output tokens</FieldLabel>
               <DebouncedInput
                 className="input"
                 type="number"
@@ -425,13 +588,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 onChange={(event) => void saveSettings({ streamReasoning: event.target.checked })}
               />
               <span>Request reasoning traces when the model supports them</span>
+              <Revert path="streamReasoning" what="reasoning traces" />
             </label>
           </>
         )}
 
         {tab === 'prompts' && (
           <>
-            <div className="section-title">Base system prompt</div>
+            <div className="section-title">
+              Base system prompt
+              <Revert path="baseSystemPrompt" what="the system prompt" />
+            </div>
             <div className="field">
               <DebouncedTextarea
                 className="textarea"
@@ -459,6 +626,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   Adds one line to the system prompt. Off by default — it is information about you.
                 </span>
               </span>
+              <Revert path="includeDateTimeInPrompt" what="the date and time line" />
             </label>
           </>
         )}
@@ -466,7 +634,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
         {tab === 'web' && (
           <>
             <div className="section-title">Web access</div>
-            <label className="switch" style={{ marginBottom: 14 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.web.enabled}
@@ -479,10 +647,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   ever happens.
                 </span>
               </span>
+              <Revert path="web.enabled" what="web access" />
             </label>
 
             <div className="field">
-              <span className="field__label">Search backend</span>
+              <FieldLabel path="web.engine" what="the search backend">Search backend</FieldLabel>
               <select
                 className="select"
                 value={settings.web.engine}
@@ -509,7 +678,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
             {settings.web.engine === 'searxng' && (
               <div className="field">
-                <span className="field__label">SearXNG URL</span>
+                <FieldLabel path="web.searxngUrl" what="the SearXNG URL">SearXNG URL</FieldLabel>
                 <DebouncedInput
                   className="input mono"
                   value={settings.web.searxngUrl}
@@ -519,7 +688,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             )}
 
             <div className="field">
-              <span className="field__label">Results per search</span>
+              <FieldLabel path="web.maxResults" what="results per search">Results per search</FieldLabel>
               <DebouncedInput
                 className="input"
                 type="number"
@@ -531,7 +700,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Characters kept per fetched page</span>
+              <FieldLabel path="web.fetchCharLimit" what="the page limit">Characters kept per fetched page</FieldLabel>
               <DebouncedInput
                 className="input"
                 type="number"
@@ -545,7 +714,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Blocked domains</span>
+              <FieldLabel path="web.blockedDomains" what="the blocked domains">Blocked domains</FieldLabel>
               <DebouncedTextarea
                 className="textarea mono"
                 rows={3}
@@ -569,7 +738,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
         {tab === 'charts' && (
           <>
             <div className="section-title">Charts in replies</div>
-            <label className="switch" style={{ marginBottom: 14 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.chartsEnabled}
@@ -583,6 +752,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   guessed — is shown as the code it is.
                 </span>
               </span>
+              <Revert path="chartsEnabled" what="charts" />
             </label>
 
             <div className="field">
@@ -620,7 +790,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
         {tab === 'docs' && (
           <>
             <div className="section-title">Replies of several documents</div>
-            <label className="switch" style={{ marginBottom: 14 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.docsEnabled}
@@ -634,6 +804,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   guessed — is shown as the code it is.
                 </span>
               </span>
+              <Revert path="docsEnabled" what="documents" />
             </label>
 
             <div className="field">
@@ -675,7 +846,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
         {tab === 'sync' && sync && (
           <>
             <div className="section-title">Sync</div>
-            <label className="switch" style={{ marginBottom: 14 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={sync.config.enabled}
@@ -1125,7 +1296,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
         {tab === 'context' && (
           <>
             <div className="section-title">Compaction</div>
-            <label className="switch" style={{ marginBottom: 14 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.compaction.enabled}
@@ -1140,9 +1311,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   going. The originals stay in your database.
                 </span>
               </span>
+              <Revert path="compaction.enabled" what="compaction" />
             </label>
 
-            <label className="switch" style={{ marginBottom: 14 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.compaction.requireConfirmation}
@@ -1156,13 +1328,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   With this off, compaction runs automatically once the threshold is crossed.
                 </span>
               </span>
+              <Revert path="compaction.requireConfirmation" what="asking first" />
             </label>
 
             <div className="field">
-              <span className="field__label">
+              <FieldLabel path="compaction.triggerRatio" what="the trigger point">
                 Trigger at {Math.round(settings.compaction.triggerRatio * 100)}% of the context
                 window
-              </span>
+              </FieldLabel>
               <input
                 type="range"
                 min={0.3}
@@ -1176,7 +1349,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Messages always kept verbatim</span>
+              <FieldLabel path="compaction.keepRecentMessages" what="how many are kept">Messages always kept verbatim</FieldLabel>
               <DebouncedInput
                 className="input"
                 type="number"
@@ -1189,7 +1362,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Summarisation prompt</span>
+              <FieldLabel path="compaction.prompt" what="the summarisation prompt">Summarisation prompt</FieldLabel>
               <DebouncedTextarea
                 className="textarea"
                 rows={10}
@@ -1204,7 +1377,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           <>
             <div className="section-title">Interface</div>
             <div className="field">
-              <span className="field__label">Accent colour</span>
+              <FieldLabel path="ui.accent" what="the accent colour">Accent colour</FieldLabel>
               <div className="row">
                 <input
                   type="color"
@@ -1226,10 +1399,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">
+              <FieldLabel path="ui.chatWidth" what="the chat width">
                 Chat width — {settings.ui.chatWidth}px
                 {settings.ui.chatWidth >= 1400 ? ' (as wide as the window)' : ''}
-              </span>
+              </FieldLabel>
               <input
                 type="range"
                 min={620}
@@ -1247,7 +1420,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Text size — {settings.ui.fontSize}px</span>
+              <FieldLabel path="ui.fontSize" what="the text size">
+                Text size — {settings.ui.fontSize}px
+              </FieldLabel>
               <input
                 type="range"
                 min={12}
@@ -1261,7 +1436,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Message spacing</span>
+              <FieldLabel path="ui.messageDensity" what="message spacing">Message spacing</FieldLabel>
               <select
                 className="select"
                 value={settings.ui.messageDensity}
@@ -1277,7 +1452,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <span className="field__label">Code theme</span>
+              <FieldLabel path="ui.codeTheme" what="the code theme">Code theme</FieldLabel>
               <select
                 className="select"
                 value={settings.ui.codeTheme}
@@ -1301,7 +1476,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </select>
             </div>
 
-            <label className="switch" style={{ marginBottom: 12 }}>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.ui.showReasoningByDefault}
@@ -1310,10 +1485,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 }
               />
               <span>Expand reasoning traces by default</span>
+              <Revert path="ui.showReasoningByDefault" what="expanding traces" />
             </label>
 
             <div className="field">
-              <span className="field__label">Turn a long paste into an attachment</span>
+              <FieldLabel path="ui.pasteAsFileThreshold" what="the paste threshold">Turn a long paste into an attachment</FieldLabel>
               <DebouncedInput
                 className="input"
                 type="number"
@@ -1343,6 +1519,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   When off, use {formatBinding('mod+enter')} to send and Enter for a newline.
                 </span>
               </span>
+              <Revert path="ui.sendOnEnter" what="Enter sending" />
             </label>
 
             <label className="switch">
@@ -1360,6 +1537,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   setting already switches this off whatever is chosen here.
                 </span>
               </span>
+              <Revert path="ui.animations" what="animation" />
             </label>
           </>
         )}
@@ -1370,11 +1548,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               Click a shortcut, then press the keys you want. Escape cancels.
             </p>
             {KEYBIND_GROUPS.map((group) => (
-              <div key={group.title}>
+              <Fragment key={group.title}>
                 <div className="section-title">{group.title}</div>
                 {group.actions.map((action) => (
-                  <div className="spread" key={action.id} style={{ padding: '5px 0' }}>
+                  <div className="keybind" key={action.id}>
                     <span className="muted">{action.label}</span>
+                    <Revert
+                      path={`keybinds.${action.id}`}
+                      what={`the shortcut for “${action.label}”`}
+                      format={(value) => formatBinding(String(value ?? ''))}
+                    />
                     <button
                       className="btn"
                       data-on={capturing === action.id}
@@ -1387,12 +1570,21 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     </button>
                   </div>
                 ))}
-              </div>
+              </Fragment>
             ))}
             <div className="row" style={{ marginTop: 18 }}>
               <button
                 className="btn"
-                onClick={() => void saveSettings({ keybinds: DEFAULT_KEYBINDS })}
+                onClick={async () => {
+                  const ok = await askConfirm({
+                    title: 'Restore every shortcut?',
+                    body: 'All of them go back to what the app shipped with, including the ones you have not changed.',
+                    confirmLabel: 'Restore all'
+                  })
+                  if (!ok) return
+                  await saveSettings({ keybinds: DEFAULT_KEYBINDS })
+                  showToast('Shortcuts restored')
+                }}
                 type="button"
               >
                 Restore defaults
