@@ -37,6 +37,11 @@ suite('landing — where a conversation opens', async ({ check, section }) => {
   /**
    * A transcript, as the page would lay it out: `before` pixels of older
    * conversation, then an exchange, then however much tail that exchange needs.
+   *
+   * `question` is how tall your own message is inside that exchange, and null
+   * means nothing has answered it yet — which is a different thing from a
+   * question of zero height, and the difference is the whole of what the last
+   * check in here is about.
    */
   const page = (before, exchange, question = 120) => {
     const moreAbove = before > 0
@@ -46,7 +51,7 @@ suite('landing — where a conversation opens', async ({ check, section }) => {
         viewport: VIEWPORT,
         content: before + exchange + tail,
         askTop: before,
-        answerTop: before + Math.min(question, exchange),
+        answerTop: question === null ? null : before + Math.min(question, exchange),
         moreAbove
       },
       tail,
@@ -132,8 +137,22 @@ suite('landing — where a conversation opens', async ({ check, section }) => {
 
   section('conversations with nothing to aim at')
   check('nothing of yours in it lands at the end', landingPoint({ viewport: VIEWPORT, content: 2000, askTop: null, answerTop: null, moreAbove: false }, null, false).reason === 'end')
-  const unanswered = land(page(10000, 300, 300))
-  check('a question still being answered still goes to the top', unanswered.reason === 'turn')
+  /*
+   * A question with nothing under it yet.
+   *
+   * This was written as a 300px question inside a 300px exchange, which is not
+   * that at all — it is a question that fills its exchange, and at 43% of the
+   * window it is over the line where the answer takes the top instead. So the
+   * check failed while the rule it was checking was right: `null` is how "no
+   * answer yet" is said, and a height is not a way of saying it.
+   */
+  const unanswered = land(page(10000, 300, null))
+  check('a question still being answered still goes to the top', unanswered.reason === 'turn', unanswered)
+  check(
+    'and does not fall off the end looking for a reply that is not there',
+    unanswered.scrollTop === 10000 - GLIMPSE,
+    unanswered
+  )
 
   section('it never lands somewhere that is not a scroll position')
   const silly = [
