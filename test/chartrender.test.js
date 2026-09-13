@@ -1,4 +1,4 @@
-const { suite, settle } = require('./support/harness')
+const { suite, settle, openThread } = require('./support/harness')
 
 /**
  * Charts, in the window that actually draws them.
@@ -90,6 +90,14 @@ suite(
     if (!win) return
 
     await settle(6000)
+
+    // Starting the app opens a blank chat, not the top of the list, so the
+    // fixture has to be asked for.
+    check(
+      "the fixture thread opens",
+      await openThread(getWindow(), "Chart fixture"),
+      "no row named Chart fixture"
+    )
     const run = (js) => win.webContents.executeJavaScript(js)
 
     section('every chart is drawn')

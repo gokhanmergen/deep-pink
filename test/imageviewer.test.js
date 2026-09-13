@@ -1,4 +1,4 @@
-const { suite, settle } = require('./support/harness')
+const { suite, settle, openThread } = require('./support/harness')
 
 /**
  * The image viewer, in the window that runs it.
@@ -45,6 +45,14 @@ suite(
     if (!win) return
 
     await settle(6000)
+
+    // Starting the app opens a blank chat, not the top of the list, so the
+    // fixture has to be asked for.
+    check(
+      "the fixture thread opens",
+      await openThread(getWindow(), "Viewer fixture"),
+      "no row named Viewer fixture"
+    )
     const run = (js) => win.webContents.executeJavaScript(js)
 
     const state = () => run(`(() => {

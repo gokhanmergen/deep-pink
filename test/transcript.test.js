@@ -1,4 +1,4 @@
-const { suite, settle } = require('./support/harness')
+const { suite, settle, openThread } = require('./support/harness')
 
 /**
  * A long conversation, read the way a reader reads one.
@@ -57,6 +57,14 @@ suite(
     if (!win) return
 
     await settle(7000)
+
+    // Starting the app opens a blank chat, not the top of the list, so the
+    // fixture has to be asked for.
+    check(
+      "the fixture thread opens",
+      await openThread(getWindow(), "A long conversation"),
+      "no row named A long conversation"
+    )
     const run = (js) => win.webContents.executeJavaScript(js)
 
     /**

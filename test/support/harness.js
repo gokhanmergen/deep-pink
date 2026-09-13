@@ -76,6 +76,32 @@ function suite(suiteName, body, options = {}) {
   })
 }
 
+/**
+ * Opens the thread a suite seeded, by the name it gave it.
+ *
+ * Starting the app opens a blank chat rather than whatever is at the top of
+ * the list, so a suite that wants its fixture on screen has to say so. It used
+ * to arrive there by accident — the renderer selected the most recently
+ * touched thread, which in a fresh database was the only one — and a test that
+ * depends on an unrelated behaviour is a test that breaks when that behaviour
+ * is reconsidered, which is exactly what happened.
+ *
+ * Returns whether it found the row, so a suite can report a missing fixture as
+ * a failure of its own rather than as twenty strange ones further down.
+ */
+async function openThread(win, title) {
+  const opened = await win.webContents.executeJavaScript(`(() => {
+    const row = [...document.querySelectorAll('.thread-item')].find(
+      (el) => el.textContent.includes(${JSON.stringify(title)})
+    )
+    if (!row) return false
+    row.click()
+    return true
+  })()`)
+  await new Promise((resolve) => setTimeout(resolve, 700))
+  return opened
+}
+
 /** Builds a fake streaming Response, chopped into small chunks on purpose. */
 function sseResponse(lines) {
   const body = lines.map((line) => `${line}\n`).join('')
@@ -141,4 +167,4 @@ function settle(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-module.exports = { suite, sseResponse, writeTestApiKey, message, settle }
+module.exports = { suite, sseResponse, writeTestApiKey, message, settle, openThread }

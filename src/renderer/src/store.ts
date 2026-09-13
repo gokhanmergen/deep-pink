@@ -497,9 +497,23 @@ export const useStore = create<State>((set, get) => ({
 
     set({ settings, threads, folders, mcpStatuses, ready: true })
 
-    if (threads.length) {
-      await get().selectThread(threads[0].id)
-    }
+    /*
+     * A blank chat to start in, rather than whatever was open last.
+     *
+     * This opened `threads[0]`, which is the list's own order — pinned first,
+     * then most recently touched — so starting the app dropped you into the
+     * middle of a conversation you were not thinking about, scrolled to
+     * something you last said at some point you no longer remember. Nothing
+     * about launching an app says "carry on with that"; it usually means there
+     * is a new thing to ask.
+     *
+     * Nothing accumulates from this. An empty, unnamed, unpinned, unfiled
+     * thread is deleted the moment you leave it, and `deleteEmptyThreads`
+     * sweeps up the one left open when the window was closed — both of which
+     * already existed for the New Thread button, which has always worked this
+     * way.
+     */
+    await get().createThread()
 
     unsubscribers.push(api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses })))
     unsubscribers.push(api.chat.onEvent((event) => handleStreamEvent(event, set, get)))

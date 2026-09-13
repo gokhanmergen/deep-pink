@@ -200,7 +200,29 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
 
   check('the chat stream is subscribed to exactly once', chatListeners.length === 1, chatListeners.length)
   check('MCP status is subscribed to exactly once', mcpListeners.length === 1, mcpListeners.length)
+  /*
+   * Starting the app opens a blank chat, not whatever was open last.
+   *
+   * It used to select the first thread in the list — pinned first, then most
+   * recently touched — which dropped you into the middle of a conversation you
+   * were not thinking about. `made-1` is the stub's first creation, so seeing
+   * it here is seeing that a thread was made rather than chosen.
+   */
+  check(
+    'starting up opens a new chat rather than the last one used',
+    state().activeThreadId === 'made-1',
+    state().activeThreadId
+  )
+
+  // Everything below is about the conversation in `t1`, so go there — which
+  // also sweeps the blank one, since leaving an untouched thread deletes it.
+  await state().selectThread('t1')
   check('the active thread was selected', state().activeThreadId === 't1')
+  check(
+    'and the blank one it started in did not survive being left',
+    !state().threads.some((t) => t.id === 'made-1'),
+    state().threads.map((t) => t.id)
+  )
 
   section('a single turn')
   const userRow = message({ id: 'u1', threadId: 't1', role: 'user', content: 'hi' })

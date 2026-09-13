@@ -1,4 +1,4 @@
-const { suite, settle } = require('./support/harness')
+const { suite, settle, openThread } = require('./support/harness')
 
 /**
  * Regression cover for two reported bugs:
@@ -54,6 +54,14 @@ suite(
 
     // Give the renderer time to load its thread list and paint the transcript.
     await settle(6000)
+
+    // Starting the app opens a blank chat, not the top of the list, so the
+    // fixture has to be asked for.
+    check(
+      "the fixture thread opens",
+      await openThread(getWindow(), "Layout fixture"),
+      "no row named Layout fixture"
+    )
     const run = (js) => win.webContents.executeJavaScript(js)
 
     section('the transcript scrolls')
