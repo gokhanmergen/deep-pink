@@ -327,11 +327,14 @@ export function buildActions(): AppAction[] {
        */
       hidden: true,
       run: async () => {
+        /*
+         * Nothing under the pointer is not a failure worth reporting. The
+         * shortcut is aimed with the mouse, so missing means the mouse was
+         * somewhere else — which the person holding it can see — and a notice
+         * saying so is the app telling you where your own pointer is.
+         */
         const block = blockUnderPointer()
-        if (!block) {
-          store.showToast('No code block under the pointer')
-          return
-        }
+        if (!block) return
         // Waited on rather than fired off, so a clipboard that refused is not
         // reported as a copy that worked.
         try {

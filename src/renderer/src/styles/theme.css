@@ -3028,8 +3028,12 @@ svg.lucide {
      height is published by the composer itself, so a toast can never land on
      the Send button. */
   bottom: calc(var(--composer-height, 96px) + 14px);
-  left: 50%;
-  transform: translateX(-50%);
+  /* In the corner rather than the middle.
+     Centred, it landed over the last line of the reply you were reading —
+     directly in the path of the eye, to say something that is almost always a
+     confirmation of a thing you just did and already know. The corner is out of
+     the way of the text and still inside the sweep of where you were looking. */
+  right: var(--s5);
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-left: 2px solid var(--accent);
@@ -3045,7 +3049,7 @@ svg.lucide {
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(8px);
+    transform: translateY(8px);
   }
 }
 
