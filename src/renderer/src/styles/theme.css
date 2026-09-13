@@ -1970,9 +1970,17 @@ svg.lucide {
   transition: opacity var(--quick), color var(--quick), background var(--quick);
 }
 
+/* And while it is saying it was copied, whether or not the pointer is still
+   there — an acknowledgement that vanishes because you moved the mouse off is
+   an acknowledgement you may never have seen. */
 .codeblock:hover .codeblock__copy,
-.codeblock__copy:focus-visible {
+.codeblock__copy:focus-visible,
+.codeblock__copy[data-copied='true'] {
   opacity: 1;
+}
+
+.codeblock__copy[data-copied='true'] {
+  color: var(--accent);
 }
 
 .codeblock__copy:hover {

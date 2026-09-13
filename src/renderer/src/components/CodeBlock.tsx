@@ -1,6 +1,6 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { highlight, highlightedAlready } from '../highlight'
-import { rememberCode } from '../codeblocks'
+import { rememberBlock } from '../codeblocks'
 
 /**
  * Shiki highlights locally — the grammars and themes are bundled, so nothing is
@@ -14,6 +14,9 @@ interface Props {
   theme: string
 }
 
+/** How long the button says "copied" before going back to offering. */
+const SAID_FOR = 1400
+
 export const CodeBlock = memo(function CodeBlock({ code, lang, theme }: Props): React.JSX.Element {
   // Seeded from the cache so a block that has been highlighted before — the
   // usual case, because a streaming reply re-renders its blocks on every chunk
@@ -21,13 +24,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, theme }: Props): 
   const [html, setHtml] = useState<string | null>(() => highlightedAlready(code, lang, theme))
   const [copied, setCopied] = useState(false)
   const box = useRef<HTMLDivElement>(null)
-
-  // So the copy-under-the-pointer shortcut gets the source rather than the text
-  // it could read back out of the highlighting. Keyed on `code` alone: the same
-  // element shows new text as a reply streams into it.
-  useEffect(() => {
-    rememberCode(box.current, code)
-  }, [code])
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
     const known = highlightedAlready(code, lang, theme)
@@ -46,17 +43,47 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, theme }: Props): 
     }
   }, [code, lang, theme])
 
+  /**
+   * Saying it has been copied, wherever the asking came from.
+   *
+   * The timer is held rather than left to run, and cleared before it is set
+   * again: copying twice in quick succession would otherwise have the first
+   * one put the label back while the second is still being acknowledged.
+   */
+  const flash = useCallback((): void => {
+    setCopied(true)
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => setCopied(false), SAID_FOR)
+  }, [])
+
+  useEffect(() => () => clearTimeout(timer.current), [])
+
   const copy = (): void => {
     void navigator.clipboard.writeText(code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1400)
+    flash()
   }
+
+  /*
+   * So the shortcut that copies whatever the pointer is over can reach both
+   * halves of this: the source it was built from, which is more exact than
+   * anything read back off the screen, and the way this block says it has been
+   * copied — which is the button's own way of saying it, because it is the
+   * same function the button calls.
+   */
+  useEffect(() => {
+    rememberBlock(box.current, { code, flash })
+  }, [code, flash])
 
   return (
     <div className="codeblock" ref={box}>
       <div className="codeblock__head">
         <span className="codeblock__lang">{lang === 'text' ? 'plain text' : lang}</span>
-        <button className="codeblock__copy" onClick={copy} type="button">
+        <button
+          className="codeblock__copy"
+          data-copied={copied}
+          onClick={copy}
+          type="button"
+        >
           {copied ? 'copied' : 'copy'}
         </button>
       </div>

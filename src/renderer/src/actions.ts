@@ -2,7 +2,7 @@ import type { ExportFormat } from '@shared/types'
 import { threadLabel } from './format'
 import { canBecomeTemporary, useStore } from './store'
 import { COMPOSER_ID } from './components/Composer'
-import { codeUnderPointer } from './codeblocks'
+import { blockUnderPointer } from './codeblocks'
 
 export interface AppAction {
   id: string
@@ -327,19 +327,32 @@ export function buildActions(): AppAction[] {
        */
       hidden: true,
       run: async () => {
-        const code = codeUnderPointer()
-        if (code === null) {
+        const block = blockUnderPointer()
+        if (!block) {
           store.showToast('No code block under the pointer')
           return
         }
         // Waited on rather than fired off, so a clipboard that refused is not
         // reported as a copy that worked.
         try {
-          await navigator.clipboard.writeText(code)
-          store.showToast('Copied the code block')
+          await navigator.clipboard.writeText(block.code)
         } catch (err) {
           store.showToast(err instanceof Error ? err.message : 'Could not copy', 'error')
+          return
         }
+        /*
+         * The block says so itself where it can — its copy button becomes the
+         * word "copied", exactly as it does when that button is the thing you
+         * pressed. A toast as well would be the app announcing across the
+         * window something already answered under the pointer, and a toast
+         * *instead* would make the same copy look like two different features
+         * depending on how it was asked for.
+         *
+         * Only the blocks the app builds itself have no button to say it with,
+         * and those are the ones that still need telling.
+         */
+        if (block.flash) block.flash()
+        else store.showToast('Copied the code block')
       }
     },
     {

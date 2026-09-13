@@ -43,23 +43,43 @@ export function watchPointer(): () => void {
   return () => window.removeEventListener('pointermove', onMove)
 }
 
+/** A block that can be copied, and what it does about having been. */
+export interface Block {
+  /**
+   * The text the block was built from.
+   *
+   * Highlighted code is a tree of spans, and reading the text back out of it
+   * returns something very close to the original but not guaranteed to be it —
+   * a trailing newline here, a soft-wrap artefact there. What is copied should
+   * be what the model wrote, so the component hands over the string it
+   * rendered rather than this reading it off the screen.
+   */
+  code: string
+  /**
+   * Says so on the block itself, or null for a block with nothing to say it
+   * with.
+   *
+   * A rendered block has a copy button, and that button already knows how to
+   * report a copy: it becomes the word "copied" for a moment. Doing it that
+   * way rather than raising a toast means the answer appears on the thing you
+   * were pointing at, which is where you are already looking — and it is the
+   * same acknowledgement whether you reached for the button or the key, so
+   * there is nothing extra to learn.
+   */
+  flash: (() => void) | null
+}
+
 /**
- * The source each block was built from, keyed on the element showing it.
- *
- * Highlighted code is a tree of spans, and reading the text back out of it
- * returns something very close to the original but not guaranteed to be it —
- * a trailing newline here, a soft-wrap artefact there. What is copied should
- * be what the model wrote, so the component hands over the string it rendered
- * and this remembers it.
+ * Every block on screen, keyed on the element showing it.
  *
  * Weak, so a block that scrolls out of the transcript and is unmounted takes
  * its entry with it. A long conversation would otherwise accumulate every
  * snippet it has ever shown.
  */
-const sources = new WeakMap<Element, string>()
+const blocks = new WeakMap<Element, Block>()
 
-export function rememberCode(element: Element | null, code: string): void {
-  if (element) sources.set(element, code)
+export function rememberBlock(element: Element | null, block: Block): void {
+  if (element) blocks.set(element, block)
 }
 
 /**
@@ -70,20 +90,23 @@ export function rememberCode(element: Element | null, code: string): void {
  * sides and the code itself all sit inside the same element, so pointing at
  * any of them is pointing at the block.
  */
-export function codeUnderPointer(): string | null {
+export function blockUnderPointer(): Block | null {
   if (pointerX < 0) return null
 
   const at = document.elementFromPoint(pointerX, pointerY)
-  const block = at?.closest('.codeblock')
-  if (!block) return null
+  const element = at?.closest('.codeblock')
+  if (!element) return null
 
-  const known = sources.get(block)
-  if (known !== undefined) return known
+  const known = blocks.get(element)
+  if (known) return known
 
   /*
    * Blocks the app builds itself rather than rendering from a reply — a tool
    * call's arguments, the system prompt inspector — are plain `<pre>` and were
    * never registered. Their text is their source, and reading it is exact.
+   * They have no copy button either, so there is nothing on them to flash and
+   * the caller has to say it some other way.
    */
-  return block.querySelector('pre')?.textContent ?? null
+  const text = element.querySelector('pre')?.textContent
+  return text === null || text === undefined ? null : { code: text, flash: null }
 }
