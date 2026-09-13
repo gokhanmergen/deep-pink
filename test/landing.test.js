@@ -5,123 +5,129 @@ const { suite } = require('./support/harness')
  * Where a conversation opens.
  *
  * A transcript used to open at its very bottom, which is the end of the last
- * thing the model said rather than the start of the last exchange. Measured
- * against a real library of 772 conversations, the last exchange is taller
- * than a 700px window in about three quarters of them — so the bottom showed
- * the final paragraph of an answer whose question was off screen.
+ * thing the model said rather than the start of the last thing you asked. What
+ * it does now is one sentence: the last message you sent is at the top of the
+ * window, with the answer running down from it — the view you had the moment
+ * you pressed send.
  *
- * The rule that replaced it is one sentence, and these check that sentence
- * holds: your own last message is on screen when a thread opens. Pixels rather
- * than a rendered window, because the arithmetic is where the decisions are
- * and it can be asked directly.
+ * The first attempt at this took the top of the last exchange or the bottom,
+ * whichever came first, and was therefore wrong in exactly the common case: a
+ * document cannot be scrolled past its end, so for any exchange shorter than
+ * the window — most of them — "whichever came first" was the bottom, and
+ * nothing changed. Putting a message at the top means having somewhere to
+ * scroll it to. That is what the tail is, and why these check it and the
+ * landing together rather than apart.
  */
 global.window = { deepPink: { platform: 'linux' } }
 
 suite('landing — where a conversation opens', async ({ check, section }) => {
-  const { landingPoint } = require(path.join(__dirname, '..', '.test-build', 'store.js'))
+  const { landingPoint, tailHeight } = require(path.join(__dirname, '..', '.test-build', 'store.js'))
 
   const VIEWPORT = 700
-  /** A thread `content` tall whose last exchange begins at `askTop`. */
-  const thread = (content, askTop, answerTop = null) => ({
-    viewport: VIEWPORT,
-    content,
-    askTop,
-    answerTop
-  })
-  const land = (geometry, remembered = null, generating = false) =>
-    landingPoint(geometry, remembered, generating)
-  const bottomOf = (content) => Math.max(content - VIEWPORT, 0)
+  /** The sliver of the previous message left showing above whatever is at top. */
+  const ROOM = 24
 
-  section('the promise: your last message is on screen')
-  // Across exchanges from a line to fifty screenfuls, on threads from short to
-  // very long. What must hold in every one of them is that the question is
-  // somewhere in the window once it has landed.
-  const sizes = [40, 200, 690, 700, 710, 1400, 5000, 35000]
-  const lengths = [800, 2000, 20000, 200000]
-  let visible = 0
-  let total = 0
-  const missed = []
-  for (const content of lengths) {
-    for (const turn of sizes) {
-      if (turn > content) continue
-      const askTop = content - turn
-      const got = land(thread(content, askTop, askTop + Math.min(120, turn / 2)))
-      total++
-      // On screen means: at or below the top of the view, and above its foot.
-      const relative = askTop - got.scrollTop
-      if (relative >= -1 && relative < VIEWPORT) visible++
-      else missed.push({ content, turn, scrollTop: got.scrollTop, relative, why: got.reason })
+  /**
+   * A transcript, as the page would lay it out: `before` pixels of older
+   * conversation, then an exchange, then however much tail that exchange needs.
+   */
+  const page = (before, exchange, question = 120) => {
+    const tail = tailHeight(VIEWPORT, exchange)
+    return {
+      geometry: {
+        viewport: VIEWPORT,
+        content: before + exchange + tail,
+        askTop: before,
+        answerTop: before + Math.min(question, exchange)
+      },
+      tail,
+      bottom: Math.max(before + exchange + tail - VIEWPORT, 0)
     }
   }
-  check(`the question is in view in all ${total} of them`, visible === total, missed)
+  const land = (p, remembered = null, generating = false) =>
+    landingPoint(p.geometry, remembered, generating)
 
-  section('a last exchange that already fits changes nothing')
-  // The whole point of the `min`: where the bottom already showed the turn,
-  // the bottom is still the answer and nobody sees a difference.
-  const fits = land(thread(10000, 9500))
-  check('it lands at the bottom', fits.scrollTop === bottomOf(10000), fits)
-  check('and says that is why', fits.reason === 'end', fits)
+  section('the promise: your last message is at the top')
+  // Swept rather than sampled. Exchanges from one line to fifty screenfuls, in
+  // threads from nothing above them to two hundred thousand pixels of it.
+  const above = [0, 500, 5000, 200000]
+  const sizes = [40, 200, 676, 700, 1400, 5000, 35000]
+  let atTop = 0
+  let total = 0
+  const wrong = []
+  for (const before of above) {
+    for (const exchange of sizes) {
+      const p = page(before, exchange)
+      const got = land(p)
+      total++
+      const below = before - got.scrollTop
+      // At the top means the breathing room and nothing else — except in a
+      // thread with nothing above it, which is already as high as it goes.
+      if (Math.abs(below - ROOM) < 1.5 || (before === 0 && got.scrollTop === 0)) atTop++
+      else wrong.push({ before, exchange, tail: p.tail, scrollTop: got.scrollTop, below, why: got.reason })
+    }
+  }
+  check(`it is at the top in all ${total} shapes`, atTop === total, wrong)
 
-  const justFits = land(thread(10000, 10000 - VIEWPORT + 30))
-  check('and a turn that only just fits, too', justFits.scrollTop === bottomOf(10000), justFits)
+  section('the room it needs to get there')
+  check('a one-line exchange is given most of a screen', tailHeight(VIEWPORT, 40) === VIEWPORT - ROOM - 40)
+  check('one a screenful tall needs none', tailHeight(VIEWPORT, VIEWPORT) === 0)
+  check('nor does one far taller', tailHeight(VIEWPORT, 35000) === 0)
+  check('a conversation you have not spoken in gets none', tailHeight(VIEWPORT, null) === 0)
+  check('and it is never negative', [0, 1, VIEWPORT, VIEWPORT * 3].every((e) => tailHeight(VIEWPORT, e) >= 0))
 
-  section('a last exchange taller than the window starts at its top')
-  const tall = land(thread(10000, 8000, 8200))
-  check('it lands above the bottom', tall.scrollTop < bottomOf(10000), tall)
-  check('at the question, less a little context', tall.scrollTop === 8000 - 24, tall)
-  check('and says that is why', tall.reason === 'turn', tall)
+  // Why nothing about following a reply had to change: while there is a tail,
+  // the bottom of the scroll and the question-at-the-top are the same pixel.
+  // So a reply arriving grows down the page under a question that stays put,
+  // and only starts scrolling once it has filled the window.
+  const coincide = [40, 200, 400, 676].every((exchange) => {
+    const p = page(5000, exchange)
+    return Math.abs(p.bottom - (5000 - ROOM)) < 1.5
+  })
+  check('following a reply holds the question at the top, for free', coincide)
 
   section('unless the question is what has eaten the screen')
   // A pasted stack trace as the question: starting there would fill the window
-  // with the thing you already know and none of the answer.
-  const huge = land(thread(20000, 10000, 10000 + VIEWPORT * 0.6))
-  check('it starts at the answer instead', huge.reason === 'answer', huge)
-  check('at its top, less the same context', huge.scrollTop === 10000 + VIEWPORT * 0.6 - 24, huge)
-
-  // And the line is held where it is: a question taking a third of the screen
-  // is still context, not an obstruction.
-  const roomy = land(thread(20000, 10000, 10000 + VIEWPORT * 0.3))
-  check('a question that merely frames the answer is still the start', roomy.reason === 'turn')
+  // with what you already know and none of the answer.
+  const stackTrace = page(10000, 4000, VIEWPORT * 0.6)
+  const shifted = land(stackTrace)
+  check('the answer goes to the top instead', shifted.reason === 'answer', shifted)
+  check(
+    'at its own first line',
+    shifted.scrollTop === 10000 + VIEWPORT * 0.6 - ROOM,
+    shifted
+  )
+  // A question taking a third of the screen is still framing the answer.
+  check('a question that merely frames it is still the start', land(page(10000, 4000, VIEWPORT * 0.3)).reason === 'turn')
 
   section('what outranks it')
-  const place = { scrollTop: 4321, atBottom: false }
-  const remembered = land(thread(20000, 18000), place)
-  check('somewhere you scrolled to yourself wins', remembered.scrollTop === 4321, remembered)
-  check('and says so', remembered.reason === 'remembered')
-
-  const atEnd = land(thread(20000, 18000), { scrollTop: 999, atBottom: true })
+  const scrolled = { scrollTop: 4321, atBottom: false }
+  const back = land(page(20000, 2000), scrolled)
+  check('somewhere you scrolled to yourself wins', back.scrollTop === 4321 && back.reason === 'remembered', back)
   check(
     'but having left it at the end is not a place, so the rule still applies',
-    atEnd.reason === 'turn',
-    atEnd
+    land(page(20000, 2000), { scrollTop: 999, atBottom: true }).reason === 'turn'
   )
 
-  const live = land(thread(20000, 18000), place, true)
-  check('a reply still arriving pins the end, whatever else was true', live.reason === 'generating')
-  check('at the bottom', live.scrollTop === bottomOf(20000), live)
+  const live = land(page(20000, 2000), scrolled, true)
+  check('a reply still arriving pins the end over everything', live.reason === 'generating')
+  check('which, with a tail under it, is the question at the top anyway', live.scrollTop === page(20000, 2000).bottom)
 
   section('conversations with nothing to aim at')
-  const nothingSaid = land(thread(2000, null))
-  check('nothing of yours in it lands at the end', nothingSaid.reason === 'end')
-
-  const shorterThanTheWindow = land(thread(300, 100, 160))
-  check('a thread that does not fill the window lands at the top', shorterThanTheWindow.scrollTop === 0)
-
-  const unanswered = land(thread(10000, 8000, null))
-  check('a question still being answered starts at the question', unanswered.reason === 'turn')
-  check('and does not fall off the end looking for a reply', unanswered.scrollTop === 8000 - 24)
+  check('nothing of yours in it lands at the end', landingPoint({ viewport: VIEWPORT, content: 2000, askTop: null, answerTop: null }, null, false).reason === 'end')
+  const unanswered = land(page(10000, 300, 300))
+  check('a question still being answered still goes to the top', unanswered.reason === 'turn')
 
   section('it never lands somewhere that is not a scroll position')
-  const cases = [
-    land(thread(0, null)),
-    land(thread(100, 0, 10)),
-    land(thread(50000, 10, 20)),
-    land(thread(20000, 19999), { scrollTop: -500, atBottom: false }),
-    land(thread(20000, 19999), { scrollTop: 999999, atBottom: false })
+  const silly = [
+    [landingPoint({ viewport: VIEWPORT, content: 0, askTop: null, answerTop: null }, null, false), 0],
+    [landingPoint({ viewport: VIEWPORT, content: 100, askTop: 0, answerTop: 10 }, null, false), 0],
+    [land(page(20000, 100), { scrollTop: -500, atBottom: false }), 0],
+    [land(page(20000, 100), { scrollTop: 999999, atBottom: false }), page(20000, 100).bottom]
   ]
   check(
-    'never above the top or below the end',
-    cases.every((c, i) => c.scrollTop >= 0 && c.scrollTop <= bottomOf([0, 100, 50000, 20000, 20000][i])),
-    cases
+    'above the top and below the end are both clamped away',
+    silly.every(([got, want]) => got.scrollTop === want),
+    silly.map(([got]) => got.scrollTop)
   )
 })

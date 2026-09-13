@@ -1435,6 +1435,19 @@ svg.lucide {
   padding: var(--s7) 0 var(--s2);
 }
 
+/*
+ * The room the last exchange needs to reach the top of the window.
+ *
+ * Height is set from the layout — it is however much is left over after the
+ * last exchange — so there is nothing to declare here beyond it being a length
+ * and not content: no margin of its own to add to what it is measuring, and
+ * nothing in it to select or read.
+ */
+.transcript__tail {
+  flex: none;
+  pointer-events: none;
+}
+
 .transcript__inner {
   max-width: var(--chat-width);
   margin: 0 auto;

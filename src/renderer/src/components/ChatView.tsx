@@ -9,7 +9,7 @@ import { ArrowDown, BarChart3, Cpu, FileText, Ghost, PanelLeft, Plus, Route } fr
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, modelShortName, threadLabel } from '../format'
-import { landingPoint } from '../landing'
+import { landingPoint, tailHeight } from '../landing'
 import type { Message } from '@shared/types'
 
 /**
@@ -137,6 +137,10 @@ export function ChatView(): React.JSX.Element {
    */
   const holding = useRef<{ id: string; offset: number } | null>(null)
 
+  /** The empty space under the conversation, and how tall it currently is. */
+  const tailRef = useRef<HTMLDivElement>(null)
+  const tail = useRef(0)
+
   /**
    * Reads in the page above, holding the reader's place across it.
    *
@@ -165,6 +169,43 @@ export function ChatView(): React.JSX.Element {
       // ours is cleared, never one a later request is waiting on.
       if (!added && anchor.current === mark) anchor.current = null
     })
+  }, [])
+
+  /**
+   * Sizes the empty space under the conversation.
+   *
+   * Measured rather than estimated: the height of the last exchange is the
+   * distance from the top of your message to the foot of the last thing
+   * rendered, which is a number the page already knows and nothing else can
+   * work out. Called after every render and again whenever anything settles,
+   * because a code block that finishes highlighting makes the exchange taller
+   * and the tail shorter by the same amount.
+   *
+   * Returns whether it changed, so the caller can avoid chasing its own tail:
+   * setting this height changes the height of the column, which is what the
+   * observer below is watching.
+   */
+  const sizeTail = useCallback((): boolean => {
+    const el = scrollRef.current
+    const spacer = tailRef.current
+    if (!el || !spacer) return false
+
+    const { askId } = lastTurn(useStore.getState().messages)
+    const rendered = el.querySelectorAll<HTMLElement>('[data-message-id]')
+    const foot = rendered[rendered.length - 1]
+
+    const exchange =
+      askId === null || !foot
+        ? null
+        : foot.getBoundingClientRect().bottom -
+          (el.querySelector(`[data-message-id="${CSS.escape(askId)}"]`)?.getBoundingClientRect()
+            .top ?? 0)
+
+    const next = tailHeight(el.clientHeight, exchange)
+    if (Math.abs(next - tail.current) < 1) return false
+    tail.current = next
+    spacer.style.height = `${next}px`
+    return true
   }, [])
 
   /**
@@ -246,6 +287,7 @@ export function ChatView(): React.JSX.Element {
        * it land" has answers that are right or wrong rather than a matter of
        * taste. Here is only the measuring and the doing.
        */
+      sizeTail()
       const last = lastTurn(messages)
       const landing = landingPoint(
         {
@@ -282,8 +324,9 @@ export function ChatView(): React.JSX.Element {
       }
     }
 
+    sizeTail()
     if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
-  }, [messages])
+  }, [messages, sizeTail])
 
   useEffect(() => {
     pinnedToBottom.current = true
@@ -316,6 +359,11 @@ export function ChatView(): React.JSX.Element {
       // would fight it.
       if (anchor.current || restoring.current) return
 
+      // The exchange just got taller or shorter, so the room left for it to
+      // rise into changed too. Doing this first means everything below is
+      // measuring the transcript it is about to act on.
+      sizeTail()
+
       // Whatever the opening landed on, kept where it landed.
       const hold = holding.current
       if (hold) {
@@ -330,7 +378,7 @@ export function ChatView(): React.JSX.Element {
     })
     observer.observe(inner)
     return () => observer.disconnect()
-  }, [])
+  }, [sizeTail])
 
   /**
    * Tops the transcript up until there is something to scroll.
@@ -342,7 +390,7 @@ export function ChatView(): React.JSX.Element {
    */
   useEffect(() => {
     const el = scrollRef.current
-    if (!el || el.scrollHeight > el.clientHeight * 2.5) return
+    if (!el || el.scrollHeight - tail.current > el.clientHeight * 2.5) return
     readOlder()
   }, [messages, hasOlderMessages, loadingOlder, readOlder])
 
@@ -638,6 +686,16 @@ export function ChatView(): React.JSX.Element {
                 <span className="chip chip--accent">compacting context…</span>
               </div>
             )}
+
+            {/*
+              * Room to scroll the last exchange up to the top of the window.
+              *
+              * Its height is set from the layout rather than declared, because
+              * it depends on how tall the last exchange turned out to be —
+              * see `sizeTail`. Empty, unfocusable and unreadable: it is a
+              * length, not content.
+              */}
+            <div className="transcript__tail" ref={tailRef} aria-hidden="true" />
           </div>
         </div>
 

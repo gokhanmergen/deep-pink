@@ -9,16 +9,48 @@
  * never where you want to start reading it.
  *
  * What you came back for is the last exchange, and an exchange starts with the
- * question. So the rule this settles on is one sentence: **your own last
- * message is on screen when a thread opens**, and as much of the answer as
- * fits follows it. When the whole exchange already fits, that is the bottom and
- * nothing changes; when it does not, the view starts at the top of the turn
- * instead of its end.
+ * question. So the rule is one sentence: **the last thing you said is at the
+ * top of the window**, with the answer running down from it — the view you had
+ * the moment you pressed send.
+ *
+ * This first tried to do that by taking the top of the last exchange or the
+ * bottom, whichever came first, which was wrong in the ordinary case and only
+ * looked right in the rare one. A document cannot be scrolled past its end, so
+ * where the last exchange was shorter than the window — which is most of them
+ * — "whichever came first" was always the bottom, and nothing changed for the
+ * threads the change was for. Being able to put a message at the top means
+ * having somewhere to scroll it to, so the transcript now keeps a tail of
+ * empty space below the conversation, exactly as tall as it needs to be and no
+ * taller. `tailHeight` works out how much.
  *
  * The arithmetic is here, apart from the DOM, because "where should it land"
  * is a question with right and wrong answers that can be checked — and because
  * every one of the numbers it needs can be measured off the page first.
  */
+
+/**
+ * How much empty space to leave under the conversation.
+ *
+ * Enough that the last exchange can be scrolled until its first line is at the
+ * top of the window, and not one pixel more: a transcript that always ends in
+ * a screenful of nothing is a transcript you can scroll past the end of.
+ *
+ * `exchange` is the height of the last exchange — your message and everything
+ * answering it — so this shrinks to zero on its own as a reply grows past a
+ * screenful, at which point the end of the conversation is the end of the
+ * conversation again.
+ *
+ * There is a quiet consequence worth naming, because it is why nothing else
+ * had to change: while the tail exists, the bottom of the scroll *is* the
+ * message-at-the-top position. Following a reply as it arrives therefore holds
+ * your question at the top and lets the answer grow down the page, and only
+ * starts scrolling once the answer has filled the window — which is what you
+ * wanted from following it in the first place.
+ */
+export function tailHeight(viewport: number, exchange: number | null): number {
+  if (exchange === null) return 0
+  return Math.max(0, viewport - BREATHING_ROOM - exchange)
+}
 
 /** What the transcript looks like, in pixels, once it has been laid out. */
 export interface Geometry {
@@ -100,21 +132,12 @@ export function landingPoint(
   // Somewhere you actually chose beats anywhere this could work out.
   if (remembered && !remembered.atBottom) return settle(remembered.scrollTop, 'remembered')
 
+  // A conversation you have said nothing in has no exchange to open at.
   if (askTop === null) return settle(end, 'end')
 
-  /*
-   * The top of the last exchange, or the bottom, whichever comes first.
-   *
-   * `min` is what makes the common case cost nothing: when the whole turn fits
-   * on screen the bottom is already above its top, so this is the bottom and
-   * the view is exactly where it used to be. It only differs when the turn is
-   * taller than the window — which is the case that was broken.
-   */
-  const fromTheQuestion = askTop - BREATHING_ROOM
-  if (fromTheQuestion >= end) return settle(end, 'end')
-
-  // Unless the question has eaten the screen, in which case it is no longer
-  // framing anything.
+  // The question goes to the top — unless the question has eaten the screen,
+  // in which case it is no longer framing the answer but standing in front of
+  // it, and the answer goes to the top instead.
   if (
     answerTop !== null &&
     answerTop - askTop > viewport * MOST_OF_THE_SCREEN_A_QUESTION_MAY_TAKE
@@ -122,5 +145,5 @@ export function landingPoint(
     return settle(answerTop - BREATHING_ROOM, 'answer')
   }
 
-  return settle(fromTheQuestion, 'turn')
+  return settle(askTop - BREATHING_ROOM, 'turn')
 }
