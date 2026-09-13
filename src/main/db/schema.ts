@@ -351,5 +351,23 @@ export const MIGRATIONS: string[] = [
            '$.keybinds."thread.keep"'
          )
    WHERE key = 'settings' AND json_valid(value);
+  `,
+
+  /* 17 — the documents shortcut was one nobody could press */ `
+  /*
+   * Documents shipped bound to mod+shift+d, which branching a thread has held
+   * since long before documents existed. Two actions on one chord is settled
+   * by the order they are declared in, and branching is declared first — so
+   * the shortcut in the list was one that could never fire.
+   *
+   * Only where it is still the binding that shipped: somebody who moved it
+   * deliberately has already solved this, and their choice is not this
+   * migration's to overwrite.
+   */
+  UPDATE settings
+     SET value = json_set(value, '$.keybinds."docs.toggle"', 'mod+shift+o')
+   WHERE key = 'settings'
+     AND json_valid(value)
+     AND json_extract(value, '$.keybinds."docs.toggle"') = 'mod+shift+d';
   `
 ]

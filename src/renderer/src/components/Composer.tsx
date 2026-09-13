@@ -279,7 +279,7 @@ export function Composer(): React.JSX.Element {
       id: 'docs',
       label: 'Multiple documents',
       icon: <FileText {...ICON} />,
-      hint: formatBinding(keybinds['docs.toggle'] ?? 'mod+shift+d'),
+      hint: formatBinding(keybinds['docs.toggle'] ?? 'mod+shift+o'),
       on: docsOn,
       onSelect: toggleDocs
     }

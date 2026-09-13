@@ -2,6 +2,7 @@ import type { ExportFormat } from '@shared/types'
 import { threadLabel } from './format'
 import { canBecomeTemporary, useStore } from './store'
 import { COMPOSER_ID } from './components/Composer'
+import { codeUnderPointer } from './codeblocks'
 
 export interface AppAction {
   id: string
@@ -311,6 +312,28 @@ export function buildActions(): AppAction[] {
         if (!last) return
         void navigator.clipboard.writeText(last.content)
         store.showToast('Copied the last reply')
+      }
+    },
+    {
+      id: 'code.copyHovered',
+      label: 'Copy the code block under the pointer',
+      group: 'Messages',
+      /*
+       * Hidden from the palette. Running it from there would mean opening the
+       * palette, which puts a dialog over the transcript — so by the time it
+       * could run there is no code block under the pointer to copy. It is a
+       * shortcut or it is nothing, but it is still bindable, so it belongs
+       * here rather than being wired into the key handler on its own.
+       */
+      hidden: true,
+      run: () => {
+        const code = codeUnderPointer()
+        if (code === null) {
+          store.showToast('No code block under the pointer')
+          return
+        }
+        void navigator.clipboard.writeText(code)
+        store.showToast('Copied the code block')
       }
     },
     {

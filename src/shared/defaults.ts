@@ -114,6 +114,16 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   'message.regenerate': 'mod+r',
   'message.editLast': 'mod+up',
   'message.copyLast': 'mod+shift+y',
+  /*
+   * Copy whichever code block the pointer happens to be over.
+   *
+   * `mod` rather than a literal `ctrl` because that is how every binding here
+   * is written, and because the matcher treats Ctrl as `mod` off macOS — a
+   * binding spelled `ctrl+space` would be dead on the platform it was asked
+   * for. This is Ctrl+Space on Linux and Windows, and Cmd+Space on macOS,
+   * where Spotlight has it and it is worth rebinding.
+   */
+  'code.copyHovered': 'mod+space',
   'message.deleteLast': 'mod+shift+backspace',
 
   // Model & routing
@@ -124,7 +134,13 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   // Capabilities
   'web.toggle': 'mod+shift+w',
   'charts.toggle': 'mod+shift+b',
-  'docs.toggle': 'mod+shift+d',
+  /*
+   * Not `mod+shift+d`, which it shipped with and which branching a thread has
+   * held since long before documents existed. Two actions on one chord is
+   * resolved by declaration order, and branching is declared first — so this
+   * was simply unreachable from the keyboard for two releases.
+   */
+  'docs.toggle': 'mod+shift+o',
   'sync.pause': 'mod+shift+u',
   'mcp.panel': 'mod+shift+e',
   'reasoning.toggle': 'mod+shift+r',

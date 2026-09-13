@@ -1,5 +1,6 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { highlight, highlightedAlready } from '../highlight'
+import { rememberCode } from '../codeblocks'
 
 /**
  * Shiki highlights locally — the grammars and themes are bundled, so nothing is
@@ -19,6 +20,14 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, theme }: Props): 
   // — paints highlighted in the frame it mounts in, with no plain-text flash.
   const [html, setHtml] = useState<string | null>(() => highlightedAlready(code, lang, theme))
   const [copied, setCopied] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  // So the copy-under-the-pointer shortcut gets the source rather than the text
+  // it could read back out of the highlighting. Keyed on `code` alone: the same
+  // element shows new text as a reply streams into it.
+  useEffect(() => {
+    rememberCode(box.current, code)
+  }, [code])
 
   useEffect(() => {
     const known = highlightedAlready(code, lang, theme)
@@ -44,7 +53,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, theme }: Props): 
   }
 
   return (
-    <div className="codeblock">
+    <div className="codeblock" ref={box}>
       <div className="codeblock__head">
         <span className="codeblock__lang">{lang === 'text' ? 'plain text' : lang}</span>
         <button className="codeblock__copy" onClick={copy} type="button">

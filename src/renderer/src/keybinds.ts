@@ -160,7 +160,8 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
       { id: 'message.stop', label: 'Stop generating' },
       { id: 'message.regenerate', label: 'Regenerate last reply' },
       { id: 'message.editLast', label: 'Edit last message' },
-      { id: 'message.copyLast', label: 'Copy last reply' }
+      { id: 'message.copyLast', label: 'Copy last reply' },
+      { id: 'code.copyHovered', label: 'Copy the code block under the pointer' }
     ]
   },
   {
