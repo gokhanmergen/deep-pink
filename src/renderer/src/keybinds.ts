@@ -79,10 +79,30 @@ export function matchesParsed(event: KeyboardEvent, parsed: ParsedBinding): bool
 
   if (normalizeKey(event.key) === parsed.key) return true
 
-  // Option on macOS rewrites the character a key produces, so Alt+1 arrives as
-  // '¡' and a digit binding would never match. The physical key is unambiguous
-  // where a digit is concerned, so fall back to it.
-  return /^\d$/.test(parsed.key) && event.code === `Digit${parsed.key}`
+  /*
+   * Failing that, the physical key.
+   *
+   * Option on macOS rewrites the character a key produces, so Alt+1 arrives as
+   * '¡' and a digit binding would never match it. An input method does the
+   * same to the space bar — with one engaged, Ctrl+Space can arrive as
+   * 'Process' or as nothing at all rather than as ' '. Both are the character
+   * being rewritten under a binding that only ever meant the key, so both fall
+   * back to the key.
+   */
+  if (/^\d$/.test(parsed.key) && event.code === `Digit${parsed.key}`) return true
+  return PHYSICAL[parsed.key] !== undefined && event.code === PHYSICAL[parsed.key]
+}
+
+/** Bindings named after a key rather than after a character it produces. */
+const PHYSICAL: Record<string, string> = {
+  space: 'Space',
+  enter: 'Enter',
+  esc: 'Escape',
+  backspace: 'Backspace',
+  up: 'ArrowUp',
+  down: 'ArrowDown',
+  left: 'ArrowLeft',
+  right: 'ArrowRight'
 }
 
 const SYMBOLS: Record<string, string> = {

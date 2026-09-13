@@ -17,6 +17,7 @@ import { ToolApprovalDialog } from './components/ToolApprovalDialog'
 import { Dialog } from './components/Dialog'
 import { ImageViewer } from './components/ImageViewer'
 import { Logo } from './components/Logo'
+import { watchPointer } from './codeblocks'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -44,6 +45,9 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     void init()
   }, [init])
+
+  // Where the pointer is, for the shortcut that copies the code block under it.
+  useEffect(() => watchPointer(), [])
 
   // Window dragging is a macOS-windowed-mode affair only. Enabling it under a
   // Wayland compositor — or in fullscreen anywhere — breaks click targets

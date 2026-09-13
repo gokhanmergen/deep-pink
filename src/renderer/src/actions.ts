@@ -326,14 +326,20 @@ export function buildActions(): AppAction[] {
        * here rather than being wired into the key handler on its own.
        */
       hidden: true,
-      run: () => {
+      run: async () => {
         const code = codeUnderPointer()
         if (code === null) {
           store.showToast('No code block under the pointer')
           return
         }
-        void navigator.clipboard.writeText(code)
-        store.showToast('Copied the code block')
+        // Waited on rather than fired off, so a clipboard that refused is not
+        // reported as a copy that worked.
+        try {
+          await navigator.clipboard.writeText(code)
+          store.showToast('Copied the code block')
+        } catch (err) {
+          store.showToast(err instanceof Error ? err.message : 'Could not copy', 'error')
+        }
       }
     },
     {
