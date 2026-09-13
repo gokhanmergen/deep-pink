@@ -43,9 +43,33 @@ export const MessageItem = memo(function MessageItem({
       .getState()
       .messages.flatMap((entry) => entry.attachments.filter((file) => file.kind === 'image'))
 
-  const [editing, setEditing] = useState(false)
+  // The answer again, not the id: a row does not wake up because some other
+  // row is being edited.
+  const editing = useStore((s) => s.editingMessageId === message.id)
+  const editMessage = useStore((s) => s.editMessage)
   const [draft, setDraft] = useState(message.content)
   const ref = useRef<HTMLDivElement>(null)
+
+  /*
+   * Seeded when the editor opens rather than when the button is pressed.
+   *
+   * The button is no longer the only way in — the shortcut for the last
+   * message you sent opens this same editor, and it has no button to hang a
+   * `setDraft` off. Both now do the one thing they have in common, which is
+   * naming the message, and the row takes care of the rest.
+   *
+   * `block: 'nearest'` scrolls it into view only if it is not already there,
+   * so opening the editor on a message you were looking at does not move the
+   * page under you.
+   */
+  useEffect(() => {
+    if (!editing) return
+    setDraft(message.content)
+    ref.current?.scrollIntoView({ block: 'nearest' })
+    // On opening alone. `message.content` is deliberately not a dependency:
+    // re-seeding when it changed would throw away what is being typed the
+    // moment anything else refreshed the transcript.
+  }, [editing])
 
   useEffect(() => {
     if (!highlighted) return
@@ -79,7 +103,7 @@ export const MessageItem = memo(function MessageItem({
 
   const saveEdit = async (): Promise<void> => {
     await window.deepPink.messages.update(message.id, { content: draft })
-    setEditing(false)
+    editMessage(null)
     // Re-reads the loaded range in place rather than reopening the thread,
     // which would throw away everything scrolled back to.
     await useStore.getState().refreshTranscript()
@@ -121,10 +145,7 @@ export const MessageItem = memo(function MessageItem({
           </button>
           <button
             className="btn btn--ghost"
-            onClick={() => {
-              setDraft(message.content)
-              setEditing(true)
-            }}
+            onClick={() => editMessage(message.id)}
             title="Edit"
             type="button"
           >
@@ -182,13 +203,21 @@ export const MessageItem = memo(function MessageItem({
               rows={Math.min(draft.split('\n').length + 2, 20)}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                // A way out that does not need the mouse, now that there is a
+                // way in that does not either.
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  editMessage(null)
+                }
+              }}
               autoFocus
             />
             <div className="row" style={{ marginTop: 8 }}>
               <button className="btn btn--primary" onClick={() => void saveEdit()} type="button">
                 Save
               </button>
-              <button className="btn" onClick={() => setEditing(false)} type="button">
+              <button className="btn" onClick={() => editMessage(null)} type="button">
                 Cancel
               </button>
             </div>

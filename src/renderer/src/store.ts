@@ -138,6 +138,17 @@ interface State {
   /** Message id the transcript should scroll to and flash. */
   highlightMessageId: string | null
   /**
+   * The message currently open for editing, if any.
+   *
+   * Held here rather than in the row that shows it because two things ask for
+   * it — the Edit button on a message, and the shortcut for the last one you
+   * sent — and a row cannot be told anything by a keybind. The shortcut used to
+   * put up a modal single-line prompt instead, which was a second, worse editor
+   * for the same job: no room for a message of more than a line, and nothing
+   * about it resembling the one the button opens.
+   */
+  editingMessageId: string | null
+  /**
    * The image being looked at, and everything else in the thread it can be
    * stepped through. Held here rather than in the transcript so the viewer
    * outlives the row that opened it — a re-render mid-stream must not close it.
@@ -227,6 +238,8 @@ interface State {
   showToast: (message: string, tone?: Toast['tone']) => void
   approveTool: (approved: boolean) => Promise<void>
   setHighlight: (messageId: string | null) => void
+  /** Opens a message for editing in place, or closes whatever is open. */
+  editMessage: (messageId: string | null) => void
   /** Opens the image viewer on `id`, stepping through every image given. */
   openImageViewer: (images: Attachment[], id: string) => void
   closeImageViewer: () => void
@@ -466,6 +479,7 @@ export const useStore = create<State>((set, get) => ({
   toast: null,
   dialog: null,
   highlightMessageId: null,
+  editingMessageId: null,
   imageViewer: null,
   sync: null,
   syncProgress: null,
@@ -581,7 +595,7 @@ export const useStore = create<State>((set, get) => ({
     // screen for the few milliseconds the read takes; blanking them flashes the
     // empty state instead, which is worse.
     const switching = get().activeThreadId !== id
-    if (switching) set({ activeThreadId: id, highlightMessageId: null })
+    if (switching) set({ activeThreadId: id, highlightMessageId: null, editingMessageId: null })
 
     // The end of the conversation, not all of it. The rest arrives as it is
     // scrolled towards, and the totals come from the database because the sum
@@ -1030,6 +1044,10 @@ export const useStore = create<State>((set, get) => ({
 
   setHighlight(messageId) {
     set({ highlightMessageId: messageId })
+  },
+
+  editMessage(messageId) {
+    set({ editingMessageId: messageId })
   },
 
   openImageViewer(images, id) {

@@ -287,20 +287,19 @@ export function buildActions(): AppAction[] {
       label: 'Edit the last message I sent',
       group: 'Messages',
       hidden: true,
-      run: async () => {
+      /*
+       * Opens the editor the message itself opens, rather than a second one.
+       *
+       * This used to put up a modal prompt — a single-line input in a dialog
+       * over the transcript — so the same job looked like two unrelated
+       * features depending on how it was asked for, and the keyboard one could
+       * not show a message of more than a line. Now both say which message,
+       * and the row does the editing.
+       */
+      run: () => {
         const last = [...store.messages].reverse().find((m) => m.role === 'user')
         if (!last) return
-        const next = await store.askPrompt({
-          title: 'Edit message',
-          defaultValue: last.content,
-          confirmLabel: 'Save'
-        })
-        if (next === null) return
-        await window.deepPink.messages.update(last.id, { content: next })
-        // Re-reads the range on screen rather than reopening the thread, which
-        // would drop back to the last screenful of a conversation somebody may
-        // have scrolled a long way up.
-        await store.refreshTranscript()
+        store.editMessage(last.id)
       }
     },
     {
