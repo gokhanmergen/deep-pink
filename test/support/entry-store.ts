@@ -5,6 +5,7 @@
 export { useStore, disposeStore, rememberPlace, placeOf, forgetPlace } from '@renderer/store'
 export { groupIntoTurns, isEmptyAssistantMessage } from '@renderer/turns'
 export { matchesBinding, parseBinding, formatBinding } from '@renderer/keybinds'
+export { landingPoint } from '@renderer/landing'
 export {
   isPlausibleMath,
   remarkOnlyPlausibleMath,

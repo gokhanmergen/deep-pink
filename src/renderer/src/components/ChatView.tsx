@@ -9,6 +9,52 @@ import { ArrowDown, BarChart3, Cpu, FileText, Ghost, PanelLeft, Plus, Route } fr
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, modelShortName, threadLabel } from '../format'
+import { landingPoint } from '../landing'
+import type { Message } from '@shared/types'
+
+/**
+ * How far a message's top is below the top of the view, right now.
+ *
+ * Rectangles rather than `offsetTop` because a message's offset parent is the
+ * inner column and not the scroller, so the two differ by however much padding
+ * the column has — a discrepancy that would be invisible until the padding
+ * changed. Returns 0 for a message that is not rendered, which is a position
+ * no caller acts on.
+ */
+function offsetOf(scroller: HTMLElement, messageId: string): number {
+  const el = scroller.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`)
+  if (!el) return 0
+  return el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+}
+
+/**
+ * The last exchange: what you asked, and the first thing that answered it.
+ *
+ * Read off the same blocks the transcript renders rather than off the messages
+ * behind them, because what is being measured is elements and only the blocks
+ * know which messages became one. A reply and the tool calls it made are drawn
+ * as a single element under the id of the first message in the run; a cost
+ * marker for naming the thread is an assistant message that is drawn as
+ * nothing at all. Walking the messages directly gets both of those wrong, and
+ * gets them wrong silently — as an id with no element, which measures as the
+ * top of the page.
+ *
+ * Ids rather than indices for the same reason. Null where there is nothing: a
+ * conversation with none of your words in it has no exchange, and a question
+ * still being answered has no answer yet.
+ */
+function lastTurn(messages: Message[]): { askId: string | null; answerId: string | null } {
+  const blocks = groupIntoTurns(messages)
+  const mine = (block: (typeof blocks)[number]): boolean =>
+    block.kind === 'message' && block.message.role === 'user'
+
+  let i = blocks.length - 1
+  while (i >= 0 && !mine(blocks[i])) i--
+  if (i < 0) return { askId: null, answerId: null }
+
+  const answer = blocks.slice(i + 1).find((block) => block.kind === 'turn')
+  return { askId: blocks[i].id, answerId: answer?.id ?? null }
+}
 
 export function ChatView(): React.JSX.Element {
   const settings = useStore((s) => s.settings)
@@ -75,6 +121,23 @@ export function ChatView(): React.JSX.Element {
   const restoring = useRef<string | null>(null)
 
   /**
+   * A message held at a fixed distance from the top of the view.
+   *
+   * The mirror of `pinnedToBottom`, and needed for the same reason. A
+   * transcript is not its final height when it is first laid out — code blocks
+   * arrive plain and become highlighted, pictures load — so a view put at the
+   * top of the last exchange slides off it as everything above finishes
+   * settling. Pinning the end survives that because the end is a place rather
+   * than a number; a message pinned by its own id is too.
+   *
+   * Cleared as soon as the reader scrolls, which is told apart from this
+   * component's own corrections by measurement: a correction puts the message
+   * back exactly where it was, so a message that has moved was moved by a
+   * person.
+   */
+  const holding = useRef<{ id: string; offset: number } | null>(null)
+
+  /**
    * Reads in the page above, holding the reader's place across it.
    *
    * Both callers guard on the store rather than on what they last rendered.
@@ -133,6 +196,12 @@ export function ChatView(): React.JSX.Element {
   const onScroll = useCallback((): void => {
     const el = scrollRef.current
     if (!el) return
+
+    // Reading has begun, so the landing is over. See `holding`: anything this
+    // component did itself leaves the offset untouched.
+    const hold = holding.current
+    if (hold && Math.abs(offsetOf(el, hold.id) - hold.offset) > 2) holding.current = null
+
     pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
 
     // Far enough up that the end of the conversation is somewhere else. The
@@ -169,14 +238,33 @@ export function ChatView(): React.JSX.Element {
       if (messages.length && messages[0].threadId !== opening) return
       restoring.current = null
 
-      const place = placeOf(opening)
-      if (place && !place.atBottom) {
-        el.scrollTop = place.scrollTop
-        pinnedToBottom.current = false
-      } else {
-        el.scrollTop = el.scrollHeight
-        pinnedToBottom.current = true
-      }
+      /*
+       * Where this conversation opens, which is not simply its end.
+       *
+       * The rules are in `../landing`, away from the DOM, because every number
+       * they need can be measured off the page first and because "where should
+       * it land" has answers that are right or wrong rather than a matter of
+       * taste. Here is only the measuring and the doing.
+       */
+      const last = lastTurn(messages)
+      const landing = landingPoint(
+        {
+          viewport: el.clientHeight,
+          content: el.scrollHeight,
+          askTop: last.askId === null ? null : offsetOf(el, last.askId) + el.scrollTop,
+          answerTop: last.answerId === null ? null : offsetOf(el, last.answerId) + el.scrollTop
+        },
+        placeOf(opening),
+        useStore.getState().generating
+      )
+
+      el.scrollTop = landing.scrollTop
+      pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+
+      // Landed on a message rather than at an edge, so hold it there while the
+      // heights above it settle.
+      const held = landing.reason === 'turn' ? last.askId : landing.reason === 'answer' ? last.answerId : null
+      holding.current = held === null ? null : { id: held, offset: offsetOf(el, held) }
       return
     }
 
@@ -200,6 +288,7 @@ export function ChatView(): React.JSX.Element {
   useEffect(() => {
     pinnedToBottom.current = true
     anchor.current = null
+    holding.current = null
     restoring.current = activeThreadId
     setAwayFromEnd(false)
   }, [activeThreadId])
@@ -226,6 +315,17 @@ export function ChatView(): React.JSX.Element {
       // Not while a page is landing above: that has its own anchor, and this
       // would fight it.
       if (anchor.current || restoring.current) return
+
+      // Whatever the opening landed on, kept where it landed.
+      const hold = holding.current
+      if (hold) {
+        if (el.querySelector(`[data-message-id="${CSS.escape(hold.id)}"]`)) {
+          el.scrollTop += offsetOf(el, hold.id) - hold.offset
+          return
+        }
+        holding.current = null
+      }
+
       if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
     })
     observer.observe(inner)
@@ -284,6 +384,7 @@ export function ChatView(): React.JSX.Element {
   const toLatest = (): void => {
     const el = scrollRef.current
     if (!el) return
+    holding.current = null
     el.scrollTop = el.scrollHeight
     pinnedToBottom.current = true
     setAwayFromEnd(false)
