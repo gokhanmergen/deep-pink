@@ -47,9 +47,13 @@
  * starts scrolling once the answer has filled the window — which is what you
  * wanted from following it in the first place.
  */
-export function tailHeight(viewport: number, exchange: number | null): number {
+export function tailHeight(
+  viewport: number,
+  exchange: number | null,
+  moreAbove: boolean
+): number {
   if (exchange === null) return 0
-  return Math.max(0, viewport - BREATHING_ROOM - exchange)
+  return Math.max(0, viewport - roomAbove(moreAbove) - exchange)
 }
 
 /** What the transcript looks like, in pixels, once it has been laid out. */
@@ -68,6 +72,13 @@ export interface Geometry {
    * your own message — nothing has answered it yet.
    */
   answerTop: number | null
+  /**
+   * Whether there is any conversation above the last exchange.
+   *
+   * Decides how much of it to leave showing, and therefore how much room the
+   * exchange needs below it — so `tailHeight` is given the same answer.
+   */
+  moreAbove: boolean
 }
 
 /*
@@ -96,13 +107,24 @@ export interface Landing {
 }
 
 /**
- * A little of what came before, above whatever the view starts at.
+ * How much of what came before is left showing above the landing.
  *
- * A message flush against the top edge reads as the top of the conversation.
- * A sliver of the one before it says "there is more up here" without costing
- * anything worth having.
+ * A message flush against the top edge reads as the top of the conversation,
+ * which for the last exchange of a long one is a lie — and a lie you only
+ * catch by scrolling up to check. So when there is something above, enough of
+ * it stays on screen to be read as text rather than as an edge: a line or two
+ * of the previous reply, which is what says "this is the end of something"
+ * without giving up the top of the window to it.
+ *
+ * When the exchange *is* the conversation there is nothing above to show and
+ * nothing to mislead about, so it keeps the bare margin it always had.
  */
-const BREATHING_ROOM = 24
+const A_GLIMPSE_OF_WHAT_CAME_BEFORE = 88
+const JUST_OFF_THE_EDGE = 24
+
+export function roomAbove(moreAbove: boolean): number {
+  return moreAbove ? A_GLIMPSE_OF_WHAT_CAME_BEFORE : JUST_OFF_THE_EDGE
+}
 
 /**
  * How much of the screen the question may take before it stops being context.
@@ -118,7 +140,8 @@ export function landingPoint(
   remembered: Remembered | null,
   generating: boolean
 ): Landing {
-  const { viewport, content, askTop, answerTop } = geometry
+  const { viewport, content, askTop, answerTop, moreAbove } = geometry
+  const room = roomAbove(moreAbove)
   const end = Math.max(content - viewport, 0)
   const settle = (scrollTop: number, reason: Landing['reason']): Landing => ({
     scrollTop: Math.max(0, Math.min(scrollTop, end)),
@@ -142,8 +165,8 @@ export function landingPoint(
     answerTop !== null &&
     answerTop - askTop > viewport * MOST_OF_THE_SCREEN_A_QUESTION_MAY_TAKE
   ) {
-    return settle(answerTop - BREATHING_ROOM, 'answer')
+    return settle(answerTop - room, 'answer')
   }
 
-  return settle(askTop - BREATHING_ROOM, 'turn')
+  return settle(askTop - room, 'turn')
 }

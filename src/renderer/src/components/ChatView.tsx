@@ -28,6 +28,26 @@ function offsetOf(scroller: HTMLElement, messageId: string): number {
 }
 
 /**
+ * Whether any conversation is rendered above the last exchange.
+ *
+ * Asked of the page rather than of the message list because that is the thing
+ * being looked at: what matters is whether there is text above to leave
+ * showing, and a message the transcript has not rendered cannot be shown
+ * whatever the list says.
+ *
+ * An exchange that is the first thing rendered still has more above it when
+ * there are older pages left to read in — the landing does not scroll into
+ * them, but it is a conversation with something above all the same, and
+ * treating it as the top of one would be the same lie.
+ */
+function hasSomethingAbove(scroller: HTMLElement, askId: string | null): boolean {
+  if (askId === null) return false
+  const first = scroller.querySelector<HTMLElement>('[data-message-id]')
+  if (first && first.dataset.messageId !== askId) return true
+  return useStore.getState().hasOlderMessages
+}
+
+/**
  * The last exchange: what you asked, and the first thing that answered it.
  *
  * Read off the same blocks the transcript renders rather than off the messages
@@ -201,7 +221,7 @@ export function ChatView(): React.JSX.Element {
           (el.querySelector(`[data-message-id="${CSS.escape(askId)}"]`)?.getBoundingClientRect()
             .top ?? 0)
 
-    const next = tailHeight(el.clientHeight, exchange)
+    const next = tailHeight(el.clientHeight, exchange, hasSomethingAbove(el, askId))
     if (Math.abs(next - tail.current) < 1) return false
     tail.current = next
     spacer.style.height = `${next}px`
@@ -294,7 +314,8 @@ export function ChatView(): React.JSX.Element {
           viewport: el.clientHeight,
           content: el.scrollHeight,
           askTop: last.askId === null ? null : offsetOf(el, last.askId) + el.scrollTop,
-          answerTop: last.answerId === null ? null : offsetOf(el, last.answerId) + el.scrollTop
+          answerTop: last.answerId === null ? null : offsetOf(el, last.answerId) + el.scrollTop,
+          moreAbove: hasSomethingAbove(el, last.askId)
         },
         placeOf(opening),
         useStore.getState().generating
