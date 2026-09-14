@@ -503,7 +503,7 @@ export function ChatView(): React.JSX.Element {
     const inner = el?.firstElementChild
     if (!el || !inner) return
 
-    const observer = new ResizeObserver(() => {
+    const settle = (): void => {
       // Not while a page is landing above: that has its own anchor, and this
       // would fight it.
       if (anchor.current || restoring.current) return
@@ -524,9 +524,39 @@ export function ChatView(): React.JSX.Element {
       }
 
       if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
+    }
+
+    /*
+     * One settle a frame, however many things settled in it.
+     *
+     * Opening a thread finishes a great many heights at once — every code
+     * block in it is highlighted separately, and each one changes the column's
+     * height when its result lands. This ran per change, and what it does is
+     * measure, write, then measure again: read a rectangle, set the tail's
+     * height, read another rectangle. Writing between two reads makes the
+     * second one force a fresh layout of the whole transcript, so a page of
+     * twenty-two code blocks was twenty-two forced layouts — and sizing the
+     * tail changes the very column being observed, so several of those
+     * re-entered and did it twice.
+     *
+     * Coalescing to a frame makes that one layout no matter how many blocks
+     * land together, and the frame is the right unit because nothing here
+     * matters until something is drawn.
+     */
+    let pending = 0
+    const observer = new ResizeObserver(() => {
+      if (pending) return
+      pending = requestAnimationFrame(() => {
+        pending = 0
+        settle()
+      })
     })
+
     observer.observe(inner)
-    return () => observer.disconnect()
+    return () => {
+      if (pending) cancelAnimationFrame(pending)
+      observer.disconnect()
+    }
   }, [sizeTail])
 
   /**
