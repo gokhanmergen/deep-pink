@@ -2039,6 +2039,18 @@ svg.lucide {
 }
 
 /*
+ * One two-hundred-line slice of a long file. See `LongText`.
+ *
+ * The whole point is the two properties: a slice off screen is not laid out,
+ * and its height is guessed until it has been measured once and then
+ * remembered. `white-space` and the font come down from the `<pre>` these sit
+ * in, so a slice is typographically nothing — it is a unit of work.
+ */
+.longtext__block {
+  content-visibility: auto;
+}
+
+/*
  * "Back to the latest."
  *
  * A chat scrolled up during a reply strands the reader: the text they want is

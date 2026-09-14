@@ -3,6 +3,7 @@ import { ChevronRight, Copy, FileText, GitBranch, RefreshCw } from 'lucide-react
 import { ICON } from '../icons'
 import type { Message, UiSettings, Usage } from '@shared/types'
 import { Markdown } from './Markdown'
+import { LongText } from './LongText'
 import { useStore } from '../store'
 import { isEmptyAssistantMessage } from '../turns'
 import { formatCost, formatDuration, formatTokens, modelShortName } from '../format'
@@ -125,7 +126,7 @@ function ReasoningTrace({
         <ChevronRight className="reasoning__caret" size={13} strokeWidth={2} />
       </summary>
       <div className="reasoning__body">
-        <pre>{trace.open ? (trace.text ?? 'Loading…') : ''}</pre>
+        {trace.open ? <LongText text={trace.text ?? 'Loading…'} /> : <pre />}
       </div>
     </details>
   )
@@ -148,7 +149,7 @@ function ToolStep({ message }: { message: Message }): React.JSX.Element {
         {/* Nothing until it is opened: the body is not in the transcript, and
             building a `<pre>` for a result nobody looked at was the other half
             of the same cost. */}
-        <pre>{body.open ? (body.text ?? 'Loading…') : ''}</pre>
+        {body.open ? <LongText text={body.text ?? 'Loading…'} /> : <pre />}
       </div>
     </details>
   )

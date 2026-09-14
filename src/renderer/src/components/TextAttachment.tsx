@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Attachment } from '@shared/types'
+import { LongText } from './LongText'
 
 /**
  * A text attachment in the transcript.
@@ -37,10 +38,11 @@ export function TextAttachment({ attachment }: { attachment: Attachment }): Reac
         </span>
       </summary>
       <div className="disclosure__content">
-        <pre>
-          {body ?? attachment.preview ?? ''}
-          {body === null && attachment.preview && lines > 0 ? '\n…' : ''}
-        </pre>
+        <LongText
+          text={`${body ?? attachment.preview ?? ''}${
+            body === null && attachment.preview && lines > 0 ? '\n…' : ''
+          }`}
+        />
         {loading && <span className="dim">Loading…</span>}
       </div>
     </details>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { PromptPreview, SystemPromptSegment } from '@shared/types'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
+import { LongText } from './LongText'
 import { formatTokens } from '../format'
 
 const SOURCE_LABEL: Record<SystemPromptSegment['source'], string> = {
@@ -136,7 +137,7 @@ export function SystemPromptInspector({ onClose }: { onClose: () => void }): Rea
                     {segment.text.length > 220 ? 'Show full text' : 'Show text'}
                   </summary>
                   <div className="disclosure__content">
-                    <pre>{segment.text}</pre>
+                    <LongText text={segment.text} />
                   </div>
                 </details>
               </div>
