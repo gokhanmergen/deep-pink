@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
   BarChart3,
-  ChevronRight,
   Database,
   FileText,
   Pause,
@@ -34,7 +33,7 @@ import type {
   SyncScopes
 } from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
-import { DOCS_LIMITS, DOCS_PROMPT } from '@shared/docs'
+import { DOCS_PROMPT } from '@shared/docs'
 
 type Tab =
   | 'account'
@@ -238,32 +237,6 @@ function FieldLabel({
       {children}
       <Revert path={path} what={what} />
     </span>
-  )
-}
-
-/**
- * The paragraph a setting sometimes needs, folded away until it is asked for.
- *
- * Every one of these was written because the setting genuinely has something
- * behind it worth knowing — why DuckDuckGo is the flaky option, what happens
- * to the key nobody can recover for you. Put all of them on the page at once
- * and none of them get read: the panel becomes an essay, the eye skips the
- * lot, and finding the one control you came for means reading past four
- * explanations of controls you did not.
- *
- * So the short answer stays on the page and the long one waits behind a word.
- * What is left visible has to be the thing you need to make the choice; this
- * is for the thing you need once, the first time.
- */
-function More({ children }: { children: ReactNode }): React.JSX.Element {
-  return (
-    <details className="more">
-      <summary className="more__toggle">
-        <ChevronRight size={11} strokeWidth={2.5} />
-        More
-      </summary>
-      <div className="more__body">{children}</div>
-    </details>
   )
 }
 
@@ -500,18 +473,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span>Identify Deep Pink to OpenRouter</span>
               <Revert path="sendAppAttribution" what="the attribution header" />
             </label>
-            <More>
-              <p>
-                Requests carry the app name and repository URL — the app is named, you are not.
-                That is what puts a client on OpenRouter&rsquo;s public leaderboards. Turn it off
-                and requests go out anonymously.
-              </p>
-              <p>
-                {encryption
-                  ? 'Your key itself is encrypted with your OS keyring and never leaves this machine.'
-                  : 'No system keyring is available here, so your key is stored in a file readable only by your user account.'}
-              </p>
-            </More>
           </>
         )}
 
@@ -532,12 +493,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </button>
                 <span className="field__hint">What new threads start with.</span>
               </div>
-              <More>
-                <p>
-                  Changing it leaves threads you already have open alone. For the one you are in,
-                  use <span className="kbd">{formatBinding(settings.keybinds['model.picker'])}</span>.
-                </p>
-              </More>
             </div>
 
             <div className="section-title">Thread names</div>
@@ -587,21 +542,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
               <Revert path="titlePregenEnabled" what="naming before the reply" />
             </label>
-            <More>
-              <p>
-                Naming waits for the reply, which is the better material and the wrong
-                moment: the row has no name for exactly as long as you are watching it, and
-                gets one at the point you no longer need it. With this on, a name is written
-                from what you just asked — usually within a second — and the considered one
-                takes its place when the turn ends.
-              </p>
-              <p>
-                It is a second request for every conversation, which is why it is off by
-                default. Nothing waits on it: if it is slow enough to land after the real
-                name, it stands down rather than overwriting it.
-              </p>
-            </More>
-
             {settings.titlePregenEnabled && (
               <div className="field">
                 <FieldLabel path="titlePregenModel" what="the model for the first name">
@@ -737,19 +677,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <option value="searxng">SearXNG (your own instance)</option>
                 <option value="openrouter">OpenRouter web plugin (billed per search)</option>
               </select>
-              <More>
-                <p>
-                  DuckDuckGo publishes no API, so this scrapes their HTML endpoint — free, but it
-                  rate-limits bursts and can break without notice. SearXNG is the dependable free
-                  option if you run one. The OpenRouter plugin needs no setup but is billed per
-                  search.
-                </p>
-                <p>
-                  The first two are tools the model chooses to call, so they need a tool-capable
-                  model. The plugin instead appends <span className="mono">:online</span> and lets
-                  OpenRouter do the searching.
-                </p>
-              </More>
             </div>
 
             {settings.web.engine === 'searxng' && (
@@ -836,18 +763,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   </span>
                 ))}
               </div>
-              <More>
-                <p>
-                  A <span className="mono">dp-chart</span> block of JSON, drawn by this app in the
-                  same palette as the statistics panels: the model chooses the numbers and Deep
-                  Pink chooses the colours, the scale and the marks. There is no pie, because a
-                  part-to-whole reads better as a bar.
-                </p>
-                <p>
-                  With this off the model is not told it can draw, and any chart that arrives
-                  anyway — from an import, or a model that guessed — is shown as the code it is.
-                </p>
-              </More>
             </div>
 
             <details className="disclosure">
@@ -880,20 +795,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
               <Revert path="docsEnabled" what="documents" />
             </label>
-            <More>
-              <p>
-                An answer that is genuinely several pieces — one per file reviewed, one per
-                region, one per option being compared — arrives as a list you pick from instead
-                of one long reply you scroll. Each document is ordinary Markdown, so there is
-                nothing a model can do here that it could not do in a paragraph.
-              </p>
-              <p>
-                Not a filesystem: no folders, no paths, no nesting, no links between documents.
-                Up to {DOCS_LIMITS.documents} in a set, and a set of fewer than two is shown as an
-                ordinary reply, because the picking is the point.
-              </p>
-            </More>
-
             <details className="disclosure">
               <summary className="disclosure__summary">
                 <span className="chip">system prompt</span>
@@ -926,14 +827,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <span className="field__hint">Encrypted here before anything is uploaded.</span>
               </span>
             </label>
-            <More>
-              <p>
-                Your conversations are encrypted on this machine, with a key the storage provider
-                never sees, and only then uploaded. Syncing happens on its own — a few seconds
-                after something changes, and every five minutes for whatever changed elsewhere.
-              </p>
-            </More>
-
             {sync.config.enabled && sync.ready && (
               <div className="field">
                 <span className="field__label">
@@ -1037,14 +930,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <span className="field__hint">
                   Generate one here, then import the same key on your other machines.
                 </span>
-                <More>
-                  <p>
-                    256 bits of randomness, used to encrypt everything before it leaves this
-                    machine. Symmetric, so there is no public key to be broken later: a quantum
-                    computer running Grover&rsquo;s algorithm would still face 128 bits, which is
-                    beyond reach.
-                  </p>
-                </More>
                 <div className="row">
                   <button
                     className="btn btn--primary"
@@ -1096,14 +981,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <span className="field__hint" style={{ marginBottom: 10, display: 'block' }}>
               Any S3-compatible bucket.
             </span>
-            <More>
-              <p>
-                AWS, Cloudflare R2, Backblaze B2, MinIO on your own machine — all work. It only
-                ever holds ciphertext under names that give nothing away, so the provider learns
-                how much you have and when, and nothing else.
-              </p>
-            </More>
-
             <div className="field">
               <span className="field__label">Endpoint</span>
               <DebouncedInput
@@ -1562,13 +1439,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 }
               />
               <span className="field__hint">Characters. 0 pastes everything inline.</span>
-              <More>
-                <p>
-                  A paste at least this long becomes a removable file chip instead of filling the
-                  composer. The model still receives it as text — this only keeps long input
-                  readable while you are writing around it.
-                </p>
-              </More>
             </div>
 
             <label className="switch">
@@ -1598,15 +1468,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
               <Revert path="ui.animations" what="animation" />
             </label>
-            <More>
-              <p>
-                Nothing here tells you anything on its own, so turning it off costs no
-                information — the app says the same things, immediately. Your system&rsquo;s own
-                &ldquo;reduce motion&rdquo; setting already switches this off whatever is chosen
-                here.
-              </p>
-            </More>
-
             <div className="section-title">Loading</div>
             <label className="switch">
               <input
@@ -1622,19 +1483,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
               <Revert path="ui.loadEverythingAtOnce" what="loading everything at once" />
             </label>
-            <More>
-              <p>
-                Off, a conversation opens with the part you are about to read and the rest arrives
-                as you scroll back through it, and the thread list builds in batches — which is
-                what makes a thread of two thousand messages open as quickly as one of five.
-              </p>
-              <p>
-                On, every message and every row is built the moment it is asked for. Opening a
-                long thread then takes as long as the whole of it takes, but the scrollbar is the
-                true length of the conversation from the first frame, and dragging it lands where
-                you aimed rather than where the loaded part happened to end.
-              </p>
-            </More>
           </>
         )}
 
@@ -1695,22 +1543,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <div className="field">
               <input className="input mono" readOnly value={dbLocation} />
               <span className="field__hint">
-                One SQLite file with every thread, message and statistic.
+                One SQLite file with every thread, message and statistic. Deep Pink never sends
+                it anywhere.
               </span>
-              <More>
-                <p>
-                  Deep Pink never sends it anywhere. The only outbound requests it makes are to
-                  OpenRouter, to MCP servers you configure, and to the web when you turn web
-                  access on.
-                </p>
-                <p>
-                  One exception, and it carries nothing of yours: where OpenRouter has no logo
-                  for a model&rsquo;s author, the app asks that author&rsquo;s own site for its
-                  favicon — z.ai, x.ai, nvidia.com. It happens once per author ever, the answer
-                  is kept on this machine, and the only thing it discloses is that somebody
-                  fetched an icon.
-                </p>
-              </More>
               <div className="row">
                 <button className="btn" onClick={() => void window.deepPink.data.reveal()} type="button">
                   Show in file manager
@@ -1723,18 +1558,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span className="field__hint">
                 A Deep Pink archive or a ChatGPT export. Read on this machine.
               </span>
-              <More>
-                <p>
-                  Which of the two you chose is worked out from the file itself. A thread exported
-                  from Deep Pink — its name, its settings, every message and what each cost —
-                  comes back whole.
-                </p>
-                <p>
-                  A ChatGPT export (Settings → Data controls → Export data) arrives as a{' '}
-                  <span className="mono">.zip</span>; choose that, or{' '}
-                  <span className="mono">conversations.json</span> from inside it.
-                </p>
-              </More>
               <div className="row">
                 <button
                   className="btn"
