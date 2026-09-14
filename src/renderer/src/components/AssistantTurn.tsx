@@ -6,6 +6,7 @@ import { Markdown } from './Markdown'
 import { LongText } from './LongText'
 import { useStore } from '../store'
 import { isEmptyAssistantMessage } from '../turns'
+import { estimateTurnHeight } from '../messageHeight'
 import { formatCost, formatDuration, formatTokens, modelShortName } from '../format'
 
 /**
@@ -291,7 +292,11 @@ export const AssistantTurn = memo(function AssistantTurn({
       data-density={ui.messageDensity}
       data-message-id={first.id}
       ref={ref}
-      style={highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : undefined}
+      // The same, summed over the messages this turn is drawn from.
+      style={{
+        containIntrinsicSize: `auto ${estimateTurnHeight(messages, ui.chatWidth)}px`,
+        ...(highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : {})
+      }}
     >
       <div className="message__head">
         {/*

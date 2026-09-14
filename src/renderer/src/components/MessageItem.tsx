@@ -5,6 +5,7 @@ import type { Attachment, Message, UiSettings } from '@shared/types'
 import { Markdown } from './Markdown'
 import { TextAttachment } from './TextAttachment'
 import { useStore } from '../store'
+import { estimateHeight } from '../messageHeight'
 
 /**
  * A message the user wrote, or a compaction summary. Assistant replies and the
@@ -136,7 +137,18 @@ export const MessageItem = memo(function MessageItem({
       // What the transcript holds onto while a page is read in above it.
       data-message-id={message.id}
       ref={ref}
-      style={highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : undefined}
+      /*
+       * Its own likely height, not one number for every message ever written.
+       *
+       * A message off screen is never laid out, so this is not a placeholder
+       * that gets corrected — it is what the transcript believes about
+       * everything above the viewport, and every measurement the view is
+       * positioned by is made against it. See `estimateHeight`.
+       */
+      style={{
+        containIntrinsicSize: `auto ${estimateHeight(message, ui.chatWidth)}px`,
+        ...(highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : {})
+      }}
     >
       {/*
         * No "YOU" over it.

@@ -1737,6 +1737,12 @@ svg.lucide {
    * back to being a guess the moment it left, and the scrollbar would breathe
    * in and out as you moved. */
   content-visibility: auto;
+  /*
+   * A fallback only. Every message sets its own from its own length — see
+   * `messageHeight` — because one number for all of them is out by a factor of
+   * five on a conversation of long replies, and a message above the viewport
+   * is never laid out to correct it.
+   */
   contain-intrinsic-size: auto 220px;
 }
 
