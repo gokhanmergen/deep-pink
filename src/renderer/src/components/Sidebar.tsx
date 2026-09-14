@@ -44,6 +44,15 @@ const FIRST_ROWS = 60
 const MORE_ROWS = 60
 
 /**
+ * How long a deleted row stays on screen to leave.
+ *
+ * Short enough that deleting three in a row does not queue, long enough that
+ * the rows below are seen to close the gap rather than snap into it. Must match
+ * the `thread-out` animation in the stylesheet.
+ */
+const LEAVING_TAKES = 240
+
+/**
  * How long after a turn a name can still be expected.
  *
  * Naming is one small request and it starts the moment the turn ends, so it
@@ -69,6 +78,7 @@ const ThreadRow = memo(function ThreadRow({
   awaitingName,
   model,
   live,
+  leaving,
   inFolder,
   onSelect,
   onMenu,
@@ -84,6 +94,8 @@ const ThreadRow = memo(function ThreadRow({
   model: string
   /** What it has produced so far, while it is producing. Null when it is not. */
   live: { tokens: number; perSecond: number } | null
+  /** It has gone, and is still on screen only long enough to leave. */
+  leaving: boolean
   /** Indented, because it is inside an open folder. */
   inFolder: boolean
   onSelect: (id: string) => void
@@ -107,6 +119,10 @@ const ThreadRow = memo(function ThreadRow({
       onDragEnd={() => onDragState(null)}
       data-temporary={thread.temporary}
       data-generating={generating}
+      data-leaving={leaving || undefined}
+      // A row on its way out is a row nothing should be able to click.
+      aria-hidden={leaving || undefined}
+      tabIndex={leaving ? -1 : undefined}
       onClick={() => onSelect(thread.id)}
       onContextMenu={(event) => onMenu(event, thread)}
       title={
@@ -135,7 +151,20 @@ const ThreadRow = memo(function ThreadRow({
             <span />
           </span>
         ) : (
-          <span className="thread-item__title">{threadLabel(thread)}</span>
+          /*
+           * Keyed on the name, so a rename is a new element rather than the
+           * same one with different letters in it.
+           *
+           * That is what lets it be animated at all — and the name does change
+           * under you: a title written from the question is replaced by one
+           * written from the whole exchange a few seconds later. Swapping the
+           * text in place made a word turn into a different word with no
+           * account of why. It now goes soft and comes back sharp, which reads
+           * as the thing being settled rather than corrected.
+           */
+          <span className="thread-item__title" key={thread.title}>
+            {threadLabel(thread)}
+          </span>
         )}
         {/* The time the list is ordered by, where the eye already is. */}
         <span
@@ -279,9 +308,63 @@ export function Sidebar(): React.JSX.Element {
    * from without meaning to. There is normally one, and it sits at the top
    * under a heading that says what it is.
    */
-  const temporaryThreads = useMemo(
-    () => threads.filter((t) => t.temporary).sort((a, b) => b.createdAt - a.createdAt),
+  /**
+   * A chat nobody has said anything in is not in the list yet.
+   *
+   * One is created every time the app starts and every time New Thread is
+   * pressed, and until you say something it is not a conversation — it is an
+   * intention. Showing it put a row called "Untitled thread" permanently at the
+   * top of the library, and clicking anything else deleted it, which is a row
+   * whose only lasting property was being in the way.
+   *
+   * The exceptions are the ways of saying you meant it: a chat you pinned,
+   * filed, named or made temporary stays, empty or not.
+   */
+  const started = useMemo(
+    () =>
+      threads.filter(
+        (t) => t.messageCount > 0 || t.temporary || t.title || t.pinned || t.folderId
+      ),
     [threads]
+  )
+
+  /**
+   * Rows that have gone, kept on screen long enough to leave.
+   *
+   * React removes an element the moment its data says so, which is the one
+   * thing an exit animation cannot survive. So what has gone is remembered for
+   * as long as the animation runs and rendered alongside what has not — in its
+   * own old position, because it still carries the timestamp the list sorts by.
+   */
+  const [leaving, setLeaving] = useState<Thread[]>([])
+  const lastSeen = useRef(started)
+
+  useEffect(() => {
+    const present = new Set(started.map((t) => t.id))
+    const gone = lastSeen.current.filter((t) => !present.has(t.id))
+    lastSeen.current = started
+    if (!gone.length) return
+
+    setLeaving((current) => [...current, ...gone])
+    const ids = new Set(gone.map((t) => t.id))
+    const timer = setTimeout(
+      () => setLeaving((current) => current.filter((t) => !ids.has(t.id))),
+      LEAVING_TAKES
+    )
+    return () => clearTimeout(timer)
+  }, [started])
+
+  /** What the list draws: what is here, and what is still on its way out. */
+  const listed = useMemo(
+    () => (leaving.length ? [...started, ...leaving] : started),
+    [started, leaving]
+  )
+
+  const goneIds = useMemo(() => new Set(leaving.map((t) => t.id)), [leaving])
+
+  const temporaryThreads = useMemo(
+    () => listed.filter((t) => t.temporary).sort((a, b) => b.createdAt - a.createdAt),
+    [listed]
   )
 
   /**
@@ -297,7 +380,7 @@ export function Sidebar(): React.JSX.Element {
     const contents = new Map<string, Thread[]>()
     const loose: Thread[] = []
 
-    for (const thread of [...threads]
+    for (const thread of [...listed]
       .filter((t) => !t.temporary)
       .sort((a, b) => b.updatedAt - a.updatedAt)) {
       // A thread whose folder has gone is loose, not lost.
@@ -323,7 +406,7 @@ export function Sidebar(): React.JSX.Element {
     for (const thread of loose) all.push({ kind: 'thread', thread, stamp: thread.updatedAt })
 
     return all.sort((a, b) => b.stamp - a.stamp)
-  }, [threads, folders])
+  }, [listed, folders])
 
   const grouped = useMemo(() => {
     const pinned = entries.filter(isPinned)
@@ -646,7 +729,7 @@ export function Sidebar(): React.JSX.Element {
       danger: true,
       onSelect: () => {
         void (async () => {
-          const inside = threads.filter((t) => t.folderId === folder.id).length
+          const inside = started.filter((t) => t.folderId === folder.id).length
           const ok = await askConfirm({
             title: `Delete “${folder.name}”?`,
             body: inside
@@ -705,6 +788,7 @@ export function Sidebar(): React.JSX.Element {
       awaitingName={awaitingName(thread)}
       model={thread.config.model ?? defaultModel}
       live={liveStats[thread.id] ?? null}
+      leaving={goneIds.has(thread.id)}
       inFolder={options.inFolder ?? false}
       onSelect={onSelectThread}
       onMenu={onThreadMenu}

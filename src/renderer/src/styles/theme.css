@@ -1026,6 +1026,71 @@ svg.lucide {
 }
 
 /*
+ * A name arriving, or being replaced by a better one.
+ *
+ * The title is keyed on its own text, so a rename mounts a new element and
+ * this runs. It comes in out of focus and settles: the point is that the row
+ * has *resolved*, not that something was wrong with it before. Blur alone
+ * reads as that, where a slide or a fade from nothing reads as an insertion.
+ *
+ * Short, because it happens while you are reading the list rather than because
+ * you asked for anything.
+ */
+.thread-item__title {
+  animation: name-settles 0.26s ease-out;
+}
+
+@keyframes name-settles {
+  from {
+    opacity: 0.35;
+    filter: blur(3px);
+  }
+}
+
+/*
+ * A row that has gone.
+ *
+ * Two things at once, and the second is the one that matters: it blurs and
+ * fades where it stands, and its height closes so everything below rises into
+ * the space. Without the collapse the list would jump at the end of the fade,
+ * which is the part that reads as cheap.
+ *
+ * The easing is deliberately not the one used for things arriving. Something
+ * leaving should accelerate away — slow to commit, quick to finish — where
+ * something arriving decelerates into place.
+ */
+.thread-item[data-leaving] {
+  pointer-events: none;
+  overflow: hidden;
+  animation: thread-out 0.24s cubic-bezier(0.45, 0, 0.9, 0.6) forwards;
+}
+
+@keyframes thread-out {
+  0% {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+    max-height: 80px;
+  }
+  55% {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateY(-3px) scale(0.98);
+    max-height: 80px;
+  }
+  100% {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateY(-3px) scale(0.98);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+  }
+}
+
+/*
  * The figures that are only true right now.
  *
  * The same grey as the line they replace, not the accent. They were accented
