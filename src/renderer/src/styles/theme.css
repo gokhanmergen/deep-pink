@@ -1013,11 +1013,19 @@ svg.lucide {
   opacity: 1;
 }
 
-/* The figures that are only true right now, in the colour the row's own bar
-   is using to say the same thing. Tabular so the count does not jitter the
-   line sideways as it climbs through a digit. */
+/*
+ * The figures that are only true right now.
+ *
+ * The same grey as the line they replace, not the accent. They were accented
+ * and it made the one row that is working the loudest thing in the list —
+ * which is backwards: the bar down its edge already says it is working, and
+ * these are only what it happens to be saying while it does. A number that
+ * changes four times a second does not also need a colour to be noticed.
+ *
+ * Tabular, so the count does not jitter the line sideways as it climbs
+ * through a digit.
+ */
 .thread-item__live {
-  color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 
