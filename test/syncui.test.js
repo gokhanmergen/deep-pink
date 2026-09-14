@@ -43,7 +43,16 @@ suite(
       }
     })()`)
 
-    check('it explains itself before anything is configured', /encrypted/i.test(before.text))
+    /*
+     * There was a check here that the section "explains itself before anything
+     * is configured", satisfied by the word "encrypted" appearing in a line of
+     * grey text under the switch. That line is gone, along with every other
+     * explanation in the panel — a settings page is a place to change a
+     * setting, and the prose was being scrolled past by everyone.
+     *
+     * What the panel still owes somebody who has configured nothing is not an
+     * explanation but a way in and a refusal, and both are checked below.
+     */
     check('it cannot be switched on with no key and no bucket', before.enableDisabled === true, before)
     check('it offers to make a key', before.buttons.includes('Generate a key'), before.buttons)
     check('and to take one from another machine', before.buttons.includes('Import'), before.buttons)

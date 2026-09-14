@@ -278,11 +278,6 @@ function DirectionField({
         <option value="push">Only send from this machine</option>
         <option value="pull">Only receive onto this machine</option>
       </select>
-      <span className="field__hint">
-        {value === 'two-way' && 'The most recent change wins.'}
-        {value === 'push' && 'This machine decides; nothing comes back down.'}
-        {value === 'pull' && 'This machine follows; nothing goes up.'}
-      </span>
     </div>
   )
 }
@@ -298,7 +293,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [tab, setTab] = useState<Tab>(settings?.hasApiKey ? 'models' : 'account')
   const [apiKey, setApiKey] = useState('')
   const [dbLocation, setDbLocation] = useState('')
-  const [encryption, setEncryption] = useState(true)
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [capturing, setCapturing] = useState<string | null>(null)
   const [importPath, setImportPath] = useState<string | null>(null)
@@ -325,7 +319,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
   useEffect(() => {
     void window.deepPink.data.path().then(setDbLocation)
-    void window.deepPink.settings.encryptionAvailable().then(setEncryption)
     void window.deepPink.app.info().then(setInfo)
   }, [])
 
@@ -433,9 +426,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   if (event.key === 'Enter') void saveKey()
                 }}
               />
-              <span className="field__hint">
-                {encryption ? 'Encrypted, and kept on this machine.' : 'Kept on this machine.'}
-              </span>
               <div className="row">
                 <button className="btn btn--primary" onClick={() => void saveKey()} disabled={!apiKey.trim()} type="button">
                   Save key
@@ -491,7 +481,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 >
                   {modelShortName(settings.defaultModel)}
                 </button>
-                <span className="field__hint">What new threads start with.</span>
               </div>
             </div>
 
@@ -506,7 +495,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Name threads automatically
-                <span className="field__hint">Once, after the first exchange.</span>
               </span>
               <Revert path="titleGenerationEnabled" what="automatic naming" />
             </label>
@@ -521,7 +509,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 >
                   {modelShortName(settings.titleModel)}
                 </button>
-                <span className="field__hint">Small and cheap is the right call.</span>
               </div>
             </div>
 
@@ -536,9 +523,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Name it before the reply arrives
-                <span className="field__hint">
-                  A first name from your question, replaced once there is an answer.
-                </span>
               </span>
               <Revert path="titlePregenEnabled" what="naming before the reply" />
             </label>
@@ -555,9 +539,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   >
                     {modelShortName(settings.titlePregenModel || settings.titleModel)}
                   </button>
-                  <span className="field__hint">
-                    Speed matters more here than judgement — it is racing the reply.
-                  </span>
                 </div>
               </div>
             )}
@@ -624,9 +605,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 value={settings.baseSystemPrompt}
                 onCommit={(next) => void saveSettings({ baseSystemPrompt: next })}
               />
-              <span className="field__hint">
-                Sent with every thread; switch it off per thread in the prompt inspector.
-              </span>
             </div>
 
             <label className="switch">
@@ -639,7 +617,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Tell the model the current date and time
-                <span className="field__hint">Off by default — it is information about you.</span>
               </span>
               <Revert path="includeDateTimeInPrompt" what="the date and time line" />
             </label>
@@ -657,7 +634,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Enable web search and fetch by default
-                <span className="field__hint">Toggle it per thread from the composer.</span>
               </span>
               <Revert path="web.enabled" what="web access" />
             </label>
@@ -731,9 +707,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   })
                 }
               />
-              <span className="field__hint">
-                Loopback, link-local and private addresses are always refused.
-              </span>
             </div>
           </>
         )}
@@ -749,7 +722,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Let replies draw charts
-                <span className="field__hint">Toggle it per thread from the composer.</span>
               </span>
               <Revert path="chartsEnabled" what="charts" />
             </label>
@@ -791,7 +763,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Let a reply be a set of documents
-                <span className="field__hint">Toggle it per thread from the composer.</span>
               </span>
               <Revert path="docsEnabled" what="documents" />
             </label>
@@ -824,7 +795,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Keep this machine in step with the others
-                <span className="field__hint">Encrypted here before anything is uploaded.</span>
               </span>
             </label>
             {sync.config.enabled && sync.ready && (
@@ -832,19 +802,21 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <span className="field__label">
                   {sync.paused ? 'Paused' : 'Automatic syncing'}
                 </span>
-                <span className="field__hint">
-                  {sync.paused
-                    ? sync.config.pause?.until
-                      ? `Nothing will sync on its own until ${new Date(
-                          sync.config.pause.until
-                        ).toLocaleString([], {
+                {/* State, not an explanation: when a pause lifts is a fact
+                    about right now and it is said nowhere else in the panel.
+                    What syncing does when it is not paused went with the rest
+                    of the commentary. */}
+                {sync.paused && (
+                  <span className="field__hint">
+                    {sync.config.pause?.until
+                      ? `Until ${new Date(sync.config.pause.until).toLocaleString([], {
                           weekday: 'short',
                           hour: '2-digit',
                           minute: '2-digit'
                         })}. Sync now still works.`
-                      : 'Nothing will sync on its own until you resume. Sync now still works.'
-                    : 'Runs a few seconds after something changes, and every five minutes for what changed elsewhere.'}
-                </span>
+                      : 'Until you resume. Sync now still works.'}
+                  </span>
+                )}
                 <div className="row row--wrap">
                   {sync.paused ? (
                     <button
@@ -886,9 +858,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <div className="field">
                 <div className="row">
                   <span className="chip mono">{sync.keyFingerprint}</span>
-                  <span className="field__hint" style={{ margin: 0 }}>
-                    Every machine on this bucket must show the same eight characters.
-                  </span>
                 </div>
                 {revealed ? (
                   <>
@@ -927,9 +896,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </div>
             ) : (
               <div className="field">
-                <span className="field__hint">
-                  Generate one here, then import the same key on your other machines.
-                </span>
                 <div className="row">
                   <button
                     className="btn btn--primary"
@@ -978,9 +944,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             )}
 
             <div className="section-title">Where it is kept</div>
-            <span className="field__hint" style={{ marginBottom: 10, display: 'block' }}>
-              Any S3-compatible bucket.
-            </span>
             <div className="field">
               <span className="field__label">Endpoint</span>
               <DebouncedInput
@@ -989,9 +952,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 value={sync.config.endpoint}
                 onCommit={async (next) => useStore.setState({ sync: await window.deepPink.sync.save({ endpoint: next }) })}
               />
-              <span className="field__hint">
-                The account&rsquo;s S3 URL. The form with the bucket on the end works too.
-              </span>
             </div>
 
             <div className="row">
@@ -1047,7 +1007,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   Save
                 </button>
               </div>
-              <span className="field__hint">Kept in the OS keyring.</span>
             </div>
 
             <div className="field">
@@ -1057,9 +1016,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 value={sync.config.prefix}
                 onCommit={async (next) => useStore.setState({ sync: await window.deepPink.sync.save({ prefix: next }) })}
               />
-              <span className="field__hint">
-                The folder in the bucket. Two prefixes are two separate libraries.
-              </span>
             </div>
 
             <div className="row">
@@ -1092,9 +1048,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Conversations
-                <span className="field__hint">
-                  Threads, messages, folders and every attachment, with their costs.
-                </span>
               </span>
             </label>
             {sync.config.scopes.conversations && (
@@ -1113,9 +1066,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Settings and MCP servers
-                <span className="field__hint">
-                  Prompts, models, shortcuts, appearance. Never your OpenRouter key.
-                </span>
               </span>
             </label>
             {sync.config.scopes.settings && (
@@ -1215,9 +1165,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
             <div className="section-title">Disconnect</div>
             <div className="field">
-              <span className="field__hint">
-                Forgets the key and the credentials. Nothing in the bucket is touched.
-              </span>
               <div className="row">
                 <button
                   className="btn btn--danger"
@@ -1255,9 +1202,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Compact long threads
-                <span className="field__hint">
-                  The older part becomes a summary. The originals stay on disk.
-                </span>
               </span>
               <Revert path="compaction.enabled" what="compaction" />
             </label>
@@ -1272,9 +1216,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Only compact when I ask
-                <span className="field__hint">
-                  Off, it runs by itself once the threshold is crossed.
-                </span>
               </span>
               <Revert path="compaction.requireConfirmation" what="asking first" />
             </label>
@@ -1333,7 +1274,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   onChange={(event) => void saveSettings({ ui: { accent: event.target.value } })}
                   style={{ width: 44, height: 30, background: 'none', border: 'none' }}
                 />
-                <span className="field__hint">Buttons, the mark and the graphs follow it.</span>
               </div>
             </div>
 
@@ -1352,9 +1292,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   void saveSettings({ ui: { chatWidth: Number(event.target.value) } })
                 }
               />
-              <span className="field__hint">
-                Wider fits more code on a line; narrower is easier to read.
-              </span>
             </div>
 
             <div className="field">
@@ -1438,7 +1375,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   void saveSettings({ ui: { pasteAsFileThreshold: Math.max(Number(next) || 0, 0) } })
                 }
               />
-              <span className="field__hint">Characters. 0 pastes everything inline.</span>
             </div>
 
             <label className="switch">
@@ -1449,9 +1385,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Enter sends the message
-                <span className="field__hint">
-                  When off, use {formatBinding('mod+enter')} to send and Enter for a newline.
-                </span>
               </span>
               <Revert path="ui.sendOnEnter" what="Enter sending" />
             </label>
@@ -1464,7 +1397,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Animate
-                <span className="field__hint">Replies arriving, panels opening, rows appearing.</span>
               </span>
               <Revert path="ui.animations" what="animation" />
             </label>
@@ -1479,7 +1411,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>
                 Load everything at once
-                <span className="field__hint">Slower to open a long thread, never fetches again.</span>
               </span>
               <Revert path="ui.loadEverythingAtOnce" what="loading everything at once" />
             </label>
@@ -1542,10 +1473,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <div className="section-title">Where your data lives</div>
             <div className="field">
               <input className="input mono" readOnly value={dbLocation} />
-              <span className="field__hint">
-                One SQLite file with every thread, message and statistic. Deep Pink never sends
-                it anywhere.
-              </span>
               <div className="row">
                 <button className="btn" onClick={() => void window.deepPink.data.reveal()} type="button">
                   Show in file manager
@@ -1555,9 +1482,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
             <div className="section-title">Import conversations</div>
             <div className="field">
-              <span className="field__hint">
-                A Deep Pink archive or a ChatGPT export. Read on this machine.
-              </span>
               <div className="row">
                 <button
                   className="btn"
