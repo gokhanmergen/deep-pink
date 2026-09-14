@@ -52,6 +52,9 @@ const MORE_ROWS = 60
  */
 const LEAVING_TAKES = 240
 
+/** How long a changed name stays soft. Matches `name-settles` in the sheet. */
+const NAME_SETTLES = 260
+
 /**
  * How long after a turn a name can still be expected.
  *
@@ -102,6 +105,35 @@ const ThreadRow = memo(function ThreadRow({
   onMenu: (event: React.MouseEvent, thread: Thread) => void
   onDragState: (threadId: string | null) => void
 }): React.JSX.Element {
+  /**
+   * Whether the name just changed under the reader.
+   *
+   * It does change: a title written from the question is replaced by one
+   * written from the whole exchange a few seconds later, and swapping the text
+   * in place made a word turn into a different word with no account of why. It
+   * goes soft and comes back sharp instead, which reads as the thing settling
+   * rather than being corrected.
+   *
+   * This was a `key` on the title, which is simpler and was wrong: a key makes
+   * a new element whenever the text differs from the last render, and a row
+   * that was not rendered at all has no last render. So every row inside a
+   * folder blurred in each time the folder was opened, which is a rename
+   * animation playing for something that was not renamed.
+   *
+   * A ref is the distinction, because it is created with the component: on a
+   * fresh mount it already holds the name being shown and nothing runs.
+   */
+  const seen = useRef(thread.title)
+  const [settling, setSettling] = useState(false)
+
+  useEffect(() => {
+    if (seen.current === thread.title) return
+    seen.current = thread.title
+    setSettling(true)
+    const timer = setTimeout(() => setSettling(false), NAME_SETTLES)
+    return () => clearTimeout(timer)
+  }, [thread.title])
+
   return (
     <button
       className="thread-item"
@@ -151,18 +183,7 @@ const ThreadRow = memo(function ThreadRow({
             <span />
           </span>
         ) : (
-          /*
-           * Keyed on the name, so a rename is a new element rather than the
-           * same one with different letters in it.
-           *
-           * That is what lets it be animated at all — and the name does change
-           * under you: a title written from the question is replaced by one
-           * written from the whole exchange a few seconds later. Swapping the
-           * text in place made a word turn into a different word with no
-           * account of why. It now goes soft and comes back sharp, which reads
-           * as the thing being settled rather than corrected.
-           */
-          <span className="thread-item__title" key={thread.title}>
+          <span className="thread-item__title" data-settling={settling || undefined}>
             {threadLabel(thread)}
           </span>
         )}

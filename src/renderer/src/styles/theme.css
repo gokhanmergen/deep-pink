@@ -1026,17 +1026,18 @@ svg.lucide {
 }
 
 /*
- * A name arriving, or being replaced by a better one.
+ * A name being replaced by a better one.
  *
- * The title is keyed on its own text, so a rename mounts a new element and
- * this runs. It comes in out of focus and settles: the point is that the row
- * has *resolved*, not that something was wrong with it before. Blur alone
- * reads as that, where a slide or a fade from nothing reads as an insertion.
+ * It comes in out of focus and settles: the point is that the row has
+ * *resolved*, not that something was wrong with it before. Blur alone reads as
+ * that, where a slide or a fade from nothing reads as an insertion.
  *
- * Short, because it happens while you are reading the list rather than because
- * you asked for anything.
+ * Only on a name that changed while you were looking at it — the row says when
+ * that happened. Attached to the element itself, this also ran every time a row
+ * was mounted, so opening a folder blurred in every title inside it as though
+ * all of them had just been renamed.
  */
-.thread-item__title {
+.thread-item__title[data-settling] {
   animation: name-settles 0.26s ease-out;
 }
 
