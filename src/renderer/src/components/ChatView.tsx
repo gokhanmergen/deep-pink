@@ -9,7 +9,7 @@ import { ArrowDown, BarChart3, FileText, Ghost, PanelLeft, Plus, RefreshCw, Rout
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, threadLabel } from '../format'
-import { landingPoint, tailHeight } from '../landing'
+import { landingPoint, roomAbove, tailHeight } from '../landing'
 import type { Message } from '@shared/types'
 
 /**
@@ -179,6 +179,21 @@ export function ChatView(): React.JSX.Element {
    */
   const holding = useRef<{ id: string; offset: number } | null>(null)
 
+  /**
+   * The last scroll position this component set itself.
+   *
+   * How a reader scrolling is told apart from the transcript settling. The
+   * hold above used to decide that by looking at whether the held message had
+   * moved — but a message moves for two reasons, and the one it was built for
+   * is exactly the reason it should *not* let go: a code block above it
+   * finishing and pushing everything down. So the first thing that settled
+   * cancelled the hold, and the landing drifted from there.
+   *
+   * Comparing against what was written is unambiguous. A scroll position this
+   * did not set is a scroll position a person asked for.
+   */
+  const applied = useRef<number | null>(null)
+
   /** The empty space under the conversation, and how tall it currently is. */
   const tailRef = useRef<HTMLDivElement>(null)
   const tail = useRef(0)
@@ -280,10 +295,12 @@ export function ChatView(): React.JSX.Element {
     const el = scrollRef.current
     if (!el) return
 
-    // Reading has begun, so the landing is over. See `holding`: anything this
-    // component did itself leaves the offset untouched.
-    const hold = holding.current
-    if (hold && Math.abs(offsetOf(el, hold.id) - hold.offset) > 2) holding.current = null
+    // Reading has begun, so the landing is over — but only if this is the
+    // reader's scroll rather than one of this component's own.
+    if (applied.current === null || Math.abs(el.scrollTop - applied.current) > 1) {
+      holding.current = null
+      applied.current = null
+    }
 
     pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
 
@@ -375,6 +392,7 @@ export function ChatView(): React.JSX.Element {
       } else {
         el.scrollTop = landing.scrollTop
       }
+      applied.current = el.scrollTop
 
       /*
        * Whether the end is being followed is known, not measured.
@@ -415,6 +433,23 @@ export function ChatView(): React.JSX.Element {
             : landing.reason === 'remembered'
               ? (anchored ?? topOfView(el))
               : null
+
+      /*
+       * Where that message was *asked* to be, not where it ended up.
+       *
+       * A landing on the last exchange means "this message, that far down the
+       * window" — the number is `roomAbove`, and it is the intent. Measuring
+       * the message again after scrolling to it records whatever the scroll
+       * actually achieved, and on a transcript whose heights have not settled
+       * that is short of the mark: the browser clamps a scroll it has no
+       * content for yet. Holding the measurement then defends the wrong place
+       * for the rest of the settle, which is the landing coming out wrong on
+       * exactly the threads where it matters most.
+       */
+      const intended =
+        landing.reason === 'remembered' && anchored && place
+          ? place.topOffset
+          : roomAbove(hasSomethingAbove(el, last.askId))
       /*
        * The offset it was *meant* to reach, not the one it did.
        *
@@ -424,10 +459,8 @@ export function ChatView(): React.JSX.Element {
        * hold below defend the clamped position; recording the intent makes it
        * close the gap as the content grows into its real height.
        */
-      holding.current =
-        held === null
-          ? null
-          : { id: held, offset: anchored && place ? place.topOffset : offsetOf(el, held) }
+      holding.current = held === null ? null : { id: held, offset: intended }
+      applied.current = el.scrollTop
       return
     }
 
@@ -441,12 +474,16 @@ export function ChatView(): React.JSX.Element {
       anchor.current = null
       if (held) {
         el.scrollTop += held.getBoundingClientRect().top - mark.top
+        applied.current = el.scrollTop
         return
       }
     }
 
     sizeTail()
-    if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
+    if (pinnedToBottom.current) {
+      el.scrollTop = el.scrollHeight
+      applied.current = el.scrollTop
+    }
   }, [messages, sizeTail])
 
   /**
@@ -518,12 +555,16 @@ export function ChatView(): React.JSX.Element {
       if (hold) {
         if (el.querySelector(`[data-message-id="${CSS.escape(hold.id)}"]`)) {
           el.scrollTop += offsetOf(el, hold.id) - hold.offset
+          applied.current = el.scrollTop
           return
         }
         holding.current = null
       }
 
-      if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
+      if (pinnedToBottom.current) {
+        el.scrollTop = el.scrollHeight
+        applied.current = el.scrollTop
+      }
     }
 
     /*
@@ -539,22 +580,24 @@ export function ChatView(): React.JSX.Element {
      * tail changes the very column being observed, so several of those
      * re-entered and did it twice.
      *
-     * Coalescing to a frame makes that one layout no matter how many blocks
-     * land together, and the frame is the right unit because nothing here
-     * matters until something is drawn.
+     * Coalescing makes that one layout no matter how many blocks land
+     * together. A timer rather than an animation frame, because a window that
+     * is not being painted does not run `requestAnimationFrame` — and where
+     * the transcript is looking is not something that should stop being true
+     * when nothing is on screen.
      */
-    let pending = 0
+    let pending: ReturnType<typeof setTimeout> | null = null
     const observer = new ResizeObserver(() => {
       if (pending) return
-      pending = requestAnimationFrame(() => {
-        pending = 0
+      pending = setTimeout(() => {
+        pending = null
         settle()
-      })
+      }, 0)
     })
 
     observer.observe(inner)
     return () => {
-      if (pending) cancelAnimationFrame(pending)
+      if (pending) clearTimeout(pending)
       observer.disconnect()
     }
   }, [sizeTail])
@@ -628,6 +671,7 @@ export function ChatView(): React.JSX.Element {
     if (!el) return
     holding.current = null
     el.scrollTop = el.scrollHeight
+    applied.current = el.scrollTop
     pinnedToBottom.current = true
     setAwayFromEnd(false)
   }
