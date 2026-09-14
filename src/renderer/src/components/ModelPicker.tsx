@@ -6,9 +6,11 @@ import { formatTokens, modelShortName } from '../format'
 interface Props {
   /**
    * 'chat' sets the model for the open thread, 'default' sets the one new
-   * threads start with, and 'title' sets the model that names threads.
+   * threads start with, 'title' sets the model that names threads once they
+   * have been answered, and 'pregenTitle' the one that names them from the
+   * question while the answer is still arriving.
    */
-  mode: 'chat' | 'title' | 'default'
+  mode: 'chat' | 'title' | 'pregenTitle' | 'default'
   onClose: () => void
 }
 
@@ -36,9 +38,11 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const current =
     mode === 'title'
       ? settings?.titleModel
-      : mode === 'default'
-        ? settings?.defaultModel
-        : thread?.config.model ?? settings?.defaultModel
+      : mode === 'pregenTitle'
+        ? settings?.titlePregenModel
+        : mode === 'default'
+          ? settings?.defaultModel
+          : thread?.config.model ?? settings?.defaultModel
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -63,6 +67,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     if (mode === 'title') {
       await saveSettings({ titleModel: modelId })
       showToast(`Thread names will use ${modelShortName(modelId)}`)
+    } else if (mode === 'pregenTitle') {
+      await saveSettings({ titlePregenModel: modelId })
+      showToast(`First names will use ${modelShortName(modelId)}`)
     } else if (mode === 'default') {
       // Deliberately does not touch the open thread: this is the model new
       // threads start with, which is a different question from what this one
@@ -101,9 +108,11 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
             placeholder={
               mode === 'title'
                 ? 'Model for generating thread names…'
-                : mode === 'default'
-                  ? 'Model that new threads start with…'
-                  : 'Search models…'
+                : mode === 'pregenTitle'
+                  ? 'Model for the first name, written from the question…'
+                  : mode === 'default'
+                    ? 'Model that new threads start with…'
+                    : 'Search models…'
             }
             value={query}
             autoFocus

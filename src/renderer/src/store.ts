@@ -27,6 +27,7 @@ export type Overlay =
   | 'models'
   | 'defaultModel'
   | 'titleModel'
+  | 'pregenTitleModel'
   | 'providers'
   | 'prompt'
   | 'threadStats'

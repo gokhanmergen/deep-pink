@@ -570,6 +570,58 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </div>
             </div>
 
+            <label className="switch">
+              <input
+                type="checkbox"
+                disabled={!settings.titleGenerationEnabled}
+                checked={settings.titlePregenEnabled}
+                onChange={(event) =>
+                  void saveSettings({ titlePregenEnabled: event.target.checked })
+                }
+              />
+              <span>
+                Name it before the reply arrives
+                <span className="field__hint">
+                  A first name from your question, replaced once there is an answer.
+                </span>
+              </span>
+              <Revert path="titlePregenEnabled" what="naming before the reply" />
+            </label>
+            <More>
+              <p>
+                Naming waits for the reply, which is the better material and the wrong
+                moment: the row has no name for exactly as long as you are watching it, and
+                gets one at the point you no longer need it. With this on, a name is written
+                from what you just asked — usually within a second — and the considered one
+                takes its place when the turn ends.
+              </p>
+              <p>
+                It is a second request for every conversation, which is why it is off by
+                default. Nothing waits on it: if it is slow enough to land after the real
+                name, it stands down rather than overwriting it.
+              </p>
+            </More>
+
+            {settings.titlePregenEnabled && (
+              <div className="field">
+                <FieldLabel path="titlePregenModel" what="the model for the first name">
+                  Model used for that first name
+                </FieldLabel>
+                <div className="row">
+                  <button
+                    className="btn"
+                    onClick={() => setOverlay('pregenTitleModel', 'settings')}
+                    type="button"
+                  >
+                    {modelShortName(settings.titlePregenModel || settings.titleModel)}
+                  </button>
+                  <span className="field__hint">
+                    Speed matters more here than judgement — it is racing the reply.
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="field">
               <FieldLabel path="titlePrompt" what="the naming prompt">Naming prompt</FieldLabel>
               <DebouncedTextarea

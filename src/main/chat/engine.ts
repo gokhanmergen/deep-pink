@@ -5,7 +5,8 @@ import type {
   StreamEvent,
   Thread,
   ToolCall,
-  ToolResult
+  ToolResult,
+  Usage
 } from '@shared/types'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
@@ -508,6 +509,108 @@ async function executeToolCall(
  * Thread titles
  * ------------------------------------------------------------------ */
 
+/**
+ * Threads wearing a name written before the answer existed.
+ *
+ * Held in memory rather than on the thread, because it is only true for the
+ * length of one turn — a few seconds — and a column for it would have to be
+ * migrated, synced, and reasoned about on the other machine. The cost of
+ * losing it is that a session killed mid-turn keeps the provisional name, which
+ * is a name taken from the question rather than the whole exchange. That is a
+ * slightly worse title, not a wrong one.
+ */
+const provisionalTitles = new Set<string>()
+
+/**
+ * A name from the question alone, before there is an answer to read.
+ *
+ * Naming has always waited for the reply, which is the better material and the
+ * wrong moment: the row sits unnamed for exactly as long as you are watching
+ * it, and gets its name at the point you no longer need one. This writes a
+ * name from what you just asked — usually within a second, from a small model
+ * — and marks it to be replaced by the considered one when the turn ends.
+ *
+ * Never awaited by the turn. It is a label for a list, and a conversation must
+ * not wait on one.
+ */
+export async function pregenerateTitle(threadId: string, prompt: string, emit: Emit): Promise<void> {
+  const settings = loadSettings()
+  if (!settings.titleGenerationEnabled || !settings.titlePregenEnabled) return
+  if (!prompt.trim()) return
+
+  const thread = repo.getThread(threadId)
+  if (!thread || thread.title || thread.temporary) return
+
+  const model = settings.titlePregenModel || settings.titleModel
+
+  try {
+    const result = await complete({
+      model,
+      messages: [
+        { role: 'system', content: settings.titlePrompt },
+        { role: 'user', content: `USER: ${prompt.slice(0, 1500)}` }
+      ],
+      temperature: 0.4,
+      maxTokens: 24,
+      providerRouting: settings.modelProviderRouting[model] ?? null,
+      attribution: settings.sendAppAttribution
+    })
+
+    const title = cleanTitle(result.content)
+    if (!title) return
+
+    /*
+     * Only if it is still nameless.
+     *
+     * A slow pregeneration can land after the turn it was started for has
+     * already ended and been named properly, and writing then would replace a
+     * title that read the whole exchange with one that read the first line of
+     * it. Re-read rather than trusting the row from before the request.
+     */
+    const now = repo.getThread(threadId)
+    if (!now || now.title) return
+
+    repo.updateThread(threadId, { title })
+    provisionalTitles.add(threadId)
+    recordTitleCost(threadId, model, result)
+    emit({ type: 'title', threadId, title })
+  } catch {
+    // A name nobody has yet is not worth an error. The turn will produce one.
+  }
+}
+
+/** The shape a title has to be in: one line, no quotes, no full stop. */
+function cleanTitle(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^["'`]|["'`]$/g, '')
+    .replace(/[.!?]+$/, '')
+    .slice(0, 80)
+}
+
+/**
+ * Naming costs money, so it goes in the statistics like everything else.
+ *
+ * A hidden marker message carries the usage, which is how a cost with no
+ * message of its own is recorded — `compacted_into = 'title'` keeps it out of
+ * the transcript and out of the thread's length.
+ */
+function recordTitleCost(
+  threadId: string,
+  model: string,
+  result: { provider: string | null; usage: Usage }
+): void {
+  if (!result.usage.totalTokens) return
+  const marker = repo.insertMessage({
+    threadId,
+    role: 'system',
+    content: '',
+    model,
+    compactedInto: 'title'
+  })
+  repo.recordUsage(threadId, marker.id, model, result.provider, result.usage)
+}
+
 export async function generateTitle(threadId: string, emit: Emit): Promise<string | null> {
   const settings = loadSettings()
   if (!settings.titleGenerationEnabled) return null
@@ -536,26 +639,14 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
       attribution: settings.sendAppAttribution
     })
 
-    const title = result.content
-      .trim()
-      .replace(/^["'`]|["'`]$/g, '')
-      .replace(/[.!?]+$/, '')
-      .slice(0, 80)
-
+    const title = cleanTitle(result.content)
     if (!title) return null
 
     repo.updateThread(threadId, { title })
-    if (result.usage.totalTokens) {
-      // Title generation costs money too; it belongs in the statistics.
-      const marker = repo.insertMessage({
-        threadId,
-        role: 'system',
-        content: '',
-        model: settings.titleModel,
-        compactedInto: 'title'
-      })
-      repo.recordUsage(threadId, marker.id, settings.titleModel, result.provider, result.usage)
-    }
+    // Whatever it was called before, this one read the whole exchange. A
+    // pregeneration still in flight checks for a title and will stand down.
+    provisionalTitles.delete(threadId)
+    recordTitleCost(threadId, settings.titleModel, result)
 
     emit({ type: 'title', threadId, title })
     return title
@@ -585,6 +676,10 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         role: 'user',
         content: req.content
       })
+      // A name for the row while the reply is still being written. Started
+      // here, not awaited: the answer is what you are waiting for.
+      void pregenerateTitle(thread.id, req.content, emit)
+
       for (const pending of (req.attachments ?? []).slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
         try {
           attachments.store(thread.id, userMessage.id, pending)
@@ -783,7 +878,9 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
 async function nameIfUnnamed(threadId: string, emit: Emit): Promise<void> {
   try {
     const thread = repo.getThread(threadId)
-    if (!thread || thread.title) return
+    // A provisional name is one this is meant to replace: it was written from
+    // the question alone, and the exchange it was standing in for now exists.
+    if (!thread || (thread.title && !provisionalTitles.has(threadId))) return
     // A temporary chat is not named: it would be a request paid for to label
     // something that is about to stop existing, and it already reads as
     // "Temporary chat" wherever it appears.

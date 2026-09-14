@@ -165,6 +165,11 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultModel: 'anthropic/claude-sonnet-4.5',
   titleModel: 'google/gemini-2.5-flash-lite',
   titleGenerationEnabled: true,
+  // Off: it is a second request for every conversation, and the name it writes
+  // is replaced a moment later. Worth it to somebody who watches the list while
+  // a reply arrives, which is why it is offered rather than assumed.
+  titlePregenEnabled: false,
+  titlePregenModel: 'google/gemini-2.5-flash-lite',
   titlePrompt: DEFAULT_TITLE_PROMPT,
   baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
   includeDateTimeInPrompt: false,

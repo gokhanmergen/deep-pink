@@ -489,6 +489,18 @@ export interface Settings {
   /** Model used to generate thread titles. */
   titleModel: string
   titleGenerationEnabled: boolean
+  /**
+   * Whether a thread is named from the question before the answer arrives.
+   *
+   * Naming has always waited for the reply, which is the better material and
+   * the wrong moment — the row is nameless for exactly as long as you are
+   * looking at it. With this on, a small model writes a name from what you
+   * just asked, and the considered one replaces it when the turn ends. It is
+   * off by default because it is a second request per conversation.
+   */
+  titlePregenEnabled: boolean
+  /** The model that writes that first name. Empty falls back to `titleModel`. */
+  titlePregenModel: string
   titlePrompt: string
   baseSystemPrompt: string
   includeDateTimeInPrompt: boolean
