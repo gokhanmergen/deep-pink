@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
+import { ModelIcon } from './ModelIcon'
 import { formatTokens, modelShortName } from '../format'
 
 interface Props {
@@ -164,6 +165,11 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
             onClick={() => void choose(model.id)}
             type="button"
           >
+            {/* Whose model it is, ahead of the name. Here the mark leads
+                rather than trails, because a list of four hundred models is
+                scanned by house first — you are looking for the Anthropic
+                block, then for one within it. */}
+            <ModelIcon model={model.id} size={16} />
             <span style={{ minWidth: 0, flex: 1 }}>
               <span className="cmditem__label" style={{ display: 'block' }}>
                 {model.name}

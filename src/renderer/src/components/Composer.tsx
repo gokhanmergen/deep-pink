@@ -11,7 +11,6 @@ import type { AttachedRepo } from '@shared/types'
 import { useStore } from '../store'
 import {
   ArrowUp,
-  Cpu,
   FolderCode,
   Globe,
   BarChart3,
@@ -23,6 +22,7 @@ import {
   X
 } from 'lucide-react'
 import { ICON } from '../icons'
+import { ModelIcon } from './ModelIcon'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatBinding, matchesBinding } from '../keybinds'
 
@@ -468,7 +468,10 @@ export function Composer(): React.JSX.Element {
               title={`Model — ${formatBinding(keybinds['model.picker'] ?? 'mod+m')}`}
               type="button"
             >
-              <Cpu {...ICON} />
+              {/* The house's own mark rather than a generic chip. This is the
+                  one place the model is named now, so it is worth the pixels
+                  that say which one without being read. */}
+              <ModelIcon model={thread?.config.model ?? settings?.defaultModel} size={14} />
               <span className="btn__label">
                 {(thread?.config.model ?? settings?.defaultModel ?? '').split('/').pop() ||
                   'Choose model'}

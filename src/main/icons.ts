@@ -19,10 +19,14 @@ import { app } from 'electron'
  * them. A missing icon is therefore an ordinary outcome and not a failure,
  * which is why the renderer's fallback is a designed thing rather than a gap.
  *
- * Requests go to openrouter.ai, which is somewhere this app already talks to,
- * so nothing new learns anything about you. Each author is fetched once ever
- * and kept on disk; misses are remembered too, or every start would re-ask for
- * the same dozen files that do not exist.
+ * Where OpenRouter has nothing, the author's own site is asked for its own
+ * favicon — which is the only place in this app that talks to a host other
+ * than OpenRouter without being told to. It is one request, once per author
+ * ever, to the company whose model you are already sending your words to, and
+ * it is what puts a mark on Z.AI, xAI and NVIDIA.
+ *
+ * Each author is fetched once and kept on disk; misses are remembered too, or
+ * every start would re-ask for the same dozen files that do not exist.
  */
 
 /**
@@ -127,30 +131,129 @@ function candidates(slug: string): string[] {
   return [...guesses]
 }
 
-async function fetchIcon(slug: string): Promise<string | null> {
+/**
+ * Fetches a URL and returns it as a data URL, or null if it is not an image.
+ *
+ * The content type is checked rather than trusted from the extension because
+ * both sources here answer a miss with a 200 and an HTML page — OpenRouter's
+ * 404 route, and every site that serves its app shell for an unknown path. A
+ * 200 carrying `text/html` is a miss wearing a hit's clothes.
+ */
+async function asDataUrl(url: string, fallbackMime?: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, { redirect: 'follow' })
+    const type = (response.headers.get('content-type') ?? '').split(';')[0].trim()
+    if (!response.ok) return null
+    if (!type.startsWith('image/') && !fallbackMime) return null
+
+    const bytes = Buffer.from(await response.arrayBuffer())
+    // Nothing legitimate here is large, and an empty body is a site answering
+    // politely rather than having an icon — ai21.com serves a 200 of 0 bytes.
+    if (!bytes.length || bytes.length > 512 * 1024) return null
+
+    return `data:${type.startsWith('image/') ? type : fallbackMime};base64,${bytes.toString('base64')}`
+  } catch {
+    // Offline, or the asset moved, or the host does not resolve.
+    return null
+  }
+}
+
+/** OpenRouter's own mark for the author, if it has one. */
+async function fromOpenRouter(slug: string): Promise<string | null> {
   for (const name of candidates(slug)) {
     for (const ext of EXTENSIONS) {
-      try {
-        const response = await fetch(`https://openrouter.ai/images/icons/${name}.${ext}`)
-        // Their 404 is an HTML page rather than a status-only response, so the
-        // content type is checked as well: a 200 carrying `text/html` is a miss
-        // wearing a hit's clothes.
-        const type = response.headers.get('content-type') ?? ''
-        if (!response.ok || !type.startsWith('image/')) continue
-
-        const bytes = Buffer.from(await response.arrayBuffer())
-        // Nothing legitimate here is large. A file that is says the URL is not
-        // the one this thinks it is.
-        if (!bytes.length || bytes.length > 512 * 1024) continue
-
-        return `data:${MIME[ext]};base64,${bytes.toString('base64')}`
-      } catch {
-        // Offline, or the asset moved. Either way there is no mark to show and
-        // the caller has a fallback for exactly this.
-      }
+      const found = await asDataUrl(`https://openrouter.ai/images/icons/${name}.${ext}`, MIME[ext])
+      if (found) return found
     }
   }
   return null
+}
+
+/**
+ * Where an author lives, so its own site can be asked for its own mark.
+ *
+ * `/api/v1/providers` is a documented endpoint and it carries policy and
+ * status URLs — which is not a homepage, but the host of one is the host of
+ * the other. Many model authors are also inference providers under the same
+ * slug, so this covers z-ai, nvidia, minimax, ai21, baidu, liquid and reka
+ * without anything being written down here.
+ *
+ * Fetched once per session. It is a list of a hundred names and it changes
+ * about as often as the company list of an industry.
+ */
+let providerHosts: Map<string, string> | null = null
+
+async function hostsBySlug(): Promise<Map<string, string>> {
+  if (providerHosts) return providerHosts
+  providerHosts = new Map()
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/providers')
+    if (!response.ok) return providerHosts
+    const body = (await response.json()) as {
+      data?: { slug?: string; privacy_policy_url?: string; terms_of_service_url?: string }[]
+    }
+    for (const entry of body.data ?? []) {
+      const url = entry.privacy_policy_url ?? entry.terms_of_service_url
+      if (!entry.slug || !url) continue
+      try {
+        providerHosts.set(entry.slug, new URL(url).hostname.replace(/^www\./, ''))
+      } catch {
+        // A URL that is not one tells us nothing about where they live.
+      }
+    }
+  } catch {
+    // No list means no fallback hosts, which means a lettered badge. Fine.
+  }
+  return providerHosts
+}
+
+/** The registrable part of a host: `chat.z.ai` is really `z.ai`. */
+function parentDomain(host: string): string | null {
+  const parts = host.split('.')
+  return parts.length > 2 ? parts.slice(-2).join('.') : null
+}
+
+const FAVICONS = ['/favicon.svg', '/favicon.ico', '/favicon.png', '/apple-touch-icon.png']
+
+/**
+ * The author's own favicon, for the ones OpenRouter has no mark for.
+ *
+ * This is the only thing in the app that talks to a host other than OpenRouter
+ * without being asked to — one request per author, once, and never again once
+ * the answer is known. It asks the author's own site rather than a favicon
+ * service, so the only party that learns anything is the company whose model
+ * you are already sending your words to.
+ */
+async function fromTheirSite(slug: string): Promise<string | null> {
+  const hosts: string[] = []
+
+  const known = (await hostsBySlug()).get(slug)
+  if (known) {
+    hosts.push(known)
+    const parent = parentDomain(known)
+    if (parent) hosts.push(parent)
+  }
+
+  // `z-ai` is `z.ai` and `x-ai` is `x.ai`. Worth one guess for the authors that
+  // sell a model without also serving one, which is how xAI is missed above.
+  if (slug.includes('-')) {
+    const dotted = slug.replace(/-/g, '.')
+    if (!hosts.includes(dotted)) hosts.push(dotted)
+  }
+
+  for (const host of hosts) {
+    for (const path of FAVICONS) {
+      // ICO is not served with an `image/` type everywhere, and it is the one
+      // extension here whose own name is unambiguous.
+      const found = await asDataUrl(`https://${host}${path}`, path.endsWith('.ico') ? 'image/x-icon' : undefined)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+async function fetchIcon(slug: string): Promise<string | null> {
+  return (await fromOpenRouter(slug)) ?? (await fromTheirSite(slug))
 }
 
 /**

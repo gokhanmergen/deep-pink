@@ -834,21 +834,24 @@ svg.lucide {
 }
 
 /*
- * Breathing rather than blinking.
+ * Breathing rather than blinking, and only in brightness.
  *
  * A hard on/off is an alarm, and this is not one — it is the ambient fact that
  * something is happening elsewhere. It never reaches zero either: a bar that
  * disappears entirely reads as a row losing its selection.
+ *
+ * It used to scale as well as fade, and the height change was the part that
+ * caught the eye — a row whose marker keeps changing size reads as a row that
+ * is itself unsteady. Fading alone still says "working" and stops the list
+ * twitching down the side.
  */
 @keyframes working {
   0%,
   100% {
     opacity: 1;
-    transform: scaleY(1);
   }
   50% {
     opacity: 0.35;
-    transform: scaleY(0.55);
   }
 }
 
@@ -1008,27 +1011,6 @@ svg.lucide {
 .thread-item:hover .thread-item__model,
 .thread-item[data-active='true'] .thread-item__model {
   opacity: 1;
-}
-
-/*
- * And in the corner of the conversation itself.
- *
- * Above the composer rather than in it, and out of the way of the jump-to-
- * latest pill, which is centred. Quiet until pointed at: it is a reminder of
- * what the next message goes to, not a control — the control is a few pixels
- * below it.
- */
-.transcript-area__model {
-  position: absolute;
-  right: var(--s5);
-  bottom: var(--s4);
-  z-index: 2;
-  opacity: 0.4;
-  transition: opacity var(--quick);
-}
-
-.transcript-area:hover .transcript-area__model {
-  opacity: 0.85;
 }
 
 .thread-item__sep {

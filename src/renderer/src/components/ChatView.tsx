@@ -5,12 +5,11 @@ import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
-import { ArrowDown, BarChart3, Cpu, FileText, Ghost, PanelLeft, Plus, Route } from 'lucide-react'
+import { ArrowDown, BarChart3, FileText, Ghost, PanelLeft, Plus, Route } from 'lucide-react'
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
-import { formatCost, formatTokens, modelShortName, threadLabel } from '../format'
+import { formatCost, formatTokens, threadLabel } from '../format'
 import { landingPoint, tailHeight } from '../landing'
-import { ModelIcon } from './ModelIcon'
 import type { Message } from '@shared/types'
 
 /**
@@ -555,15 +554,15 @@ export function ChatView(): React.JSX.Element {
 
         {thread && (
           <>
-            <button
-              className="btn"
-              onClick={() => setOverlay('models')}
-              title={`Model — ${formatBinding(keybinds['model.picker'])}`}
-              type="button"
-            >
-              <Cpu {...ICON} />
-              <span className="btn__label">{modelShortName(model)}</span>
-            </button>
+            {/*
+              * The model button used to be here as well as in the composer.
+              *
+              * Two controls, same overlay, same text, one above the other with
+              * the conversation in between — and the composer's is the one that
+              * is where the decision is made, because choosing a model is part
+              * of writing rather than part of reading. What is left here is the
+              * things that have nowhere else to be.
+              */}
             <button
               className="btn"
               onClick={() => setOverlay('providers')}
@@ -673,11 +672,14 @@ export function ChatView(): React.JSX.Element {
                     chat or close the app, and it is never synced.
                   </p>
                 )}
+                {/* Which model this will use is on the button below, with its
+                    own mark on it. Saying it here as well was the same fact
+                    twice on a screen with almost nothing else on it. */}
                 <p>
-                  Using <strong>{modelShortName(model)}</strong>. Press{' '}
-                  <span className="kbd">{formatBinding(keybinds['palette.open'])}</span> for the
-                  command palette, or <span className="kbd">{formatBinding(keybinds['keybinds.cheatsheet'])}</span>{' '}
-                  for every shortcut.
+                  Press <span className="kbd">{formatBinding(keybinds['palette.open'])}</span> for
+                  the command palette, or{' '}
+                  <span className="kbd">{formatBinding(keybinds['keybinds.cheatsheet'])}</span> for
+                  every shortcut.
                 </p>
                 {/* Said here because here is the only place it can be done: a
                     chat can be made temporary before it is used and not after. */}
@@ -735,19 +737,6 @@ export function ChatView(): React.JSX.Element {
           </button>
         )}
 
-        {/*
-          * Whose model this conversation is using, in the corner.
-          *
-          * Every reply already names the model in its own header, which
-          * answers "what wrote this one". This answers the other question —
-          * what the next thing you send will go to — which nothing on screen
-          * said except the composer's model button, and that is at the far end
-          * of the window from where you are reading.
-          *
-          * Quiet until pointed at: it is a reminder, not a control, and the
-          * control for it is a few pixels below.
-          */}
-        {thread && <ModelIcon model={model} size={16} className="transcript-area__model" />}
       </div>
 
       <Composer />

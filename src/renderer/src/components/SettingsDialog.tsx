@@ -1703,6 +1703,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   OpenRouter, to MCP servers you configure, and to the web when you turn web
                   access on.
                 </p>
+                <p>
+                  One exception, and it carries nothing of yours: where OpenRouter has no logo
+                  for a model&rsquo;s author, the app asks that author&rsquo;s own site for its
+                  favicon — z.ai, x.ai, nvidia.com. It happens once per author ever, the answer
+                  is kept on this machine, and the only thing it discloses is that somebody
+                  fetched an icon.
+                </p>
               </More>
               <div className="row">
                 <button className="btn" onClick={() => void window.deepPink.data.reveal()} type="button">
