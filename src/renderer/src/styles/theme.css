@@ -856,30 +856,29 @@ svg.lucide {
 }
 
 /*
- * A title that has not been written yet, shaped like one.
+ * A title that has not been written yet.
  *
- * It was a single bar, and a single bar is the shape of a loading *row* — the
- * eye reads it as the whole line being absent rather than as the name being
- * absent from a line that is otherwise fine. Words have gaps, and the gaps are
- * most of what makes a run of blocks read as writing.
+ * One bar, at the weight of a line of text rather than the weight of a row.
+ * It was twelve pixels tall and read as the whole line being absent; at eight
+ * it reads as the name being absent from a line that is otherwise fine, which
+ * is the true state of things.
  *
- * Not the row's full width either, for the same reason it was not before: a
- * placeholder that reaches the timestamp looks like damage rather than like a
- * short title on its way.
+ * The wrapper is the title's own line box so nothing shifts when the real name
+ * arrives and the row goes back to being text, and the bar sits centred inside
+ * it rather than filling it.
  */
 .thread-item__pending {
   display: flex;
   align-items: center;
-  gap: 5px;
-  max-width: 78%;
-  /* The line box of the title it stands in for, so nothing shifts when the
-     real name arrives and the row goes back to being text. */
   height: 17px;
 }
 
 .thread-item__pending > span {
+  /* Not the row's full width: a placeholder that reaches the timestamp looks
+     like damage rather than like a short title on its way. */
+  width: 62%;
   height: 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(
     90deg,
     var(--bg-elevated) 0%,
@@ -888,27 +887,6 @@ svg.lucide {
   );
   background-size: 220% 100%;
   animation: naming 1.6s ease-in-out infinite;
-}
-
-/*
- * Lengths that are not each other, and a wave that crosses them in order.
- *
- * Three equal blocks pulsing together is a progress indicator. Three unequal
- * ones lit slightly after one another is a line of text being written, which
- * is the thing that is actually happening.
- */
-.thread-item__pending > span:nth-child(1) {
-  width: 38%;
-}
-
-.thread-item__pending > span:nth-child(2) {
-  width: 24%;
-  animation-delay: 0.12s;
-}
-
-.thread-item__pending > span:nth-child(3) {
-  width: 30%;
-  animation-delay: 0.24s;
 }
 
 .thread-item[data-active='true'] .thread-item__pending > span {
