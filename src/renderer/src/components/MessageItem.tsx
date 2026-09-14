@@ -102,8 +102,27 @@ export const MessageItem = memo(function MessageItem({
   }
 
   const saveEdit = async (): Promise<void> => {
+    const changed = draft !== message.content
     await window.deepPink.messages.update(message.id, { content: draft })
     editMessage(null)
+
+    /*
+     * Editing a question asks it again.
+     *
+     * Changing what you said and keeping the answer to what you used to say
+     * leaves a conversation that does not follow: the reply below is an answer
+     * to a message that no longer exists anywhere. Saving an edit was a way to
+     * produce that and then have to notice it and press Retry.
+     *
+     * Only when something actually changed, and only for your own words — a
+     * compaction summary is a record rather than a turn, and re-running from
+     * one would be answering the app.
+     */
+    if (changed && message.role === 'user') {
+      await useStore.getState().resendFrom(message.id)
+      return
+    }
+
     // Re-reads the loaded range in place rather than reopening the thread,
     // which would throw away everything scrolled back to.
     await useStore.getState().refreshTranscript()

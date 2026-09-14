@@ -312,22 +312,43 @@ export function setThreadFolder(threadId: string, folderId: string | null): Thre
  */
 const VISIBLE_MESSAGES = 'compacted_into IS NULL'
 
+/**
+ * How long the conversation is, counted the way a reader would count it.
+ *
+ * Not every row is something somebody said. A turn that used tools is an
+ * assistant message carrying the call, a `tool` message carrying the result,
+ * and another assistant message with the answer — three rows drawn as one
+ * reply, and three rows counted where the reader sees one. A thread of six
+ * exchanges could say "twenty messages", which is a number about the database.
+ *
+ * So: every message of yours, and every reply that said something or failed
+ * trying. Tool traffic is not conversation, and an assistant row with no words
+ * in it is the machinery of a turn rather than a turn.
+ *
+ * Yours count whatever is in them — a message that is only a picture is still
+ * a message, and its `content` is empty.
+ */
+const READABLE_MESSAGES = `${VISIBLE_MESSAGES}
+       AND role IN ('user', 'assistant')
+       AND (role = 'user' OR content <> '' OR error IS NOT NULL)`
+
 function countMessages(threadId: string): number {
   return (
     getDb()
       .prepare(
-        `SELECT COUNT(*) AS n FROM messages WHERE thread_id = ? AND (${VISIBLE_MESSAGES})`
+        `SELECT COUNT(*) AS n FROM messages WHERE thread_id = ? AND (${READABLE_MESSAGES})`
       )
       .get(threadId) as { n: number }
   ).n
 }
 
 /** The same count for every thread at once, for the list. */
+/** The same count as `countMessages`, for the whole library in one query. */
 function countMessagesByThread(): Map<string, number> {
   const rows = getDb()
     .prepare(
       `SELECT thread_id AS id, COUNT(*) AS n FROM messages
-        WHERE ${VISIBLE_MESSAGES}
+        WHERE ${READABLE_MESSAGES}
         GROUP BY thread_id`
     )
     .all() as { id: string; n: number }[]
@@ -442,10 +463,24 @@ export function updateThread(
   const pinned = patch.pinned ?? existing.pinned
   const archived = patch.archived ?? existing.archived
 
+  /*
+   * `filed_at`, not `updated_at`, for the reason `setThreadFolder` gives.
+   *
+   * `updated_at` is when the conversation last had something said in it, and
+   * it is what the list is ordered by. Renaming a thread, pinning it, or
+   * turning web search on for it are none of them things said — so stamping
+   * that here sent a thread to the top of Today for flipping a switch, which
+   * is the list reporting activity that did not happen.
+   *
+   * Stamped all the same, because a revision that never moves is a change sync
+   * never carries. The column was named for filing because filing was the
+   * first thing that needed this; what it means is "changed, but not by
+   * talking".
+   */
   getDb()
     .prepare(
       `UPDATE threads
-          SET title = ?, pinned = ?, archived = ?, config = ?, updated_at = ?,
+          SET title = ?, pinned = ?, archived = ?, config = ?, filed_at = ?,
               temporary = ?
         WHERE id = ?`
     )

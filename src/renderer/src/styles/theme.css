@@ -3971,6 +3971,24 @@ svg.lucide {
   padding: 12px;
 }
 
+/*
+ * A question that nobody answered.
+ *
+ * Deliberately not an error: nothing went wrong that you did not do on
+ * purpose, and the usual case is that you pressed stop. So it is the weight of
+ * a caption rather than of a warning — dim text, no colour, no border around
+ * it — sitting where the reply would have been, with the one thing worth
+ * offering beside it.
+ */
+.unanswered {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: calc(var(--s5) * -1) 0 var(--s6);
+  font-size: var(--t-small);
+  color: var(--text-dim);
+}
+
 /* The margin a document's last paragraph would otherwise add inside the box. */
 .docsblock__body .md > *:last-child {
   margin-bottom: 0;

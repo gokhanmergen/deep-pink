@@ -5,7 +5,7 @@ import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
-import { ArrowDown, BarChart3, FileText, Ghost, PanelLeft, Plus, Route } from 'lucide-react'
+import { ArrowDown, BarChart3, FileText, Ghost, PanelLeft, Plus, RefreshCw, Route } from 'lucide-react'
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, threadLabel } from '../format'
@@ -91,6 +91,7 @@ export function ChatView(): React.JSX.Element {
   const makeThreadTemporary = useStore((s) => s.makeThreadTemporary)
   const showToast = useStore((s) => s.showToast)
   const compact = useStore((s) => s.compact)
+  const resendFrom = useStore((s) => s.resendFrom)
   // Subscribed to so the top-up below re-runs when either changes; the values
   // it acts on are read from the store, which is never a frame behind.
   const hasOlderMessages = useStore((s) => s.hasOlderMessages)
@@ -446,6 +447,21 @@ export function ChatView(): React.JSX.Element {
 
   // The thread's, not the sum of what has been read in — a figure that counted
   // upwards as you scrolled back would be a lie about what anything cost.
+  /**
+   * The turns, and the id of a last one that nobody answered.
+   *
+   * Grouping once rather than in the markup, because this needs the same
+   * answer the transcript is drawn from: what counts as the end of the
+   * conversation is what the reader can see at the end of it, and an empty
+   * assistant row that was dropped from the blocks is not there.
+   */
+  const blocks = groupIntoTurns(messages)
+  const lastBlock = blocks[blocks.length - 1]
+  const unanswered =
+    !generating && !compacting && lastBlock?.kind === 'message' && lastBlock.message.role === 'user'
+      ? lastBlock.message.id
+      : null
+
   const totalCost = threadTotals?.costUsd ?? 0
   const totalTokens = threadTotals?.totalTokens ?? 0
 
@@ -691,7 +707,7 @@ export function ChatView(): React.JSX.Element {
                 )}
               </div>
             ) : (
-              groupIntoTurns(messages).map((block, index, blocks) =>
+              blocks.map((block, index, blocks) =>
                 block.kind === 'message' ? (
                   <MessageItem key={block.id} message={block.message} ui={settings.ui} />
                 ) : (
@@ -703,6 +719,32 @@ export function ChatView(): React.JSX.Element {
                   />
                 )
               )
+            )}
+
+            {/*
+              * A question that never got an answer.
+              *
+              * Stopping a reply before it has produced anything withdraws the
+              * empty bubble, which is right — an assistant turn with nothing in
+              * it is not a turn — but it leaves your message sitting at the
+              * bottom of the thread looking like one you forgot to send. The
+              * same shape is what a thread looks like if the app was closed
+              * mid-reply, or the request failed before a single token.
+              *
+              * So the transcript says so, and offers the obvious thing.
+              */}
+            {unanswered && (
+              <div className="unanswered">
+                <span>No reply — the turn was stopped before it began.</span>
+                <button
+                  className="btn btn--ghost"
+                  onClick={() => void resendFrom(unanswered)}
+                  type="button"
+                >
+                  <RefreshCw {...ICON} />
+                  Ask again
+                </button>
+              </div>
             )}
 
             {compacting && (

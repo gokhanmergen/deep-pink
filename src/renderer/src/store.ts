@@ -281,6 +281,14 @@ interface State {
   setDraggingThread: (threadId: string | null) => void
   send: (content: string, attachments?: PendingAttachment[]) => Promise<void>
   regenerate: (messageId: string) => Promise<void>
+  /**
+   * Answers a message again, from that message.
+   *
+   * What editing one of your own does, and what the offer under an unanswered
+   * turn does. Distinct from `regenerate`, which is handed a *reply* and works
+   * back to the message before it; this is handed the message to answer.
+   */
+  resendFrom: (messageId: string) => Promise<void>
   abort: () => Promise<void>
   compact: () => Promise<void>
   saveSettings: (patch: SettingsPatch) => Promise<void>
@@ -1003,6 +1011,21 @@ export const useStore = create<State>((set, get) => ({
 
     await api.chat.send({ threadId, content, attachments: pending })
     await get().refreshThreads()
+  },
+
+  async resendFrom(messageId) {
+    const threadId = get().activeThreadId
+    if (!threadId) return
+
+    const index = get().messages.findIndex((m) => m.id === messageId)
+    if (index < 0) return
+
+    // Everything after it goes, here as well as on disk — the engine drops the
+    // same range from `regenerateFromMessageId`, and doing it here too means
+    // the answer being replaced leaves the moment you ask rather than when the
+    // first token of its replacement arrives.
+    set({ messages: get().messages.slice(0, index + 1), generating: true })
+    await api.chat.send({ threadId, content: '', regenerateFromMessageId: messageId })
   },
 
   async regenerate(messageId) {
