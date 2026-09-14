@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canBecomeTemporary, useStore } from '../store'
-import { dateBucket, formatDateTime, formatRelativeShort, threadLabel } from '../format'
+import { dateBucket, formatDateTime, formatRelativeShort, formatTokens, threadLabel } from '../format'
 import {
   BarChart3,
   Blocks,
@@ -58,6 +58,7 @@ const ThreadRow = memo(function ThreadRow({
   generating,
   awaitingName,
   model,
+  live,
   inFolder,
   onSelect,
   onMenu,
@@ -71,6 +72,8 @@ const ThreadRow = memo(function ThreadRow({
   awaitingName: boolean
   /** What this conversation is set to use, so the row can show whose it is. */
   model: string
+  /** What it has produced so far, while it is producing. Null when it is not. */
+  live: { tokens: number; perSecond: number } | null
   /** Indented, because it is inside an open folder. */
   inFolder: boolean
   onSelect: (id: string) => void
@@ -135,17 +138,35 @@ const ThreadRow = memo(function ThreadRow({
           conversation is, and the other timestamp — labelled, now that there
           is room for a word. */}
       <span className="thread-item__sub">
-        <span className="nowrap">
-          {thread.messageCount === 0
-            ? 'empty'
-            : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
-        </span>
-        <span className="thread-item__sep">·</span>
-        {/* The second half of the line is the age of an ordinary thread, and
-            for a temporary one the only thing worth saying about it. */}
-        <span className="nowrap">
-          {thread.temporary ? 'not saved' : `created ${formatRelativeShort(thread.createdAt)}`}
-        </span>
+        {/*
+          * While it is working, the line says what it is doing instead.
+          *
+          * How many messages a thread has and when it was made are facts that
+          * will still be true in an hour; a reply arriving is the one thing
+          * about this row that is only true now, and it is the only time the
+          * second line has something to say that you could not find out later.
+          */}
+        {live ? (
+          <>
+            <span className="nowrap thread-item__live">{formatTokens(live.tokens)} tokens</span>
+            <span className="thread-item__sep">·</span>
+            <span className="nowrap thread-item__live">{live.perSecond.toFixed(1)}/s</span>
+          </>
+        ) : (
+          <>
+            <span className="nowrap">
+              {thread.messageCount === 0
+                ? 'empty'
+                : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
+            </span>
+            <span className="thread-item__sep">·</span>
+            {/* The second half of the line is the age of an ordinary thread,
+                and for a temporary one the only thing worth saying about it. */}
+            <span className="nowrap">
+              {thread.temporary ? 'not saved' : `created ${formatRelativeShort(thread.createdAt)}`}
+            </span>
+          </>
+        )}
         {/* At the end of the line rather than beside the title: the title is
             what you read down the list for, and a mark in front of it would be
             a column of logos with the names indented behind them. */}
@@ -187,6 +208,7 @@ export function Sidebar(): React.JSX.Element {
   const draggingThreadId = useStore((s) => s.draggingThreadId)
   const activeThreadId = useStore((s) => s.activeThreadId)
   const generatingThreadIds = useStore((s) => s.generatingThreadIds)
+  const liveStats = useStore((s) => s.liveStats)
   const namingEnabled = useStore((s) => s.settings?.titleGenerationEnabled ?? false)
   // The value, not the settings object: a row must not re-render because some
   // unrelated preference changed.
@@ -659,6 +681,7 @@ export function Sidebar(): React.JSX.Element {
       generating={generatingThreadIds.includes(thread.id)}
       awaitingName={awaitingName(thread)}
       model={thread.config.model ?? defaultModel}
+      live={liveStats[thread.id] ?? null}
       inFolder={options.inFolder ?? false}
       onSelect={onSelectThread}
       onMenu={onThreadMenu}

@@ -1013,6 +1013,14 @@ svg.lucide {
   opacity: 1;
 }
 
+/* The figures that are only true right now, in the colour the row's own bar
+   is using to say the same thing. Tabular so the count does not jitter the
+   line sideways as it climbs through a digit. */
+.thread-item__live {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 .thread-item__sep {
   opacity: 0.5;
 }

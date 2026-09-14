@@ -150,6 +150,18 @@ interface State {
    * finishing must not.
    */
   generatingThreadIds: string[]
+  /**
+   * How much each working thread has produced, and how fast.
+   *
+   * Only ever holds threads that are generating, and only exists so the list
+   * can say something more useful than "12 messages" about a row where the
+   * number is changing as you look at it.
+   *
+   * Published on a timer rather than per delta. A reply arrives in dozens of
+   * chunks a second and the sidebar is hundreds of rows; setting this on each
+   * one would re-render the list at the rate the model types.
+   */
+  liveStats: Record<string, { tokens: number; perSecond: number }>
   /** Message id the transcript should scroll to and flash. */
   highlightMessageId: string | null
   /**
@@ -463,6 +475,14 @@ const unsubscribers: (() => void)[] = []
 
 export function disposeStore(): void {
   while (unsubscribers.length) unsubscribers.pop()?.()
+  // The live-figures ticker holds the setter it was started with, so leaving it
+  // running would keep a torn-down store alive and writing into it.
+  if (statsTicker) {
+    clearInterval(statsTicker)
+    statsTicker = null
+  }
+  emitted.clear()
+  threadOfMessage.clear()
   initialised = false
 }
 
@@ -494,6 +514,7 @@ export const useStore = create<State>((set, get) => ({
   toast: null,
   dialog: null,
   generatingThreadIds: [],
+  liveStats: {},
   highlightMessageId: null,
   editingMessageId: null,
   imageViewer: null,
@@ -1239,6 +1260,65 @@ function mergeStreamed(persisted: Message[], onScreen: Message[]): Message[] {
 const threadOfMessage = new Map<string, string>()
 
 /**
+ * What each working thread has emitted, counted as it arrives.
+ *
+ * Kept outside the store on purpose: this is written on every delta, and the
+ * store is what the sidebar watches. The ticker below is what moves it across.
+ *
+ * Characters rather than tokens, because nobody knows the token count until
+ * the turn ends and the provider reports it — the app's own four-characters-
+ * to-a-token estimate is used everywhere else a number is needed before then,
+ * and using a different one here would make two parts of the window disagree.
+ */
+const emitted = new Map<string, { chars: number; startedAt: number }>()
+
+/** The app's estimate, and the same one the reasoning trace's chip uses. */
+const CHARS_PER_TOKEN = 4
+
+let statsTicker: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Moves the counts into the store four times a second while anything is
+ * working, and stops as soon as nothing is.
+ *
+ * Four is enough that the number reads as live and slow enough that the list
+ * is not re-rendering under a reply arriving at sixty chunks a second.
+ */
+function runStatsTicker(set: Setter, get: Getter): void {
+  if (statsTicker) return
+  statsTicker = setInterval(() => {
+    if (!emitted.size) {
+      clearInterval(statsTicker as ReturnType<typeof setInterval>)
+      statsTicker = null
+      if (Object.keys(get().liveStats).length) set({ liveStats: {} })
+      return
+    }
+
+    const next: Record<string, { tokens: number; perSecond: number }> = {}
+    for (const [threadId, run] of emitted) {
+      const seconds = Math.max((Date.now() - run.startedAt) / 1000, 0.001)
+      const tokens = Math.round(run.chars / CHARS_PER_TOKEN)
+      next[threadId] = { tokens, perSecond: tokens / seconds }
+    }
+    set({ liveStats: next })
+  }, 250)
+}
+
+/** Counts what a delta added, wherever it is going. */
+function countDelta(event: StreamEvent, set: Setter, get: Getter): void {
+  if (event.type !== 'content' && event.type !== 'reasoning') return
+  const threadId = threadOfMessage.get(event.messageId)
+  if (!threadId) return
+
+  const run = emitted.get(threadId)
+  // Reasoning counts: it is tokens the model produced and tokens you paid for,
+  // even though none of it is the answer.
+  if (run) run.chars += event.delta.length
+  else emitted.set(threadId, { chars: event.delta.length, startedAt: Date.now() })
+  runStatsTicker(set, get)
+}
+
+/**
  * Keeps the set of working threads current, whichever thread is on screen.
  *
  * Deliberately above the relevance filter below: that filter exists to stop
@@ -1260,21 +1340,27 @@ function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
   switch (event.type) {
     case 'start':
       threadOfMessage.set(event.messageId, event.threadId)
+      // A retry reuses the row, so the count starts again with it.
+      emitted.set(event.threadId, { chars: 0, startedAt: Date.now() })
       working(event.threadId, true)
+      runStatsTicker(set, get)
       break
     case 'done': {
       threadOfMessage.delete(event.messageId)
+      emitted.delete(event.message.threadId)
       working(event.message.threadId, false)
       break
     }
     case 'aborted':
       threadOfMessage.delete(event.messageId)
+      emitted.delete(event.threadId)
       working(event.threadId, false)
       break
     case 'error': {
       const threadId = event.messageId ? threadOfMessage.get(event.messageId) : undefined
       if (!threadId) break
       threadOfMessage.delete(event.messageId)
+      emitted.delete(threadId)
       working(threadId, false)
       break
     }
@@ -1283,6 +1369,7 @@ function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
 
 function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
   trackGenerating(event, set, get)
+  countDelta(event, set, get)
 
   const state = get()
 

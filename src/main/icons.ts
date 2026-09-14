@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { BUNDLED_ICONS } from './modelIconData'
 
 /**
  * Brand marks for the model that answered.
@@ -73,10 +74,26 @@ const MIME: Record<string, string> = {
 const REMEMBER_A_MISS_FOR = 7 * 24 * 60 * 60 * 1000
 
 interface Known {
-  /** The data URL, or null for an author OpenRouter has no mark for. */
+  /** The data URL, or null for an author nothing here could find a mark for. */
   url: string | null
   checkedAt: number
+  /** Which set of sources produced this answer. See `STRATEGY`. */
+  by?: number
 }
+
+/**
+ * Bumped whenever where-we-look changes.
+ *
+ * A miss is a statement about the places that were searched, not about the
+ * author — so when a new place is added, every previous miss becomes a claim
+ * nobody checked. This is how they are thrown away. Hits are kept: a mark that
+ * was found is still a mark.
+ *
+ * 1 — OpenRouter's icon directory only.
+ * 2 — and the author's own favicon.
+ * 3 — and the bundled set, which is looked at first.
+ */
+const STRATEGY = 3
 
 let index: Record<string, Known> | null = null
 
@@ -105,10 +122,20 @@ function save(): void {
   }
 }
 
-/** `anthropic/claude-sonnet-4.5` → `anthropic`. */
+/**
+ * `anthropic/claude-sonnet-4.5` → `anthropic`.
+ *
+ * The leading `~` is OpenRouter's mark for an alias that always points at an
+ * author's newest model — `~z-ai/glm-flash-latest`, `~openai/gpt-astra-latest`.
+ * It is not part of the author's name, and leaving it on meant sixteen models
+ * asked about seven authors that do not exist, got nothing, and cached the
+ * nothing. The `:free` and `:batch` suffixes are on the model rather than the
+ * author and never reached this.
+ */
 export function authorOf(modelId: string): string {
-  const slash = modelId.indexOf('/')
-  return (slash === -1 ? modelId : modelId.slice(0, slash)).toLowerCase()
+  const bare = modelId.replace(/^~/, '')
+  const slash = bare.indexOf('/')
+  return (slash === -1 ? bare : bare.slice(0, slash)).toLowerCase()
 }
 
 /**
@@ -139,34 +166,45 @@ function candidates(slug: string): string[] {
  * 404 route, and every site that serves its app shell for an unknown path. A
  * 200 carrying `text/html` is a miss wearing a hit's clothes.
  */
-async function asDataUrl(url: string, fallbackMime?: string): Promise<string | null> {
+/** Found it, or looked and did not — which are not the same as failing to look. */
+interface Lookup {
+  url: string | null
+  /** False when the network could not be reached, so nothing was learned. */
+  reachable: boolean
+}
+
+async function asDataUrl(url: string, fallbackMime?: string): Promise<Lookup> {
   try {
     const response = await fetch(url, { redirect: 'follow' })
     const type = (response.headers.get('content-type') ?? '').split(';')[0].trim()
-    if (!response.ok) return null
-    if (!type.startsWith('image/') && !fallbackMime) return null
+    if (!response.ok) return { url: null, reachable: true }
+    if (!type.startsWith('image/') && !fallbackMime) return { url: null, reachable: true }
 
     const bytes = Buffer.from(await response.arrayBuffer())
     // Nothing legitimate here is large, and an empty body is a site answering
     // politely rather than having an icon — ai21.com serves a 200 of 0 bytes.
-    if (!bytes.length || bytes.length > 512 * 1024) return null
+    if (!bytes.length || bytes.length > 512 * 1024) return { url: null, reachable: true }
 
-    return `data:${type.startsWith('image/') ? type : fallbackMime};base64,${bytes.toString('base64')}`
+    const mime = type.startsWith('image/') ? type : fallbackMime
+    return { url: `data:${mime};base64,${bytes.toString('base64')}`, reachable: true }
   } catch {
-    // Offline, or the asset moved, or the host does not resolve.
-    return null
+    // Offline, or the host does not resolve. Nothing was learned about whether
+    // a mark exists, which is the distinction the cache needs.
+    return { url: null, reachable: false }
   }
 }
 
 /** OpenRouter's own mark for the author, if it has one. */
-async function fromOpenRouter(slug: string): Promise<string | null> {
+async function fromOpenRouter(slug: string): Promise<Lookup> {
+  let reachable = false
   for (const name of candidates(slug)) {
     for (const ext of EXTENSIONS) {
       const found = await asDataUrl(`https://openrouter.ai/images/icons/${name}.${ext}`, MIME[ext])
-      if (found) return found
+      reachable = reachable || found.reachable
+      if (found.url) return found
     }
   }
-  return null
+  return { url: null, reachable }
 }
 
 /**
@@ -224,7 +262,7 @@ const FAVICONS = ['/favicon.svg', '/favicon.ico', '/favicon.png', '/apple-touch-
  * service, so the only party that learns anything is the company whose model
  * you are already sending your words to.
  */
-async function fromTheirSite(slug: string): Promise<string | null> {
+async function fromTheirSite(slug: string): Promise<Lookup> {
   const hosts: string[] = []
 
   const known = (await hostsBySlug()).get(slug)
@@ -241,19 +279,41 @@ async function fromTheirSite(slug: string): Promise<string | null> {
     if (!hosts.includes(dotted)) hosts.push(dotted)
   }
 
+  // A host that does not resolve is a host, not a network failure: plenty of
+  // these guesses are simply wrong. Only say nothing was learned if there was
+  // nowhere to ask in the first place.
+  let reachable = hosts.length === 0
   for (const host of hosts) {
     for (const path of FAVICONS) {
       // ICO is not served with an `image/` type everywhere, and it is the one
       // extension here whose own name is unambiguous.
-      const found = await asDataUrl(`https://${host}${path}`, path.endsWith('.ico') ? 'image/x-icon' : undefined)
-      if (found) return found
+      const found = await asDataUrl(
+        `https://${host}${path}`,
+        path.endsWith('.ico') ? 'image/x-icon' : undefined
+      )
+      reachable = reachable || found.reachable
+      if (found.url) return found
     }
   }
-  return null
+  return { url: null, reachable }
 }
 
-async function fetchIcon(slug: string): Promise<string | null> {
-  return (await fromOpenRouter(slug)) ?? (await fromTheirSite(slug))
+/**
+ * Everywhere a mark might be, cheapest first.
+ *
+ * The bundled set has already been consulted by the caller and answers two
+ * thirds of authors with no request at all, which is the only reason these two
+ * are affordable — they are for the long tail, and the long tail is where a
+ * mark is least likely to exist in the first place.
+ */
+async function fetchIcon(slug: string): Promise<{ url: string | null; checked: boolean }> {
+  const ours = await fromOpenRouter(slug)
+  if (ours.url) return { url: ours.url, checked: true }
+
+  const theirs = await fromTheirSite(slug)
+  if (theirs.url) return { url: theirs.url, checked: true }
+
+  return { url: null, checked: ours.reachable && theirs.reachable }
 }
 
 /**
@@ -266,16 +326,41 @@ async function fetchIcon(slug: string): Promise<string | null> {
  * of it either.
  */
 export async function iconForAuthor(slug: string): Promise<string | null> {
+  /*
+   * Ahead of the cache, not behind it.
+   *
+   * The cache remembers what was found before the bundled set existed —
+   * DeepSeek as a 25KB PNG, Moonshot as a 229KB one, both scraped from a
+   * website. Those are answers, so they would be returned for ever, and the
+   * sharper local SVG would never be reached. Asking here costs a map lookup
+   * and settles it.
+   */
+  const bundled = BUNDLED_ICONS[slug]
+  if (bundled) return bundled
+
   const known = load()
   const cached = known[slug]
 
   if (cached) {
     if (cached.url) return cached.url
-    if (Date.now() - cached.checkedAt < REMEMBER_A_MISS_FOR) return null
+    // A miss is only worth keeping if it was reached by looking everywhere we
+    // look now, and if it is recent.
+    if ((cached.by ?? 1) >= STRATEGY && Date.now() - cached.checkedAt < REMEMBER_A_MISS_FOR) {
+      return null
+    }
   }
 
-  const url = await fetchIcon(slug)
-  known[slug] = { url, checkedAt: Date.now() }
-  save()
-  return url
+  const found = await fetchIcon(slug)
+  /*
+   * A failure to reach the network is not an absence of an icon.
+   *
+   * Writing one down as the other is how a laptop that opened the app on a
+   * train ends up with a week of blank marks it will not retry. Only an answer
+   * — found, or searched everywhere and not found — is remembered.
+   */
+  if (found.checked) {
+    known[slug] = { url: found.url, checkedAt: Date.now(), by: STRATEGY }
+    save()
+  }
+  return found.url
 }
