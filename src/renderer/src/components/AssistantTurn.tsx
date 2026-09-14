@@ -285,6 +285,21 @@ export const AssistantTurn = memo(function AssistantTurn({
               </details>
             )}
 
+            {/*
+              * A rule between the thinking and the answer.
+              *
+              * Its own element rather than an edge on the line above it,
+              * because it is not part of the aside — it is the boundary
+              * between two different things the model produced, and an `<hr>`
+              * is exactly that: a thematic break.
+              *
+              * Only where there is something on both sides of it. A turn that
+              * reasoned its way to a tool call and wrote nothing has no
+              * boundary to draw, and a rule under the last thing on screen is
+              * a line with nothing to separate.
+              */}
+            {message.reasoning && message.content && <hr className="turn-rule" />}
+
             {message.content && (
               <div className="message__body">
                 <Markdown

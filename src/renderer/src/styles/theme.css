@@ -1966,6 +1966,21 @@ svg.lucide {
 }
 
 /*
+ * The line between what the model thought and what it said.
+ *
+ * A browser's own `<hr>` arrives with a border, a margin and in some engines a
+ * colour of its own; all of that is cleared so what is left is the one pixel
+ * that was wanted. Inset from neither side: it is separating two parts of the
+ * same reply, so it spans the reply.
+ */
+.turn-rule {
+  height: 0;
+  margin: var(--s3) 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/*
  * The trace itself, ruled off down one side rather than boxed.
  *
  * It is quoted material — something said elsewhere, reproduced — and a rule
