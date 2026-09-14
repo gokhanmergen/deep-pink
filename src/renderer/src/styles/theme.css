@@ -1187,6 +1187,35 @@ svg.lucide {
   flex: none;
 }
 
+/*
+ * The title, being typed over.
+ *
+ * Built to occupy the title's own box rather than to look like a form field:
+ * the same flex, the same width, and padding that puts the first character on
+ * the same pixel the first character was already on. The general `.input` has
+ * a taller minimum and a width of its own, so swapping one in moved the text
+ * and shoved everything to its right along with it — for a rename that does
+ * not move anything.
+ */
+.topbar__rename {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  min-height: 0;
+  height: 24px;
+  /* 3px and a 1px border is the 4px the title pads by. */
+  padding: 0 3px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--t-ui);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.008em;
+  outline: none;
+}
+
 .topbar__title {
   font-size: var(--t-ui);
   font-weight: var(--w-strong);

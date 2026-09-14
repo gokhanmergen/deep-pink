@@ -233,20 +233,30 @@ export const AssistantTurn = memo(function AssistantTurn({
 
       {usage && (
         <div className="message__footer">
-          <span className="chip" title="Prompt tokens sent across this turn">
-            ↑ {formatTokens(usage.promptTokens)}
+          {/*
+            * Named rather than signed.
+            *
+            * These were ↑, ↓ and ◇, which is a legend you have to have been
+            * told — and nobody is told, because there is nowhere to put the
+            * legend. The arrows were at least guessable; the diamond stood for
+            * reasoning and stood for it to nobody. A word costs three
+            * characters in a chip that already holds a number and is read
+            * without being decoded.
+            */}
+          <span className="chip" title="Tokens sent: this message and everything before it">
+            {formatTokens(usage.promptTokens)} sent
           </span>
-          <span className="chip" title="Completion tokens received">
-            ↓ {formatTokens(usage.completionTokens)}
+          <span className="chip" title="Tokens in the reply">
+            {formatTokens(usage.completionTokens)} back
           </span>
           {usage.reasoningTokens > 0 && (
-            <span className="chip" title="Reasoning tokens">
-              ◇ {formatTokens(usage.reasoningTokens)}
+            <span className="chip" title="Tokens spent thinking before answering">
+              {formatTokens(usage.reasoningTokens)} thinking
             </span>
           )}
           {usage.cachedTokens > 0 && (
-            <span className="chip" title="Prompt tokens served from cache">
-              ⚡ {formatTokens(usage.cachedTokens)} cached
+            <span className="chip" title="Tokens that were already cached, and cost less">
+              {formatTokens(usage.cachedTokens)} cached
             </span>
           )}
           <span className="chip chip--accent" title="Cost of this turn, including any tool rounds">
@@ -258,8 +268,9 @@ export const AssistantTurn = memo(function AssistantTurn({
             </span>
           )}
           {usage.timeToFirstTokenMs != null && (
-            <span className="chip" title="Time to first token">
-              ttft {formatDuration(usage.timeToFirstTokenMs)}
+            // "ttft" was the same problem in letters.
+            <span className="chip" title="How long before the first token arrived">
+              {formatDuration(usage.timeToFirstTokenMs)} to start
             </span>
           )}
         </div>

@@ -526,8 +526,7 @@ export function ChatView(): React.JSX.Element {
 
         {renaming && thread ? (
           <input
-            className="input"
-            style={{ maxWidth: 380 }}
+            className="topbar__rename"
             value={titleDraft}
             autoFocus
             onChange={(event) => setTitleDraft(event.target.value)}

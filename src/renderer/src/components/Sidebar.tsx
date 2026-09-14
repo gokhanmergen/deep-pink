@@ -252,12 +252,13 @@ const ThreadRow = memo(function ThreadRow({
           </>
         ) : (
           <>
-            {/* Turns, not messages: what is counted is the times you spoke,
-                which is a number the model's own machinery cannot inflate. */}
+            {/* Your messages. The replies are not counted — see
+                `READABLE_MESSAGES`; one follows each of these anyway, so
+                counting both said the same thing twice. */}
             <span className="nowrap">
               {thread.messageCount === 0
                 ? 'empty'
-                : `${thread.messageCount} turn${thread.messageCount === 1 ? '' : 's'}`}
+                : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
             </span>
             <span className="thread-item__sep">·</span>
             {/* The second half of the line is the age of an ordinary thread,
