@@ -187,6 +187,7 @@ function toUsage(value: unknown): Usage | null {
     costUsd: num(raw['costUsd']),
     latencyMs: num(raw['latencyMs']),
     timeToFirstTokenMs: numOrNull(raw['timeToFirstTokenMs']),
+    reasoningMs: numOrNull(raw['reasoningMs']),
     tokensPerSecond: numOrNull(raw['tokensPerSecond']),
     generationId: strOrNull(raw['generationId'])
   }

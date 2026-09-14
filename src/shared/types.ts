@@ -249,6 +249,16 @@ export interface Usage {
   latencyMs: number
   /** Time to first streamed token. */
   timeToFirstTokenMs: number | null
+  /**
+   * How long the model spent thinking before it began answering.
+   *
+   * From the first reasoning token to the first content token, measured as
+   * they arrive rather than worked out afterwards — the token count divided by
+   * a rate would be a guess, and reasoning does not stream at the rate the
+   * answer does. Null for a model that does not reason, and for every turn
+   * recorded before this was measured.
+   */
+  reasoningMs: number | null
   tokensPerSecond: number | null
   /** OpenRouter generation id, for cross-referencing on their dashboard. */
   generationId: string | null
@@ -535,7 +545,13 @@ export type SettingsPatch = Omit<
 > & {
   web?: Partial<WebSearchSettings>
   compaction?: Partial<CompactionSettings>
-  ui?: Partial<UiSettings>
+  /**
+   * `replyChips` is partial within the partial: it is eight switches and a
+   * caller turning one of them over should not have to restate the other
+   * seven. `loadSettings` and `saveSettings` merge it a level deeper for the
+   * same reason.
+   */
+  ui?: Omit<Partial<UiSettings>, 'replyChips'> & { replyChips?: Partial<ReplyChips> }
   defaultProviderRouting?: Partial<ProviderRouting>
 }
 
@@ -586,6 +602,35 @@ export interface UiSettings {
    * conversation in the window's own find.
    */
   loadEverythingAtOnce: boolean
+  /**
+   * Which figures a finished reply carries under it.
+   *
+   * There are seven and most people want two or three. Which two or three is
+   * not something an app can know — somebody watching what a thread costs
+   * wants the money, somebody comparing models wants the rate, somebody who
+   * has neither question wants the row to be empty — so it is asked rather
+   * than guessed at.
+   */
+  replyChips: ReplyChips
+}
+
+/** One switch per figure. See `UiSettings.replyChips`. */
+export interface ReplyChips {
+  /** Tokens sent: this message and the conversation behind it. */
+  sent: boolean
+  /** Tokens in the reply. */
+  back: boolean
+  /** Tokens spent thinking, for a model that reasons. */
+  thinking: boolean
+  /** Tokens that were already cached and cost less. */
+  cached: boolean
+  cost: boolean
+  /** Tokens per second while it was writing. */
+  speed: boolean
+  /** How long before the first token arrived. */
+  start: boolean
+  /** How long the whole turn took, first byte to last. */
+  took: boolean
 }
 
 /* ------------------------------------------------------------------ *

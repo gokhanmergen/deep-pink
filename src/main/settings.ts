@@ -20,7 +20,13 @@ export function loadSettings(): Settings {
     modelProviderRouting: stored.modelProviderRouting ?? {},
     web: { ...DEFAULT_SETTINGS.web, ...stored.web },
     compaction: { ...DEFAULT_SETTINGS.compaction, ...stored.compaction },
-    ui: { ...DEFAULT_SETTINGS.ui, ...stored.ui },
+    ui: {
+      ...DEFAULT_SETTINGS.ui,
+      ...stored.ui,
+      // One level deeper, so a switch added after somebody last saved arrives
+      // with its default rather than as undefined.
+      replyChips: { ...DEFAULT_SETTINGS.ui.replyChips, ...stored.ui?.replyChips }
+    },
     keybinds: { ...DEFAULT_KEYBINDS, ...stored.keybinds }
   }
 }
@@ -34,7 +40,11 @@ export function saveSettings(patch: SettingsPatch): Settings {
     modelProviderRouting: patch.modelProviderRouting ?? current.modelProviderRouting,
     web: { ...current.web, ...patch.web },
     compaction: { ...current.compaction, ...patch.compaction },
-    ui: { ...current.ui, ...patch.ui },
+    ui: {
+      ...current.ui,
+      ...patch.ui,
+      replyChips: { ...current.ui.replyChips, ...patch.ui?.replyChips }
+    },
     keybinds: { ...current.keybinds, ...patch.keybinds }
   }
 

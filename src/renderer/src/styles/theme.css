@@ -1913,6 +1913,35 @@ svg.lucide {
   transition: background var(--quick), color var(--quick);
 }
 
+/*
+ * The reasoning summary, which is a sentence rather than a label.
+ *
+ * "Reasoned for 54m 55s" with the caret at the end of it, because what is on
+ * the line is a statement about what happened and the caret is the offer to
+ * read it. The chip that used to be here said "reasoning", which the trace
+ * underneath says by being a trace.
+ */
+.reasoning__label {
+  color: var(--text-muted);
+  font-weight: var(--w-ui);
+}
+
+.reasoning__caret {
+  margin-left: auto;
+  color: var(--text-dim);
+  flex: none;
+  transition: transform var(--quick);
+}
+
+.reasoning[open] > .disclosure__summary .reasoning__caret {
+  transform: rotate(180deg);
+}
+
+/* The built-in arrow, which this replaces with one that turns. */
+.reasoning > .disclosure__summary > svg:first-of-type {
+  display: none;
+}
+
 .disclosure__summary::-webkit-details-marker {
   display: none;
 }

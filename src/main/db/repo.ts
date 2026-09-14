@@ -73,6 +73,7 @@ interface UsageRow {
   cost_usd: number
   latency_ms: number
   ttft_ms: number | null
+  reasoning_ms: number | null
   tokens_per_second: number | null
   generation_id: string | null
 }
@@ -178,6 +179,7 @@ function toUsage(row: UsageRow): Usage {
     costUsd: row.cost_usd,
     latencyMs: row.latency_ms,
     timeToFirstTokenMs: row.ttft_ms,
+    reasoningMs: row.reasoning_ms ?? null,
     tokensPerSecond: row.tokens_per_second,
     generationId: row.generation_id
   }
@@ -1170,8 +1172,8 @@ export function recordUsage(
     .prepare(
       `INSERT INTO usage (message_id, thread_id, model, provider, prompt_tokens, completion_tokens,
                           reasoning_tokens, cached_tokens, total_tokens, cost_usd, latency_ms,
-                          ttft_ms, tokens_per_second, generation_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          ttft_ms, reasoning_ms, tokens_per_second, generation_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (message_id) DO UPDATE SET
          prompt_tokens = excluded.prompt_tokens,
          completion_tokens = excluded.completion_tokens,
@@ -1181,6 +1183,7 @@ export function recordUsage(
          cost_usd = excluded.cost_usd,
          latency_ms = excluded.latency_ms,
          ttft_ms = excluded.ttft_ms,
+         reasoning_ms = excluded.reasoning_ms,
          tokens_per_second = excluded.tokens_per_second,
          generation_id = excluded.generation_id`
     )
@@ -1197,6 +1200,11 @@ export function recordUsage(
       usage.costUsd,
       usage.latencyMs,
       usage.timeToFirstTokenMs,
+      // Coalesced because this arrives from places that predate it: an archive
+      // written before the column existed, a fixture that never set it. The
+      // driver happens to store `undefined` as null anyway, which is the right
+      // answer by accident rather than one worth relying on.
+      usage.reasoningMs ?? null,
       usage.tokensPerSecond,
       usage.generationId,
       createdAt

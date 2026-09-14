@@ -251,6 +251,11 @@ export async function streamChat(
 ): Promise<StreamResult> {
   const startedAt = Date.now()
   let firstTokenAt: number | null = null
+  // Thinking begins at the first reasoning token and ends when the answer
+  // starts — or when the stream does, for a turn that reasoned its way to a
+  // tool call and never wrote anything.
+  let reasoningFrom: number | null = null
+  let reasoningTo: number | null = null
 
   const body: Record<string, unknown> = {
     model: req.webPlugin ? `${req.model}:online` : req.model,
@@ -300,6 +305,7 @@ export async function streamChat(
     costUsd: 0,
     latencyMs: 0,
     timeToFirstTokenMs: null,
+    reasoningMs: null,
     tokensPerSecond: null,
     generationId: null
   }
@@ -351,6 +357,7 @@ export async function streamChat(
           const reasoningDelta = delta['reasoning'] as string | undefined
           if (reasoningDelta) {
             firstTokenAt ??= Date.now()
+            reasoningFrom ??= Date.now()
             reasoning += reasoningDelta
             handlers.onReasoning?.(reasoningDelta)
           }
@@ -358,6 +365,10 @@ export async function streamChat(
           const contentDelta = delta['content'] as string | undefined
           if (contentDelta) {
             firstTokenAt ??= Date.now()
+            // The first word of the answer is the end of the thinking. Some
+            // models return to reasoning afterwards; what is being measured is
+            // the wait before anything was said, which is the part you watched.
+            if (reasoningFrom !== null) reasoningTo ??= Date.now()
             content += contentDelta
             handlers.onContent?.(contentDelta)
           }
@@ -406,6 +417,7 @@ export async function streamChat(
   const generationSeconds = firstTokenAt ? (finishedAt - firstTokenAt) / 1000 : 0
   usage.latencyMs = finishedAt - startedAt
   usage.timeToFirstTokenMs = firstTokenAt ? firstTokenAt - startedAt : null
+  usage.reasoningMs = reasoningFrom === null ? null : (reasoningTo ?? finishedAt) - reasoningFrom
   usage.tokensPerSecond =
     generationSeconds > 0 && usage.completionTokens > 0
       ? usage.completionTokens / generationSeconds

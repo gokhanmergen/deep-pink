@@ -69,7 +69,22 @@ export const DEFAULT_UI: UiSettings = {
   sendOnEnter: true,
   pasteAsFileThreshold: 2000,
   animations: true,
-  loadEverythingAtOnce: false
+  loadEverythingAtOnce: false,
+  /*
+   * On by default: what it cost, how fast, and how long. Token counts are off,
+   * because four numbers that are all tokens is a row nobody reads — they are
+   * there for when you go looking, which is what the switches are for.
+   */
+  replyChips: {
+    sent: false,
+    back: false,
+    thinking: false,
+    cached: false,
+    cost: true,
+    speed: true,
+    start: false,
+    took: true
+  }
 }
 
 /**

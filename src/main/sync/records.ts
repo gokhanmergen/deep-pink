@@ -416,15 +416,16 @@ function applyUsage(messageId: string, value: unknown): void {
     .prepare(
       `INSERT INTO usage (message_id, thread_id, model, provider, prompt_tokens, completion_tokens,
                           reasoning_tokens, cached_tokens, total_tokens, cost_usd, latency_ms,
-                          ttft_ms, tokens_per_second, generation_id, created_at)
+                          ttft_ms, reasoning_ms, tokens_per_second, generation_id, created_at)
        VALUES (@message_id, @thread_id, @model, @provider, @prompt_tokens, @completion_tokens,
                @reasoning_tokens, @cached_tokens, @total_tokens, @cost_usd, @latency_ms,
-               @ttft_ms, @tokens_per_second, @generation_id, @created_at)
+               @ttft_ms, @reasoning_ms, @tokens_per_second, @generation_id, @created_at)
        ON CONFLICT (message_id) DO UPDATE SET
          prompt_tokens = excluded.prompt_tokens, completion_tokens = excluded.completion_tokens,
          reasoning_tokens = excluded.reasoning_tokens, cached_tokens = excluded.cached_tokens,
          total_tokens = excluded.total_tokens, cost_usd = excluded.cost_usd,
          latency_ms = excluded.latency_ms, ttft_ms = excluded.ttft_ms,
+         reasoning_ms = excluded.reasoning_ms,
          tokens_per_second = excluded.tokens_per_second, generation_id = excluded.generation_id`
     )
     .run({

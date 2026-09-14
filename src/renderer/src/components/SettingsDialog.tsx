@@ -91,31 +91,62 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
 
 type Path = string
 
-/*
- * Split at the *first* dot and no further.
+/**
+ * A dotted path, cut where the shape actually has joints.
  *
- * The shape is two levels deep at most — `web.maxResults`, `ui.accent` — but
- * one of those levels is `keybinds`, whose own keys are `thread.new` and
- * `message.send`. Splitting on every dot would read `settings.keybinds.thread`
- * for that one, find nothing, and quietly decide every shortcut in the app was
- * at its default.
+ * Neither "split at every dot" nor "split at the first" is right, because two
+ * of these paths disagree about what a dot means. `keybinds` holds keys that
+ * are themselves dotted — `thread.new`, `message.send` — so splitting further
+ * would look for `settings.keybinds.thread` and find nothing. `ui.replyChips.cost`
+ * is three real levels, so not splitting further would look for a key called
+ * `replyChips.cost` and find nothing either. The first version did the latter
+ * and the chip switches never showed a Revert at all.
+ *
+ * So the defaults are asked. At each level, if what is left is a key here, it
+ * is the last segment; otherwise cut at the next dot and go in. The defaults
+ * have every key by definition, which is what makes them the right thing to
+ * ask.
  */
-function splitPath(path: Path): [string, string | null] {
-  const dot = path.indexOf('.')
-  return dot === -1 ? [path, null] : [path.slice(0, dot), path.slice(dot + 1)]
+function segmentsOf(path: Path): string[] {
+  const out: string[] = []
+  let node: unknown = DEFAULT_SETTINGS
+  let rest = path
+
+  for (;;) {
+    const here = node as Record<string, unknown> | null | undefined
+    if (here && typeof here === 'object' && rest in here) {
+      out.push(rest)
+      return out
+    }
+    const dot = rest.indexOf('.')
+    if (dot === -1) {
+      out.push(rest)
+      return out
+    }
+    const head = rest.slice(0, dot)
+    out.push(head)
+    node = here?.[head]
+    rest = rest.slice(dot + 1)
+  }
 }
 
 function valueAt(source: Settings, path: Path): unknown {
-  const [head, tail] = splitPath(path)
-  const value = (source as unknown as Record<string, unknown>)[head]
-  if (tail === null) return value
-  return (value as Record<string, unknown> | undefined)?.[tail]
+  let node: unknown = source
+  for (const key of segmentsOf(path)) {
+    const here = node as Record<string, unknown> | null | undefined
+    if (!here || typeof here !== 'object') return undefined
+    node = here[key]
+  }
+  return node
 }
 
 /** The patch that writes one back, in the shape `saveSettings` merges. */
 function patchFor(path: Path, value: unknown): SettingsPatch {
-  const [head, tail] = splitPath(path)
-  return (tail === null ? { [head]: value } : { [head]: { [tail]: value } }) as SettingsPatch
+  // Built from the inside out, so three levels nest as three levels.
+  const segments = segmentsOf(path)
+  let patch: unknown = value
+  for (const key of [...segments].reverse()) patch = { [key]: patch }
+  return patch as SettingsPatch
 }
 
 /*
@@ -1397,6 +1428,32 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
               <Revert path="ui.animations" what="animation" />
             </label>
+            <div className="section-title">Under a reply</div>
+            {(
+              [
+                ['cost', 'What it cost'],
+                ['took', 'How long it took'],
+                ['speed', 'How fast it wrote'],
+                ['start', 'How long before it started'],
+                ['sent', 'Tokens sent'],
+                ['back', 'Tokens in the reply'],
+                ['thinking', 'Tokens spent thinking'],
+                ['cached', 'Tokens served from cache']
+              ] as const
+            ).map(([key, label]) => (
+              <label className="switch" key={key}>
+                <input
+                  type="checkbox"
+                  checked={settings.ui.replyChips[key]}
+                  onChange={(event) =>
+                    void saveSettings({ ui: { replyChips: { [key]: event.target.checked } } })
+                  }
+                />
+                <span>{label}</span>
+                <Revert path={`ui.replyChips.${key}`} what={`“${label.toLowerCase()}”`} />
+              </label>
+            ))}
+
             <div className="section-title">Loading</div>
             <label className="switch">
               <input

@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from 'react'
-import { Copy, FileText, GitBranch, RefreshCw } from 'lucide-react'
+import { ChevronDown, Copy, FileText, GitBranch, RefreshCw } from 'lucide-react'
 import { ICON } from '../icons'
 import type { Message, UiSettings, Usage } from '@shared/types'
 import { Markdown } from './Markdown'
@@ -28,6 +28,11 @@ function sumUsage(messages: Message[]): Usage | null {
     costUsd: parts.reduce((n, u) => n + u.costUsd, 0),
     latencyMs: parts.reduce((n, u) => n + u.latencyMs, 0),
     timeToFirstTokenMs: parts[0].timeToFirstTokenMs,
+    // Summed like the tokens: a turn that reasoned in three rounds spent all
+    // of it thinking, and what you waited for is the total.
+    reasoningMs: parts.some((u) => u.reasoningMs != null)
+      ? parts.reduce((n, u) => n + (u.reasoningMs ?? 0), 0)
+      : null,
     tokensPerSecond: parts[parts.length - 1].tokensPerSecond,
     generationId: parts[0].generationId
   }
@@ -92,6 +97,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   const first = messages[0]
   const attributed = messages.find((m) => m.model) ?? first
   const usage = sumUsage(messages)
+  const chipSettings = ui.replyChips
   const streaming = messages.some((m) => m.status === 'streaming')
   const text = messages
     .filter((m) => m.role === 'assistant' && m.content)
@@ -116,6 +122,69 @@ export const AssistantTurn = memo(function AssistantTurn({
   }
 
   const toolCount = messages.filter((m) => m.role === 'tool').length
+
+  /**
+   * The figures under a finished reply, in the order they read in.
+   *
+   * Built as a list rather than written out as markup because which of them
+   * appear is a setting now, and seven `&&` chains is a footer nobody can see
+   * the shape of. Each still drops itself when there is nothing to say — a
+   * model that did not reason has no thinking time, and a turn with no cache
+   * hit has no cached tokens — so switching one on is permission rather than a
+   * promise.
+   */
+  const chips = usage
+    ? [
+        {
+          id: 'sent',
+          show: chipSettings.sent,
+          text: `${formatTokens(usage.promptTokens)} sent`,
+          title: 'Tokens sent: this message and everything before it'
+        },
+        {
+          id: 'back',
+          show: chipSettings.back,
+          text: `${formatTokens(usage.completionTokens)} back`,
+          title: 'Tokens in the reply'
+        },
+        {
+          id: 'thinking',
+          show: chipSettings.thinking && usage.reasoningTokens > 0,
+          text: `${formatTokens(usage.reasoningTokens)} thinking`,
+          title: 'Tokens spent thinking before answering'
+        },
+        {
+          id: 'cached',
+          show: chipSettings.cached && usage.cachedTokens > 0,
+          text: `${formatTokens(usage.cachedTokens)} cached`,
+          title: 'Tokens that were already cached, and cost less'
+        },
+        {
+          id: 'cost',
+          show: chipSettings.cost,
+          text: formatCost(usage.costUsd),
+          title: 'Cost of this turn, including any tool rounds'
+        },
+        {
+          id: 'speed',
+          show: chipSettings.speed && Boolean(usage.tokensPerSecond),
+          text: `${(usage.tokensPerSecond ?? 0).toFixed(1)} tok/s`,
+          title: 'How fast it wrote'
+        },
+        {
+          id: 'start',
+          show: chipSettings.start && usage.timeToFirstTokenMs != null,
+          text: `${formatDuration(usage.timeToFirstTokenMs ?? 0)} to start`,
+          title: 'How long before the first token arrived'
+        },
+        {
+          id: 'took',
+          show: chipSettings.took && usage.latencyMs > 0,
+          text: `${formatDuration(usage.latencyMs)} total`,
+          title: 'How long the whole turn took, asking to answered'
+        }
+      ].filter((chip) => chip.show)
+    : []
 
   return (
     <div
@@ -185,12 +254,28 @@ export const AssistantTurn = memo(function AssistantTurn({
         return (
           <div key={message.id} className="turn-part">
             {message.reasoning && (
-              <details className="disclosure" open={ui.showReasoningByDefault}>
+              /*
+                * "Reasoned for 54m 55s · 2.0k tokens".
+                *
+                * It was a chip reading "reasoning" and a token count beside it,
+                * which says what the thing is and nothing about what happened.
+                * The time is the part you actually noticed — you sat and
+                * watched it — and it is now measured rather than inferred, so
+                * it can be said. Where it was not measured, which is every turn
+                * from before that and every model that does not reason aloud,
+                * the tokens stand on their own.
+                */
+              <details className="disclosure reasoning" open={ui.showReasoningByDefault}>
                 <summary className="disclosure__summary">
-                  <span className="chip">reasoning</span>
+                  <span className="reasoning__label">
+                    {message.usage?.reasoningMs
+                      ? `Reasoned for ${formatDuration(message.usage.reasoningMs)}`
+                      : 'Reasoned'}
+                  </span>
                   <span className="dim">
                     {formatTokens(Math.ceil(message.reasoning.length / 4))} tokens
                   </span>
+                  <ChevronDown className="reasoning__caret" size={13} strokeWidth={2} />
                 </summary>
                 <div className="disclosure__content">
                   <pre>{message.reasoning}</pre>
@@ -231,48 +316,17 @@ export const AssistantTurn = memo(function AssistantTurn({
         )
       })}
 
-      {usage && (
+      {usage && chips.length > 0 && (
         <div className="message__footer">
-          {/*
-            * Named rather than signed.
-            *
-            * These were ↑, ↓ and ◇, which is a legend you have to have been
-            * told — and nobody is told, because there is nowhere to put the
-            * legend. The arrows were at least guessable; the diamond stood for
-            * reasoning and stood for it to nobody. A word costs three
-            * characters in a chip that already holds a number and is read
-            * without being decoded.
-            */}
-          <span className="chip" title="Tokens sent: this message and everything before it">
-            {formatTokens(usage.promptTokens)} sent
-          </span>
-          <span className="chip" title="Tokens in the reply">
-            {formatTokens(usage.completionTokens)} back
-          </span>
-          {usage.reasoningTokens > 0 && (
-            <span className="chip" title="Tokens spent thinking before answering">
-              {formatTokens(usage.reasoningTokens)} thinking
+          {chips.map((chip) => (
+            <span
+              key={chip.id}
+              className={chip.id === 'cost' ? 'chip chip--accent' : 'chip'}
+              title={chip.title}
+            >
+              {chip.text}
             </span>
-          )}
-          {usage.cachedTokens > 0 && (
-            <span className="chip" title="Tokens that were already cached, and cost less">
-              {formatTokens(usage.cachedTokens)} cached
-            </span>
-          )}
-          <span className="chip chip--accent" title="Cost of this turn, including any tool rounds">
-            {formatCost(usage.costUsd)}
-          </span>
-          {usage.tokensPerSecond && (
-            <span className="chip" title="Generation speed">
-              {usage.tokensPerSecond.toFixed(1)} tok/s
-            </span>
-          )}
-          {usage.timeToFirstTokenMs != null && (
-            // "ttft" was the same problem in letters.
-            <span className="chip" title="How long before the first token arrived">
-              {formatDuration(usage.timeToFirstTokenMs)} to start
-            </span>
-          )}
+          ))}
         </div>
       )}
 

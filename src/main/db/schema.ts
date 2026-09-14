@@ -384,5 +384,19 @@ export const MIGRATIONS: string[] = [
    WHERE key = 'settings'
      AND json_valid(value)
      AND json_extract(value, '$.titleModel') = 'google/gemini-2.5-flash-lite';
+  `,
+
+  /* 19 — how long a model spent thinking, as opposed to how many tokens of it */ `
+  /*
+   * Measured as the tokens arrive: from the first reasoning token to the first
+   * word of the answer. It cannot be worked out afterwards from what was
+   * already stored — reasoning tokens over the completion rate is a guess, and
+   * a model does not think at the speed it writes.
+   *
+   * Null for every turn recorded before this existed, and for every model that
+   * does not reason. The column is read with that in mind rather than
+   * backfilled with a number nobody measured.
+   */
+  ALTER TABLE usage ADD COLUMN reasoning_ms INTEGER;
   `
 ]
