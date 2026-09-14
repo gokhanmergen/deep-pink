@@ -143,17 +143,34 @@ function toThread(row: ThreadRow, messageCount?: number): Thread {
   }
 }
 
+/**
+ * A row as the rest of the app sees it.
+ *
+ * `folded` leaves behind everything the transcript does not show until it is
+ * asked to: the reasoning trace, and the body of a tool result. Both sit
+ * inside a disclosure nobody has opened, both can be enormous, and together
+ * they are about a third of the text in a real library — with the worst
+ * threads carrying seven times more of it than of the conversation itself.
+ * Sending that with every page is paying for what is never looked at.
+ *
+ * The engine and the exporter read unfolded, because a model needs what it
+ * said and an export is the whole record.
+ */
 function toMessage(
   row: MessageRow,
   usage: Usage | null = null,
-  attachments: Attachment[] = []
+  attachments: Attachment[] = [],
+  folded = false
 ): Message {
+  const isTool = row.role === 'tool'
   return {
     id: row.id,
     threadId: row.thread_id,
     role: row.role as Role,
-    content: row.content,
-    reasoning: row.reasoning,
+    content: folded && isTool ? '' : row.content,
+    reasoning: folded ? null : row.reasoning,
+    // Always the true length, whether or not the text came with it.
+    reasoningChars: row.reasoning?.length ?? 0,
     createdAt: row.created_at,
     model: row.model,
     provider: row.provider,
@@ -786,7 +803,7 @@ export function getMessage(id: string): Message | null {
  * in hand: both are one indexed lookup either way, and the alternative is an
  * `IN` clause built from however many ids a page happens to have.
  */
-function hydrate(threadId: string, rows: MessageRow[]): Message[] {
+function hydrate(threadId: string, rows: MessageRow[], folded = false): Message[] {
   const db = getDb()
   const usageRows = db.prepare('SELECT * FROM usage WHERE thread_id = ?').all(threadId) as (
     UsageRow & { thread_id: string }
@@ -796,8 +813,23 @@ function hydrate(threadId: string, rows: MessageRow[]): Message[] {
   const attachmentsByMessage = attachments.forThread(threadId)
 
   return rows.map((row) =>
-    toMessage(row, usageByMessage.get(row.id) ?? null, attachmentsByMessage.get(row.id) ?? [])
+    toMessage(row, usageByMessage.get(row.id) ?? null, attachmentsByMessage.get(row.id) ?? [], folded)
   )
+}
+
+/**
+ * The parts a page left behind, for one message.
+ *
+ * Asked for when a reader opens the disclosure holding them, which for most
+ * messages is never.
+ */
+export function getHiddenParts(messageId: string): { reasoning: string | null; content: string } {
+  const row = getDb()
+    .prepare('SELECT reasoning, content, role FROM messages WHERE id = ?')
+    .get(messageId) as { reasoning: string | null; content: string; role: string } | undefined
+
+  if (!row) return { reasoning: null, content: '' }
+  return { reasoning: row.reasoning, content: row.role === 'tool' ? row.content : '' }
 }
 
 export function getMessages(threadId: string, includeCompacted = false): Message[] {
@@ -865,7 +897,7 @@ function pageFrom(threadId: string, startSeq: number | null, before: number | nu
             .get(threadId, startSeq)
         )
 
-  return { messages: hydrate(threadId, rows), startSeq, hasOlder }
+  return { messages: hydrate(threadId, rows, true), startSeq, hasOlder }
 }
 
 /**

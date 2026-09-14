@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Copy, FileText, GitBranch, RefreshCw } from 'lucide-react'
 import { ICON } from '../icons'
 import type { Message, UiSettings, Usage } from '@shared/types'
@@ -38,10 +38,104 @@ function sumUsage(messages: Message[]): Usage | null {
   }
 }
 
+/**
+ * What a disclosure holds, fetched the first time it is opened.
+ *
+ * A transcript page leaves reasoning traces and tool bodies behind — they are
+ * a third of the text in a real library and none of it is on screen — so the
+ * text arrives when somebody asks to see it, which for most messages is never.
+ *
+ * `message` is preferred where it has the text already: a reply still arriving
+ * carries its own trace, and there is nothing to fetch for something that has
+ * not been written down yet.
+ */
+function useHiddenPart(
+  messageId: string,
+  present: string | null,
+  wanted: 'reasoning' | 'content',
+  initiallyOpen = false
+): { open: boolean; onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => void; text: string | null } {
+  const [open, setOpen] = useState(initiallyOpen)
+  const [fetched, setFetched] = useState<string | null>(null)
+
+  /*
+   * A `<details open>` does not fire a toggle for being born open.
+   *
+   * Which is the whole of "expand reasoning traces by default": the element
+   * arrives open, nothing is toggled, and without this the trace would sit
+   * there empty for the one reader who asked to always see it.
+   */
+  useEffect(() => {
+    if (!initiallyOpen || present || fetched !== null) return
+    void window.deepPink.messages.hidden(messageId).then((parts) => setFetched(parts[wanted] ?? ''))
+    // On mount alone: after that, opening it is what asks.
+  }, [])
+
+  const onToggle = (event: React.SyntheticEvent<HTMLDetailsElement>): void => {
+    const nowOpen = event.currentTarget.open
+    setOpen(nowOpen)
+    if (!nowOpen || present || fetched !== null) return
+    void window.deepPink.messages.hidden(messageId).then((parts) => setFetched(parts[wanted] ?? ''))
+  }
+
+  return { open, onToggle, text: present ?? fetched }
+}
+
+/** How much thinking there is, whether or not the text came with the message. */
+function reasoningLength(message: Message): number {
+  return message.reasoning?.length ?? message.reasoningChars
+}
+
+/**
+ * "Reasoned for 1m 54s ›", and nothing else.
+ *
+ * This was a bordered box with a chip in it saying "reasoning", which is a lot
+ * of furniture around a sentence — and the box claimed the trace was a thing
+ * to look at rather than a thing you could look at. It is a line of dim text
+ * with a caret: an aside about what just happened, at the weight an aside
+ * deserves, which is where the eye can pass over it.
+ *
+ * Its own component because it needs state — what it holds is fetched when it
+ * is opened — and the turn renders one of these per message in a loop, which
+ * is the one place a hook cannot go.
+ *
+ * The time is the part you actually noticed, because you sat and watched it,
+ * and it is measured rather than inferred. Where it was not — every turn from
+ * before it was, and every model that does not reason aloud — the tokens stand
+ * on their own.
+ */
+function ReasoningTrace({
+  message,
+  openByDefault
+}: {
+  message: Message
+  openByDefault: boolean
+}): React.JSX.Element | null {
+  const trace = useHiddenPart(message.id, message.reasoning, 'reasoning', openByDefault)
+  const length = reasoningLength(message)
+  if (length === 0) return null
+
+  return (
+    <details className="reasoning" open={openByDefault} onToggle={trace.onToggle}>
+      <summary className="reasoning__summary">
+        {message.usage?.reasoningMs
+          ? `Reasoned for ${formatDuration(message.usage.reasoningMs)}`
+          : 'Reasoned'}
+        <span className="reasoning__tokens">{formatTokens(Math.ceil(length / 4))} tokens</span>
+        <ChevronRight className="reasoning__caret" size={13} strokeWidth={2} />
+      </summary>
+      <div className="reasoning__body">
+        <pre>{trace.open ? (trace.text ?? 'Loading…') : ''}</pre>
+      </div>
+    </details>
+  )
+}
+
 function ToolStep({ message }: { message: Message }): React.JSX.Element {
   const result = message.toolResult
+  const body = useHiddenPart(message.id, message.content || null, 'content')
   return (
-    <details className="disclosure tool-step">
+    <details className="disclosure tool-step" onToggle={body.onToggle}>
       <summary className="disclosure__summary">
         <span className="dot" data-state={result?.isError ? 'error' : 'connected'} />
         <strong>{result?.name ?? 'tool'}</strong>
@@ -51,7 +145,10 @@ function ToolStep({ message }: { message: Message }): React.JSX.Element {
         </span>
       </summary>
       <div className="disclosure__content">
-        <pre>{message.content}</pre>
+        {/* Nothing until it is opened: the body is not in the transcript, and
+            building a `<pre>` for a result nobody looked at was the other half
+            of the same cost. */}
+        <pre>{body.open ? (body.text ?? 'Loading…') : ''}</pre>
       </div>
     </details>
   )
@@ -253,37 +350,7 @@ export const AssistantTurn = memo(function AssistantTurn({
 
         return (
           <div key={message.id} className="turn-part">
-            {message.reasoning && (
-              /*
-                * "Reasoned for 1m 54s ›", and nothing else.
-                *
-                * This was a bordered box with a chip in it saying "reasoning",
-                * which is a lot of furniture around a sentence — and the box
-                * claimed the trace was a thing to look at rather than a thing
-                * you could look at. It is a line of dim text with a caret now:
-                * an aside about what just happened, at the weight an aside
-                * deserves, which is where the eye can pass over it.
-                *
-                * The time is the part you actually noticed, because you sat and
-                * watched it, and it is measured rather than inferred. Where it
-                * was not — every turn from before it was, and every model that
-                * does not reason aloud — the tokens stand on their own.
-                */
-              <details className="reasoning" open={ui.showReasoningByDefault}>
-                <summary className="reasoning__summary">
-                  {message.usage?.reasoningMs
-                    ? `Reasoned for ${formatDuration(message.usage.reasoningMs)}`
-                    : 'Reasoned'}
-                  <span className="reasoning__tokens">
-                    {formatTokens(Math.ceil(message.reasoning.length / 4))} tokens
-                  </span>
-                  <ChevronRight className="reasoning__caret" size={13} strokeWidth={2} />
-                </summary>
-                <div className="reasoning__body">
-                  <pre>{message.reasoning}</pre>
-                </div>
-              </details>
-            )}
+            <ReasoningTrace message={message} openByDefault={ui.showReasoningByDefault} />
 
             {/*
               * A rule between the thinking and the answer.
@@ -298,7 +365,7 @@ export const AssistantTurn = memo(function AssistantTurn({
               * boundary to draw, and a rule under the last thing on screen is
               * a line with nothing to separate.
               */}
-            {message.reasoning && message.content && <hr className="turn-rule" />}
+            {reasoningLength(message) > 0 && message.content && <hr className="turn-rule" />}
 
             {message.content && (
               <div className="message__body">

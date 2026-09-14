@@ -72,8 +72,24 @@ export interface Message {
   threadId: string
   role: Role
   content: string
-  /** Reasoning / thinking trace, when the model returns one. */
+  /**
+   * Reasoning / thinking trace, when the model returns one.
+   *
+   * Null in a transcript read from disk even where there is one: traces are a
+   * third of everything this app stores and none of it is on screen until
+   * asked for, so a page of the conversation leaves them behind and they are
+   * fetched when a reader opens one. Present while a reply is arriving, and
+   * present in the full reads the engine and the exporter do.
+   */
   reasoning: string | null
+  /**
+   * How long that trace is, whether or not it came with the message.
+   *
+   * What tells the transcript there is something to offer, and what the token
+   * estimate is made from. Kept separate from the text precisely so the text
+   * does not have to be there.
+   */
+  reasoningChars: number
   createdAt: number
   /** Model that produced this message (assistant messages only). */
   model: string | null

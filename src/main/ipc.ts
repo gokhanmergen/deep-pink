@@ -578,6 +578,14 @@ export function registerIpc(): void {
    * the window has no network of its own worth giving it, and the cache is
    * something the whole app shares rather than something each reload rebuilds.
    */
+  /**
+   * What a page of the transcript left out of one message.
+   *
+   * Reasoning traces and tool bodies are folded away by the paged reads
+   * because they are not on screen; this is the disclosure being opened.
+   */
+  ipcMain.handle('messages:hidden', (_e, messageId: string) => repo.getHiddenParts(messageId))
+
   ipcMain.handle('icons:author', (_e, modelId: string) =>
     icons.iconForAuthor(icons.authorOf(modelId))
   )

@@ -100,6 +100,13 @@ const api = {
     /** The range that contains a particular message — what a search hit opens. */
     including: (threadId: string, messageId: string): Promise<MessagePage> =>
       ipcRenderer.invoke('messages:including', threadId, messageId),
+    /**
+     * What a page folded away for one message: its reasoning trace, and the
+     * body of a tool result. Fetched when the disclosure holding them is
+     * opened, which for most messages never happens.
+     */
+    hidden: (messageId: string): Promise<{ reasoning: string | null; content: string }> =>
+      ipcRenderer.invoke('messages:hidden', messageId),
     /** What the whole thread cost, however much of it has been read in. */
     totals: (threadId: string): Promise<ThreadTotals> =>
       ipcRenderer.invoke('messages:totals', threadId),
