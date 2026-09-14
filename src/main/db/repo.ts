@@ -313,24 +313,24 @@ export function setThreadFolder(threadId: string, folderId: string | null): Thre
 const VISIBLE_MESSAGES = 'compacted_into IS NULL'
 
 /**
- * How long the conversation is, counted the way a reader would count it.
+ * How long the conversation is: the number of times you said something.
  *
- * Not every row is something somebody said. A turn that used tools is an
- * assistant message carrying the call, a `tool` message carrying the result,
- * and another assistant message with the answer — three rows drawn as one
- * reply, and three rows counted where the reader sees one. A thread of six
- * exchanges could say "twenty messages", which is a number about the database.
+ * This counted every row, then every row a reader would see, and the second
+ * was still wrong — a turn that calls three tools and reasons about the results
+ * is an assistant row per call, a tool row per result and an answer, and the
+ * exceptions needed to net that down to one kept growing as the engine learned
+ * new shapes. A rule that has to know what the machinery looks like is a rule
+ * that breaks when the machinery changes.
  *
- * So: every message of yours, and every reply that said something or failed
- * trying. Tool traffic is not conversation, and an assistant row with no words
- * in it is the machinery of a turn rather than a turn.
+ * Counting your own messages needs to know nothing. It is also the same number
+ * either way for practical purposes: a reply follows a message, so the old
+ * count was this one doubled, and doubling a number tells you nothing the
+ * number did not.
  *
- * Yours count whatever is in them — a message that is only a picture is still
- * a message, and its `content` is empty.
+ * What it can no longer be called is "messages", and it is not — see the row in
+ * the sidebar. A conversation of twelve turns is one you spoke in twelve times.
  */
-const READABLE_MESSAGES = `${VISIBLE_MESSAGES}
-       AND role IN ('user', 'assistant')
-       AND (role = 'user' OR content <> '' OR error IS NOT NULL)`
+const READABLE_MESSAGES = `${VISIBLE_MESSAGES} AND role = 'user'`
 
 function countMessages(threadId: string): number {
   return (

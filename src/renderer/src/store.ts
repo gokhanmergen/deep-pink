@@ -210,6 +210,17 @@ interface State {
    */
   editingMessageId: string | null
   /**
+   * The thread being renamed, and which of the two places showing its name is
+   * doing the renaming.
+   *
+   * A name appears twice — in the top bar of the conversation and in its row in
+   * the list — and renaming happens where you asked for it rather than in both
+   * at once. Double-clicking the title in the top bar edits it there; the row's
+   * own menu edits the row. Held here rather than in either component because
+   * the menu that starts it is not inside the thing it edits.
+   */
+  renaming: { threadId: string; where: 'topbar' | 'sidebar' } | null
+  /**
    * The image being looked at, and everything else in the thread it can be
    * stepped through. Held here rather than in the transcript so the viewer
    * outlives the row that opened it — a re-render mid-stream must not close it.
@@ -313,6 +324,8 @@ interface State {
   setHighlight: (messageId: string | null) => void
   /** Opens a message for editing in place, or closes whatever is open. */
   editMessage: (messageId: string | null) => void
+  /** Starts renaming a thread where its name already is. Null stops. */
+  startRename: (target: { threadId: string; where: 'topbar' | 'sidebar' } | null) => void
   /** Opens the image viewer on `id`, stepping through every image given. */
   openImageViewer: (images: Attachment[], id: string) => void
   closeImageViewer: () => void
@@ -564,6 +577,7 @@ export const useStore = create<State>((set, get) => ({
   liveStats: {},
   highlightMessageId: null,
   editingMessageId: null,
+  renaming: null,
   imageViewer: null,
   sync: null,
   syncProgress: null,
@@ -693,7 +707,9 @@ export const useStore = create<State>((set, get) => ({
     // screen for the few milliseconds the read takes; blanking them flashes the
     // empty state instead, which is worse.
     const switching = get().activeThreadId !== id
-    if (switching) set({ activeThreadId: id, highlightMessageId: null, editingMessageId: null })
+    if (switching) {
+      set({ activeThreadId: id, highlightMessageId: null, editingMessageId: null, renaming: null })
+    }
 
     // The end of the conversation, not all of it. The rest arrives as it is
     // scrolled towards, and the totals come from the database because the sum
@@ -1170,6 +1186,10 @@ export const useStore = create<State>((set, get) => ({
 
   editMessage(messageId) {
     set({ editingMessageId: messageId })
+  },
+
+  startRename(target) {
+    set({ renaming: target })
   },
 
   openImageViewer(images, id) {

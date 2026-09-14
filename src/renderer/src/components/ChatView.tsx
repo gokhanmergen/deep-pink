@@ -100,7 +100,11 @@ export function ChatView(): React.JSX.Element {
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
 
-  const [renaming, setRenaming] = useState(false)
+  // Whether *this* is the place doing the renaming — the row in the list is
+  // the other one, and only one of them has the input.
+  const rename = useStore((s) => s.renaming)
+  const startRename = useStore((s) => s.startRename)
+  const renaming = rename?.where === 'topbar' && rename.threadId === activeThreadId
   const [titleDraft, setTitleDraft] = useState('')
   const [context, setContext] = useState<CompactionStatus | null>(null)
   /**
@@ -494,9 +498,17 @@ export function ChatView(): React.JSX.Element {
     )
   }
 
+  // Seeded whenever renaming begins, because it can begin somewhere else —
+  // the shortcut, which has no input of its own to fill in.
+  useEffect(() => {
+    if (renaming && thread) setTitleDraft(thread.title)
+    // Only on starting. Re-seeding as the title changed would overwrite what
+    // is being typed the moment a name arrived from anywhere.
+  }, [renaming])
+
   const commitRename = (): void => {
     if (thread) void updateThread(thread.id, { title: titleDraft.trim() })
-    setRenaming(false)
+    startRename(null)
   }
 
   return (
@@ -522,7 +534,7 @@ export function ChatView(): React.JSX.Element {
             onBlur={commitRename}
             onKeyDown={(event) => {
               if (event.key === 'Enter') commitRename()
-              if (event.key === 'Escape') setRenaming(false)
+              if (event.key === 'Escape') startRename(null)
             }}
           />
         ) : (
@@ -532,7 +544,7 @@ export function ChatView(): React.JSX.Element {
             onDoubleClick={() => {
               if (!thread) return
               setTitleDraft(thread.title)
-              setRenaming(true)
+              startRename({ threadId: thread.id, where: 'topbar' })
             }}
             title="Double-click to rename"
             type="button"

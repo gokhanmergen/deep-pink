@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canBecomeTemporary, useStore } from '../store'
 import { dateBucket, formatDateTime, formatRelativeShort, formatTokens, threadLabel } from '../format'
 import {
+  Archive,
   BarChart3,
   Blocks,
   Command,
@@ -82,10 +83,12 @@ const ThreadRow = memo(function ThreadRow({
   model,
   live,
   leaving,
+  renaming,
   inFolder,
   onSelect,
   onMenu,
-  onDragState
+  onDragState,
+  onRename
 }: {
   thread: Thread
   active: boolean
@@ -99,11 +102,14 @@ const ThreadRow = memo(function ThreadRow({
   live: { tokens: number; perSecond: number } | null
   /** It has gone, and is still on screen only long enough to leave. */
   leaving: boolean
+  /** Its name is being edited, here in the row rather than anywhere else. */
+  renaming: boolean
   /** Indented, because it is inside an open folder. */
   inFolder: boolean
   onSelect: (id: string) => void
   onMenu: (event: React.MouseEvent, thread: Thread) => void
   onDragState: (threadId: string | null) => void
+  onRename: (threadId: string, name: string) => void
 }): React.JSX.Element {
   /**
    * Whether the name just changed under the reader.
@@ -178,7 +184,37 @@ const ThreadRow = memo(function ThreadRow({
           * actually called that. A bar that is plainly not a word says the same
           * thing without being mistaken for the answer.
           */}
-        {awaitingName ? (
+        {renaming ? (
+          /*
+           * The name, edited where it is.
+           *
+           * Renaming used to be a dialog over the list with the name in a text
+           * field — a second place to edit a thing already on screen. Here the
+           * row simply becomes editable, which is the same gesture as renaming
+           * a file anywhere else.
+           *
+           * `stopPropagation` on the click because the row underneath is a
+           * button that opens the thread, and clicking into a text field is
+           * not asking to go anywhere.
+           */
+          <input
+            className="thread-item__rename"
+            defaultValue={thread.title}
+            autoFocus
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              event.stopPropagation()
+              if (event.key === 'Enter') event.currentTarget.blur()
+              if (event.key === 'Escape') {
+                // Put the original back before blurring, so the commit below
+                // writes what was there rather than the abandoned draft.
+                event.currentTarget.value = thread.title
+                event.currentTarget.blur()
+              }
+            }}
+            onBlur={(event) => onRename(thread.id, event.currentTarget.value)}
+          />
+        ) : awaitingName ? (
           <span className="thread-item__title thread-item__pending" aria-label="Naming this conversation">
             <span />
           </span>
@@ -216,10 +252,12 @@ const ThreadRow = memo(function ThreadRow({
           </>
         ) : (
           <>
+            {/* Turns, not messages: what is counted is the times you spoke,
+                which is a number the model's own machinery cannot inflate. */}
             <span className="nowrap">
               {thread.messageCount === 0
                 ? 'empty'
-                : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
+                : `${thread.messageCount} turn${thread.messageCount === 1 ? '' : 's'}`}
             </span>
             <span className="thread-item__sep">·</span>
             {/* The second half of the line is the age of an ordinary thread,
@@ -271,6 +309,8 @@ export function Sidebar(): React.JSX.Element {
   const activeThreadId = useStore((s) => s.activeThreadId)
   const generatingThreadIds = useStore((s) => s.generatingThreadIds)
   const liveStats = useStore((s) => s.liveStats)
+  const rename = useStore((s) => s.renaming)
+  const startRename = useStore((s) => s.startRename)
   const namingEnabled = useStore((s) => s.settings?.titleGenerationEnabled ?? false)
   // The value, not the settings object: a row must not re-render because some
   // unrelated preference changed.
@@ -543,6 +583,23 @@ export function Sidebar(): React.JSX.Element {
   // Store actions never change identity, so these are stable for the life of
   // the sidebar — which is what lets the rows below skip re-rendering.
   const onSelectThread = useCallback((id: string) => void selectThread(id), [selectThread])
+  /**
+   * Writes a new name and closes the input, whichever way it was closed.
+   *
+   * Blur is the one commit point: Enter and Escape both blur rather than
+   * committing themselves, so there is a single path that saves and a single
+   * path that stops, instead of three that have to agree.
+   */
+  const commitRename = useCallback(
+    (threadId: string, name: string) => {
+      const trimmed = name.trim()
+      const before = useStore.getState().threads.find((t) => t.id === threadId)
+      if (before && trimmed !== before.title) void updateThread(threadId, { title: trimmed })
+      startRename(null)
+    },
+    [updateThread, startRename]
+  )
+
   const onThreadMenu = useCallback((event: React.MouseEvent, thread: Thread) => {
     event.preventDefault()
     setMenu({ x: event.clientX, y: event.clientY, thread })
@@ -636,6 +693,26 @@ export function Sidebar(): React.JSX.Element {
             }
           ]
         : []),
+      /*
+       * Renaming, which the menu never offered.
+       *
+       * Every other way of naming a thread was reachable — double-clicking the
+       * title, the shortcut, asking the model for another one — and the one
+       * place you would look for it when you are already pointing at the
+       * thread was the place it was missing from. A temporary chat has no name
+       * to change; it reads as "Temporary chat" until it goes.
+       */
+      ...(thread.temporary
+        ? []
+        : [
+            {
+              id: 'rename',
+              label: 'Rename',
+              icon: <Pencil {...ICON} />,
+              hint: formatBinding(settings?.keybinds['thread.rename'] ?? 'f2'),
+              onSelect: () => startRename({ threadId: thread.id, where: 'sidebar' })
+            }
+          ]),
       {
         id: 'pin',
         label: thread.pinned ? 'Unpin' : 'Pin',
@@ -667,6 +744,22 @@ export function Sidebar(): React.JSX.Element {
               onSelect: () => void retitleThread(thread.id)
             }
           ]),
+      /*
+       * Archiving, also missing. It takes the thread out of the list without
+       * deleting anything, which is the middle ground between keeping a
+       * conversation in front of you and losing it — and the menu is where you
+       * are when you decide a thread is done with.
+       */
+      {
+        id: 'archive',
+        label: 'Archive',
+        icon: <Archive {...ICON} />,
+        hint: formatBinding(settings?.keybinds['thread.archive'] ?? 'mod+shift+a'),
+        onSelect: () => {
+          void updateThread(thread.id, { archived: true })
+          showToast('Archived — out of the list, not deleted')
+        }
+      },
       {
         id: 'export',
         label: 'Export as Markdown',
@@ -810,6 +903,8 @@ export function Sidebar(): React.JSX.Element {
       model={thread.config.model ?? defaultModel}
       live={liveStats[thread.id] ?? null}
       leaving={goneIds.has(thread.id)}
+      renaming={rename?.where === 'sidebar' && rename.threadId === thread.id}
+      onRename={commitRename}
       inFolder={options.inFolder ?? false}
       onSelect={onSelectThread}
       onMenu={onThreadMenu}

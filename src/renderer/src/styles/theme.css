@@ -867,6 +867,30 @@ svg.lucide {
  * arrives and the row goes back to being text, and the bar sits centred inside
  * it rather than filling it.
  */
+/*
+ * The name, being typed over where it sits.
+ *
+ * Made to occupy exactly the space the title did — same size, same weight, same
+ * line box — so committing it changes the letters and nothing else. A field
+ * that grew or shifted would make renaming feel like opening something.
+ */
+.thread-item__rename {
+  flex: 1;
+  min-width: 0;
+  height: 17px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border: 1px solid var(--accent-line);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--t-ui);
+  font-weight: var(--w-ui);
+  letter-spacing: var(--track-ui);
+  outline: none;
+}
+
 .thread-item__pending {
   display: flex;
   align-items: center;

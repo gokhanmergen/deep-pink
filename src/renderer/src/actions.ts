@@ -99,14 +99,15 @@ export function buildActions(): AppAction[] {
       id: 'thread.rename',
       label: 'Rename thread',
       group: 'Threads',
-      run: requireThread(async (id) => {
-        const next = await store.askPrompt({
-          title: 'Rename thread',
-          defaultValue: thread?.title ?? '',
-          placeholder: 'Thread name'
-        })
-        if (next !== null) void store.updateThread(id, { title: next.trim() })
-      })
+      /*
+       * In the title bar, not in a dialog over it.
+       *
+       * This put up a modal with the name in a text field, which is a second
+       * place to edit a thing that is already on screen and editable — the top
+       * bar's title has been renameable by double-clicking it all along. One
+       * way of doing it, reachable three ways.
+       */
+      run: requireThread((id) => store.startRename({ threadId: id, where: 'topbar' }))
     },
     {
       id: 'thread.delete',
