@@ -48,6 +48,23 @@ function hasSomethingAbove(scroller: HTMLElement, askId: string | null): boolean
 }
 
 /**
+ * The message at the top of the view, whichever it happens to be.
+ *
+ * A remembered place is a number of pixels, and a number of pixels stops
+ * meaning anything the moment the content above it changes height. This is how
+ * it is turned back into something that does mean something: the first message
+ * whose foot is still below the top edge is the one being read, and holding
+ * that survives everything above it growing.
+ */
+function topOfView(scroller: HTMLElement): string | null {
+  const top = scroller.getBoundingClientRect().top
+  for (const el of scroller.querySelectorAll<HTMLElement>('[data-message-id]')) {
+    if (el.getBoundingClientRect().bottom > top + 1) return el.dataset.messageId ?? null
+  }
+  return null
+}
+
+/**
  * The last exchange: what you asked, and the first thing that answered it.
  *
  * Read off the same blocks the transcript renders rather than off the messages
@@ -281,10 +298,21 @@ export function ChatView(): React.JSX.Element {
     // unmounting it.
     const store = useStore.getState()
     if (store.activeThreadId) {
+      /*
+       * The pixels here, the anchor when leaving.
+       *
+       * Finding which message is at the top means a rectangle per message
+       * until one matches, and this runs on every scroll event — so it is done
+       * once, in the effect below, at the only moment it is needed. What is
+       * kept here is what is cheap: an offset and whether the end is being
+       * followed.
+       */
       rememberPlace(store.activeThreadId, {
         startSeq: store.messageWindowStart,
         scrollTop: el.scrollTop,
-        atBottom: pinnedToBottom.current
+        atBottom: pinnedToBottom.current,
+        topMessageId: placeOf(store.activeThreadId)?.topMessageId ?? null,
+        topOffset: placeOf(store.activeThreadId)?.topOffset ?? 0
       })
     }
 
@@ -326,13 +354,80 @@ export function ChatView(): React.JSX.Element {
         useStore.getState().generating
       )
 
-      el.scrollTop = landing.scrollTop
-      pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+      /*
+       * Put back by the message that was at the top, where there is one.
+       *
+       * `landing.scrollTop` is the remembered pixel offset, and it is clamped
+       * against a `scrollHeight` that has not settled — so on a long thread it
+       * lands short, and short of a long conversation is the end of it. The
+       * message is exact and cannot drift.
+       */
+      const place = placeOf(opening)
+      const anchored =
+        landing.reason === 'remembered' && place?.topMessageId
+          ? el.querySelector(`[data-message-id="${CSS.escape(place.topMessageId)}"]`)
+            ? place.topMessageId
+            : null
+          : null
 
-      // Landed on a message rather than at an edge, so hold it there while the
-      // heights above it settle.
-      const held = landing.reason === 'turn' ? last.askId : landing.reason === 'answer' ? last.answerId : null
-      holding.current = held === null ? null : { id: held, offset: offsetOf(el, held) }
+      if (anchored && place) {
+        el.scrollTop += offsetOf(el, anchored) - place.topOffset
+      } else {
+        el.scrollTop = landing.scrollTop
+      }
+
+      /*
+       * Whether the end is being followed is known, not measured.
+       *
+       * This asked the page instead: is the view within eighty pixels of the
+       * bottom? At this moment that question cannot be answered. Nothing has
+       * settled — code blocks are still plain text, pictures have not loaded,
+       * and every message scrolled past reports a guessed height — so
+       * `scrollHeight` is smaller than it is about to be, and a restore aimed
+       * at the middle of a long conversation lands at what is currently the
+       * end of it. Being at the end marked the view as pinned, and the hold
+       * below then dragged it down as the transcript grew into its real size.
+       * Leave a thread, come back, and you were at the bottom.
+       *
+       * The landing already knows. A remembered place is only ever returned
+       * for a reader who was *not* at the end — that is the whole of what
+       * `atBottom` decides — so it says so rather than being asked.
+       */
+      pinnedToBottom.current =
+        landing.reason === 'remembered'
+          ? false
+          : el.scrollHeight - el.scrollTop - el.clientHeight < 80
+
+      /*
+       * And hold whatever the view landed on while the heights settle.
+       *
+       * Landing on the last exchange holds that exchange. Landing back where
+       * somebody was holds the message they were looking at, which has to be
+       * found — there is no id in a scroll offset — but is the same problem
+       * and wants the same answer, because the thing that moves a restored
+       * view is the same thing: a code block above it finishing.
+       */
+      const held =
+        landing.reason === 'turn'
+          ? last.askId
+          : landing.reason === 'answer'
+            ? last.answerId
+            : landing.reason === 'remembered'
+              ? (anchored ?? topOfView(el))
+              : null
+      /*
+       * The offset it was *meant* to reach, not the one it did.
+       *
+       * Setting `scrollTop` beyond what the content currently allows is
+       * clamped by the browser, and on a transcript that has not settled the
+       * allowance is short. Recording where it actually landed would make the
+       * hold below defend the clamped position; recording the intent makes it
+       * close the gap as the content grows into its real height.
+       */
+      holding.current =
+        held === null
+          ? null
+          : { id: held, offset: anchored && place ? place.topOffset : offsetOf(el, held) }
       return
     }
 
@@ -354,7 +449,35 @@ export function ChatView(): React.JSX.Element {
     if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
   }, [messages, sizeTail])
 
-  useEffect(() => {
+  /**
+   * The thread being left, so its place can be anchored before it goes.
+   *
+   * There is no "before you leave" hook, but there is this: the store sets
+   * `activeThreadId` immediately and the new transcript arrives a round trip
+   * later, so for the length of this effect the screen still shows the
+   * conversation being left. Which is the one moment its top message can be
+   * asked for.
+   */
+  const previousThread = useRef(activeThreadId)
+
+  // At layout time rather than after paint. The transcript for the new thread
+  // is one round trip away, and an ordinary effect runs late enough that it
+  // could arrive first — at which point the screen being measured would be the
+  // wrong conversation, and its top message would be written down as the place
+  // in a thread it is not even in.
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    const leaving = previousThread.current
+    previousThread.current = activeThreadId
+
+    if (el && leaving && leaving !== activeThreadId) {
+      const place = placeOf(leaving)
+      const top = topOfView(el)
+      if (place && top) {
+        rememberPlace(leaving, { ...place, topMessageId: top, topOffset: offsetOf(el, top) })
+      }
+    }
+
     pinnedToBottom.current = true
     anchor.current = null
     holding.current = null

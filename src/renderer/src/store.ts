@@ -481,6 +481,22 @@ export interface Place {
    * never does.
    */
   atBottom: boolean
+  /**
+   * The message that was at the top of the window, and how far into it.
+   *
+   * The offset above has the same weakness "at the end" was invented to avoid:
+   * it is a number of pixels, and a number of pixels stops describing anywhere
+   * the moment the content above it changes height — which on returning to a
+   * thread it always has, because nothing has been highlighted or measured
+   * yet. Restoring by pixels landed short, and short of a long conversation is
+   * its end.
+   *
+   * A message cannot drift. Null for a view with no message at its top, which
+   * is a view with nothing in it.
+   */
+  topMessageId: string | null
+  /** Where that message's top sat relative to the window's, usually negative. */
+  topOffset: number
 }
 
 const places = new Map<string, Place>()
