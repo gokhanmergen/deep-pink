@@ -228,6 +228,17 @@ const api = {
       ipcRenderer.invoke('attachments:images', threadId)
   },
 
+  icons: {
+    /**
+     * The mark for whoever wrote a model, as a data URL, or null.
+     *
+     * Null is an ordinary answer, not an error: OpenRouter has no mark for
+     * several large authors, so the caller needs something of its own to draw.
+     */
+    author: (modelId: string): Promise<string | null> =>
+      ipcRenderer.invoke('icons:author', modelId)
+  },
+
   sync: {
     /** Everything the settings panel shows. Never includes a secret. */
     state: (): Promise<SyncState> => ipcRenderer.invoke('sync:state'),

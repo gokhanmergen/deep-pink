@@ -25,6 +25,7 @@ import {
 import { ICON, ICON_LG } from '../icons'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { Logo } from './Logo'
+import { ModelIcon } from './ModelIcon'
 import { buildActions, exportThread } from '../actions'
 import { formatBinding } from '../keybinds'
 import type { Folder, SearchHit, Thread } from '@shared/types'
@@ -56,6 +57,7 @@ const ThreadRow = memo(function ThreadRow({
   active,
   generating,
   awaitingName,
+  model,
   inFolder,
   onSelect,
   onMenu,
@@ -67,6 +69,8 @@ const ThreadRow = memo(function ThreadRow({
   generating: boolean
   /** It has no name yet and one is coming, so there is nothing to write here. */
   awaitingName: boolean
+  /** What this conversation is set to use, so the row can show whose it is. */
+  model: string
   /** Indented, because it is inside an open folder. */
   inFolder: boolean
   onSelect: (id: string) => void
@@ -142,6 +146,10 @@ const ThreadRow = memo(function ThreadRow({
         <span className="nowrap">
           {thread.temporary ? 'not saved' : `created ${formatRelativeShort(thread.createdAt)}`}
         </span>
+        {/* At the end of the line rather than beside the title: the title is
+            what you read down the list for, and a mark in front of it would be
+            a column of logos with the names indented behind them. */}
+        <ModelIcon model={model} className="thread-item__model" />
       </span>
     </button>
   )
@@ -180,6 +188,9 @@ export function Sidebar(): React.JSX.Element {
   const activeThreadId = useStore((s) => s.activeThreadId)
   const generatingThreadIds = useStore((s) => s.generatingThreadIds)
   const namingEnabled = useStore((s) => s.settings?.titleGenerationEnabled ?? false)
+  // The value, not the settings object: a row must not re-render because some
+  // unrelated preference changed.
+  const defaultModel = useStore((s) => s.settings?.defaultModel ?? '')
   const filter = useStore((s) => s.sidebarFilter)
   const hits = useStore((s) => s.searchHits)
   const selectThread = useStore((s) => s.selectThread)
@@ -647,6 +658,7 @@ export function Sidebar(): React.JSX.Element {
       active={thread.id === activeThreadId}
       generating={generatingThreadIds.includes(thread.id)}
       awaitingName={awaitingName(thread)}
+      model={thread.config.model ?? defaultModel}
       inFolder={options.inFolder ?? false}
       onSelect={onSelectThread}
       onMenu={onThreadMenu}

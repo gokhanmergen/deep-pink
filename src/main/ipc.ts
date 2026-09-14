@@ -19,6 +19,7 @@ import * as repo from './db/repo'
 import { dbPath } from './db/index'
 import * as mcp from './mcp/host'
 import * as attachments from './attachments'
+import * as icons from './icons'
 import * as importer from './import/index'
 import * as exporter from './export/index'
 import * as sync from './sync/engine'
@@ -568,6 +569,17 @@ export function registerIpc(): void {
   // screen" when the transcript started arriving a page at a time.
   ipcMain.handle('attachments:images', (_e, threadId: string) =>
     attachments.imagesInThread(threadId)
+  )
+
+  /**
+   * The brand mark for whoever wrote a model, or null where there is none.
+   *
+   * Resolved and cached in the main process rather than fetched by the window:
+   * the window has no network of its own worth giving it, and the cache is
+   * something the whole app shares rather than something each reload rebuilds.
+   */
+  ipcMain.handle('icons:author', (_e, modelId: string) =>
+    icons.iconForAuthor(icons.authorOf(modelId))
   )
 
   /**

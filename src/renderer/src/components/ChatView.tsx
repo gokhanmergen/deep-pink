@@ -10,6 +10,7 @@ import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, modelShortName, threadLabel } from '../format'
 import { landingPoint, tailHeight } from '../landing'
+import { ModelIcon } from './ModelIcon'
 import type { Message } from '@shared/types'
 
 /**
@@ -733,6 +734,20 @@ export function ChatView(): React.JSX.Element {
             {generating ? 'Replying below' : 'Latest'}
           </button>
         )}
+
+        {/*
+          * Whose model this conversation is using, in the corner.
+          *
+          * Every reply already names the model in its own header, which
+          * answers "what wrote this one". This answers the other question —
+          * what the next thing you send will go to — which nothing on screen
+          * said except the composer's model button, and that is at the far end
+          * of the window from where you are reading.
+          *
+          * Quiet until pointed at: it is a reminder, not a control, and the
+          * control for it is a few pixels below.
+          */}
+        {thread && <ModelIcon model={model} size={16} className="transcript-area__model" />}
       </div>
 
       <Composer />
