@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from 'react'
-import { ChevronDown, Copy, FileText, GitBranch, RefreshCw } from 'lucide-react'
+import { ChevronRight, Copy, FileText, GitBranch, RefreshCw } from 'lucide-react'
 import { ICON } from '../icons'
 import type { Message, UiSettings, Usage } from '@shared/types'
 import { Markdown } from './Markdown'
@@ -255,29 +255,31 @@ export const AssistantTurn = memo(function AssistantTurn({
           <div key={message.id} className="turn-part">
             {message.reasoning && (
               /*
-                * "Reasoned for 54m 55s · 2.0k tokens".
+                * "Reasoned for 1m 54s ›", and nothing else.
                 *
-                * It was a chip reading "reasoning" and a token count beside it,
-                * which says what the thing is and nothing about what happened.
-                * The time is the part you actually noticed — you sat and
-                * watched it — and it is now measured rather than inferred, so
-                * it can be said. Where it was not measured, which is every turn
-                * from before that and every model that does not reason aloud,
-                * the tokens stand on their own.
+                * This was a bordered box with a chip in it saying "reasoning",
+                * which is a lot of furniture around a sentence — and the box
+                * claimed the trace was a thing to look at rather than a thing
+                * you could look at. It is a line of dim text with a caret now:
+                * an aside about what just happened, at the weight an aside
+                * deserves, which is where the eye can pass over it.
+                *
+                * The time is the part you actually noticed, because you sat and
+                * watched it, and it is measured rather than inferred. Where it
+                * was not — every turn from before it was, and every model that
+                * does not reason aloud — the tokens stand on their own.
                 */
-              <details className="disclosure reasoning" open={ui.showReasoningByDefault}>
-                <summary className="disclosure__summary">
-                  <span className="reasoning__label">
-                    {message.usage?.reasoningMs
-                      ? `Reasoned for ${formatDuration(message.usage.reasoningMs)}`
-                      : 'Reasoned'}
-                  </span>
-                  <span className="dim">
+              <details className="reasoning" open={ui.showReasoningByDefault}>
+                <summary className="reasoning__summary">
+                  {message.usage?.reasoningMs
+                    ? `Reasoned for ${formatDuration(message.usage.reasoningMs)}`
+                    : 'Reasoned'}
+                  <span className="reasoning__tokens">
                     {formatTokens(Math.ceil(message.reasoning.length / 4))} tokens
                   </span>
-                  <ChevronDown className="reasoning__caret" size={13} strokeWidth={2} />
+                  <ChevronRight className="reasoning__caret" size={13} strokeWidth={2} />
                 </summary>
-                <div className="disclosure__content">
+                <div className="reasoning__body">
                   <pre>{message.reasoning}</pre>
                 </div>
               </details>

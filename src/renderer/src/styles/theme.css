@@ -1914,32 +1914,81 @@ svg.lucide {
 }
 
 /*
- * The reasoning summary, which is a sentence rather than a label.
+ * What the model thought, offered as an aside rather than as an object.
  *
- * "Reasoned for 54m 55s" with the caret at the end of it, because what is on
- * the line is a statement about what happened and the caret is the offer to
- * read it. The chip that used to be here said "reasoning", which the trace
- * underneath says by being a trace.
+ * This was the same bordered box the tool steps use, with a chip inside it
+ * reading "reasoning" — a great deal of furniture around one sentence, and a
+ * box says "here is a thing" where what is wanted is "this happened, and you
+ * may read it if you like". So: a line of dim text at the size of a caption,
+ * a caret, and no edges at all.
+ *
+ * It sits between the reply above it and the reply below, so it takes its own
+ * space rather than being packed against either.
  */
-.reasoning__label {
+.reasoning {
+  margin: var(--s2) 0 var(--s3);
+}
+
+.reasoning__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px 0;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: var(--t-small);
+  color: var(--text-dim);
+  transition: color var(--quick);
+}
+
+.reasoning__summary::-webkit-details-marker {
+  display: none;
+}
+
+.reasoning__summary:hover {
   color: var(--text-muted);
-  font-weight: var(--w-ui);
+}
+
+/* Quieter again than the sentence it follows: the duration is the fact, and
+   the count is for whoever is counting. */
+.reasoning__tokens {
+  opacity: 0.65;
 }
 
 .reasoning__caret {
-  margin-left: auto;
-  color: var(--text-dim);
   flex: none;
   transition: transform var(--quick);
 }
 
-.reasoning[open] > .disclosure__summary .reasoning__caret {
-  transform: rotate(180deg);
+.reasoning[open] > .reasoning__summary .reasoning__caret {
+  transform: rotate(90deg);
 }
 
-/* The built-in arrow, which this replaces with one that turns. */
-.reasoning > .disclosure__summary > svg:first-of-type {
-  display: none;
+/*
+ * The trace itself, ruled off down one side rather than boxed.
+ *
+ * It is quoted material — something said elsewhere, reproduced — and a rule
+ * down the edge is how quoted material has always been marked. Bounded in
+ * height because a trace can be enormous and it is not the thing you came to
+ * read.
+ */
+.reasoning__body {
+  animation: fade-in 0.14s ease-out;
+  margin-top: var(--s2);
+  padding-left: var(--s3);
+  border-left: 2px solid var(--border);
+  max-height: 420px;
+  overflow: auto;
+  font-size: var(--t-small);
+  line-height: var(--lh-small);
+  color: var(--text-dim);
+}
+
+.reasoning__body pre {
+  margin: 0;
+  font-family: var(--sans);
+  white-space: pre-wrap;
 }
 
 .disclosure__summary::-webkit-details-marker {
