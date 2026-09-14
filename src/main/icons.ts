@@ -25,7 +25,20 @@ import { app } from 'electron'
  * the same dozen files that do not exist.
  */
 
-/** Where the slug's own capitalisation is not what the file is called. */
+/**
+ * Where the slug's own capitalisation is not what the file is called.
+ *
+ * Every entry here has been fetched and seen to exist. Guessing a name that
+ * does not is not free — it is three requests, one per extension, before the
+ * miss is recorded — so an entry that is merely plausible costs more than
+ * leaving the slug to the general guess below.
+ *
+ * Authors deliberately absent, having been checked and found to have no mark
+ * under any spelling: x-ai (tried xAI, XAI, SpaceXAI, Grok), z-ai (ZAI, Z.AI,
+ * Z.ai, Zai, Zhipu, ZhipuAI), nvidia, inflection, minimax, bytedance, ai21,
+ * liquid, reka. OpenRouter's own page data agrees — it carries an
+ * `author_icon_uri` for each of them and every one is null.
+ */
 const NAMED: Record<string, string> = {
   openai: 'OpenAI',
   'meta-llama': 'Meta',
@@ -35,13 +48,7 @@ const NAMED: Record<string, string> = {
   'google-vertex': 'GoogleVertex',
   deepseek: 'DeepSeek',
   moonshotai: 'MoonshotAI',
-  amazon: 'Bedrock',
-  'x-ai': 'xAI',
-  'z-ai': 'ZAI',
-  ai21: 'AI21',
-  nvidia: 'NVIDIA',
-  bytedance: 'ByteDance',
-  minimax: 'MiniMax'
+  amazon: 'Bedrock'
 }
 
 /**
