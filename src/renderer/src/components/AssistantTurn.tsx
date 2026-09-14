@@ -331,7 +331,7 @@ export const AssistantTurn = memo(function AssistantTurn({
             <GitBranch {...ICON} />
             Branch
           </button>
-          {attributed.systemPromptSnapshot && (
+          {attributed.hasPromptSnapshot && (
             <button
               className="btn btn--ghost"
               onClick={() => setOverlay('prompt')}

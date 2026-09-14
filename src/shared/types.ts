@@ -105,6 +105,16 @@ export interface Message {
    * anything injected by MCP servers.
    */
   systemPromptSnapshot: SystemPromptSegment[] | null
+  /**
+   * Whether there is one, which is all the transcript ever wanted to know.
+   *
+   * The snapshot itself is only tested for truthiness on screen — it decides
+   * whether a reply offers to show what went into it — while the panel that
+   * opens computes a fresh preview rather than reading this. So a page of the
+   * conversation carries the answer and leaves the several kilobytes of prompt
+   * per message where they are.
+   */
+  hasPromptSnapshot: boolean
   /** Set when this message replaced older messages during context compaction. */
   isCompactionSummary: boolean
   /** Compacted-away messages are hidden from the transcript but kept on disk. */
