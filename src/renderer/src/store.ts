@@ -135,6 +135,20 @@ interface State {
   pendingApproval: PendingApproval | null
   toast: Toast | null
   dialog: DialogRequest | null
+  /**
+   * Every thread with a reply arriving in it, not only the one on screen.
+   *
+   * `generating` above is about the open conversation, which is what the
+   * composer and the transcript need. The sidebar needs the other question —
+   * *which* threads are working — because a turn started here goes on running
+   * after you leave, and a list that said nothing about it was a list where
+   * the only way to find out was to go back and look.
+   *
+   * An array rather than a Set so the rows can be compared by identity: the
+   * list re-renders when this changes, and a row that is neither starting nor
+   * finishing must not.
+   */
+  generatingThreadIds: string[]
   /** Message id the transcript should scroll to and flash. */
   highlightMessageId: string | null
   /**
@@ -478,6 +492,7 @@ export const useStore = create<State>((set, get) => ({
   pendingApproval: null,
   toast: null,
   dialog: null,
+  generatingThreadIds: [],
   highlightMessageId: null,
   editingMessageId: null,
   imageViewer: null,
@@ -1212,7 +1227,62 @@ function mergeStreamed(persisted: Message[], onScreen: Message[]): Message[] {
   })
 }
 
+/**
+ * Which thread a turn belongs to, learned when it starts.
+ *
+ * Only `start` and `aborted` name their thread; `done` carries it inside the
+ * message it finished, and `error` carries nothing but a message id. So the
+ * pairing is remembered as the turn begins and looked up as it ends, which is
+ * the only way the list can be told a background reply has stopped.
+ */
+const threadOfMessage = new Map<string, string>()
+
+/**
+ * Keeps the set of working threads current, whichever thread is on screen.
+ *
+ * Deliberately above the relevance filter below: that filter exists to stop
+ * another conversation painting into this one, and it drops exactly the events
+ * the sidebar is waiting for.
+ */
+function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
+  const working = (threadId: string, yes: boolean): void => {
+    const current = get().generatingThreadIds
+    const has = current.includes(threadId)
+    if (has === yes) return
+    set({
+      generatingThreadIds: yes
+        ? [...current, threadId]
+        : current.filter((id) => id !== threadId)
+    })
+  }
+
+  switch (event.type) {
+    case 'start':
+      threadOfMessage.set(event.messageId, event.threadId)
+      working(event.threadId, true)
+      break
+    case 'done': {
+      threadOfMessage.delete(event.messageId)
+      working(event.message.threadId, false)
+      break
+    }
+    case 'aborted':
+      threadOfMessage.delete(event.messageId)
+      working(event.threadId, false)
+      break
+    case 'error': {
+      const threadId = event.messageId ? threadOfMessage.get(event.messageId) : undefined
+      if (!threadId) break
+      threadOfMessage.delete(event.messageId)
+      working(threadId, false)
+      break
+    }
+  }
+}
+
 function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
+  trackGenerating(event, set, get)
+
   const state = get()
 
   if (event.type === 'title') {

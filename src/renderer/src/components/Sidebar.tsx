@@ -54,6 +54,8 @@ const MORE_ROWS = 60
 const ThreadRow = memo(function ThreadRow({
   thread,
   active,
+  generating,
+  awaitingName,
   inFolder,
   onSelect,
   onMenu,
@@ -61,6 +63,10 @@ const ThreadRow = memo(function ThreadRow({
 }: {
   thread: Thread
   active: boolean
+  /** A reply is arriving in this thread, whether or not you are looking at it. */
+  generating: boolean
+  /** It has no name yet and one is coming, so there is nothing to write here. */
+  awaitingName: boolean
   /** Indented, because it is inside an open folder. */
   inFolder: boolean
   onSelect: (id: string) => void
@@ -83,19 +89,35 @@ const ThreadRow = memo(function ThreadRow({
       }}
       onDragEnd={() => onDragState(null)}
       data-temporary={thread.temporary}
+      data-generating={generating}
       onClick={() => onSelect(thread.id)}
       onContextMenu={(event) => onMenu(event, thread)}
       title={
         thread.temporary
           ? 'Temporary chat — deleted when you leave it or close the app'
-          : threadLabel(thread)
+          : awaitingName
+            ? 'Naming this conversation…'
+            : threadLabel(thread)
       }
       type="button"
     >
       <span className="thread-item__head">
         {thread.pinned && <Pin className="thread-item__pin" size={11} strokeWidth={2} />}
         {thread.temporary && <Ghost className="thread-item__ghost" size={12} strokeWidth={2} />}
-        <span className="thread-item__title">{threadLabel(thread)}</span>
+        {/*
+          * A name on its way is drawn as the shape of one.
+          *
+          * It said "Untitled thread" — a real phrase, in the same type as every
+          * real title, for the one row in the list whose name is about to
+          * change. Reading it told you nothing and it read like a thread
+          * actually called that. A bar that is plainly not a word says the same
+          * thing without being mistaken for the answer.
+          */}
+        {awaitingName ? (
+          <span className="thread-item__title thread-item__pending" aria-label="Naming this conversation" />
+        ) : (
+          <span className="thread-item__title">{threadLabel(thread)}</span>
+        )}
         {/* The time the list is ordered by, where the eye already is. */}
         <span
           className="thread-item__time"
@@ -156,6 +178,8 @@ export function Sidebar(): React.JSX.Element {
   const openFolderIds = useStore((s) => s.openFolderIds)
   const draggingThreadId = useStore((s) => s.draggingThreadId)
   const activeThreadId = useStore((s) => s.activeThreadId)
+  const generatingThreadIds = useStore((s) => s.generatingThreadIds)
+  const namingEnabled = useStore((s) => s.settings?.titleGenerationEnabled ?? false)
   const filter = useStore((s) => s.sidebarFilter)
   const hits = useStore((s) => s.searchHits)
   const selectThread = useStore((s) => s.selectThread)
@@ -604,11 +628,25 @@ export function Sidebar(): React.JSX.Element {
    */
   const focusing = openFolderIds.length > 0
 
+  /**
+   * Whether a name is on its way to this thread.
+   *
+   * Not simply "has no title": plenty of threads have none and never will. A
+   * temporary chat is never named, a chat nobody has spoken in has nothing to
+   * name it after, and with automatic naming switched off none of them are. The
+   * placeholder is a promise that something is coming, so it is only shown
+   * where something is.
+   */
+  const awaitingName = (thread: Thread): boolean =>
+    namingEnabled && !thread.title && !thread.temporary && thread.messageCount > 0
+
   const renderThread = (thread: Thread, options: { inFolder?: boolean } = {}): React.JSX.Element => (
     <ThreadRow
       key={thread.id}
       thread={thread}
       active={thread.id === activeThreadId}
+      generating={generatingThreadIds.includes(thread.id)}
+      awaitingName={awaitingName(thread)}
       inFolder={options.inFolder ?? false}
       onSelect={onSelectThread}
       onMenu={onThreadMenu}

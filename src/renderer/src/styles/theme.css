@@ -800,6 +800,101 @@ svg.lucide {
   background: var(--accent);
 }
 
+/*
+ * A reply arriving, said on the row it is arriving in.
+ *
+ * The same bar the selection uses, because it is the same claim — "this one" —
+ * and a second mark somewhere else in the row would be a second thing to learn.
+ * A thread that is working while you are reading another one gets the bar
+ * without being selected; a thread that is both keeps the one bar and pulses
+ * it. Which is the whole reason to reuse it: the two states compose instead of
+ * competing for the same eight pixels.
+ */
+.thread-item[data-generating='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  /* Segmented rather than solid, so it is still telling you something with the
+     animation switched off — where a solid accent bar on an unselected row
+     would just look like a row that had lost the rest of its selection. */
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--accent) 0 5px,
+    transparent 5px 9px
+  );
+  animation: working 1.25s ease-in-out infinite;
+}
+
+.thread-item[data-generating='true'] {
+  position: relative;
+}
+
+/*
+ * Breathing rather than blinking.
+ *
+ * A hard on/off is an alarm, and this is not one — it is the ambient fact that
+ * something is happening elsewhere. It never reaches zero either: a bar that
+ * disappears entirely reads as a row losing its selection.
+ */
+@keyframes working {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scaleY(0.55);
+  }
+}
+
+/*
+ * A title that has not been written yet.
+ *
+ * The width is deliberately not the row's: a bar that filled the line would
+ * read as a loading row rather than as a missing name, and every pending
+ * thread would look identically broken. Two thirds is enough to be a title's
+ * shape.
+ */
+.thread-item__pending {
+  height: 12px;
+  max-width: 62%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 0%,
+    var(--border-strong) 40%,
+    var(--bg-elevated) 80%
+  );
+  background-size: 220% 100%;
+  animation: naming 1.6s ease-in-out infinite;
+}
+
+.thread-item[data-active='true'] .thread-item__pending {
+  background: linear-gradient(
+    90deg,
+    var(--bg-input) 0%,
+    var(--border-strong) 40%,
+    var(--bg-input) 80%
+  );
+  background-size: 220% 100%;
+}
+
+/* Slow, because nothing is waiting on it and a fast shimmer in a list of
+   rows is the fastest way to make a sidebar feel busy. */
+@keyframes naming {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
+
 .thread-item[data-active='true'] .thread-item__title {
   color: var(--text);
   font-weight: var(--w-strong);
