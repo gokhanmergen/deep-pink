@@ -79,6 +79,98 @@ function markFor(slug, displayName) {
   return found[0] ?? null
 }
 
+/*
+ * Marks drawn in black, made visible.
+ *
+ * Where a brand has no colour variant, the icon set ships it as a black glyph
+ * — Anthropic, OpenAI, Meta and a dozen others. On this app's surfaces that is
+ * a dark shape on a dark background, which is to say nothing at all.
+ *
+ * The rule has to be certain before it touches anything, because recolouring a
+ * logo that was meant to be that colour is a worse outcome than leaving one
+ * invisible. So it is an *every* rather than an *any*: a file is only repainted
+ * when every visible paint in it is dark. One coloured stop, one blue path, and
+ * the file is left exactly as it was. That makes a false positive impossible by
+ * construction rather than by choosing a good threshold — the threshold only
+ * decides how much gets brightened, never whether a coloured mark might be.
+ */
+
+/** Every colour a document paints with: attributes, inline styles, gradients. */
+function paintsIn(svg) {
+  const found = []
+  for (const m of svg.matchAll(/(?:fill|stroke|stop-color)\s*=\s*"([^"]*)"/g)) found.push(m[1])
+  for (const m of svg.matchAll(/(?:fill|stroke|stop-color)\s*:\s*([^;"'}]+)/g)) found.push(m[1])
+  return found.map((v) => v.trim()).filter(Boolean)
+}
+
+const NAMED_BLACK = new Set(['black', '#000', '#000000'])
+
+/** sRGB relative luminance, 0 for black and 1 for white. */
+function luminanceOf(colour) {
+  const hex = colour.replace('#', '')
+  const full = hex.length === 3 ? [...hex].map((c) => c + c).join('') : hex
+  if (!/^[0-9a-f]{6}$/i.test(full)) return null
+
+  const channel = (v) => {
+    const n = parseInt(v, 16) / 255
+    return n <= 0.03928 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4
+  }
+  return (
+    0.2126 * channel(full.slice(0, 2)) +
+    0.7152 * channel(full.slice(2, 4)) +
+    0.0722 * channel(full.slice(4, 6))
+  )
+}
+
+/** Dark enough to vanish on this app's surfaces, which sit under 0.02. */
+const TOO_DARK_TO_SEE = 0.08
+
+/**
+ * Whether every visible paint in the file is dark.
+ *
+ * `currentColor` counts as dark: inside an `<img>` the SVG is its own document
+ * with no inherited colour, so it resolves to black. Anything this cannot read
+ * — an unparseable value, a name that is not plain black — counts as *not*
+ * dark, which stops the whole file rather than risking it.
+ */
+function isDarkOnly(svg) {
+  for (const paint of paintsIn(svg)) {
+    const value = paint.toLowerCase()
+    if (value === 'none' || value === 'transparent' || value.startsWith('url(')) continue
+    if (value === 'currentcolor' || NAMED_BLACK.has(value)) continue
+
+    const luminance = luminanceOf(value)
+    if (luminance === null || luminance > TOO_DARK_TO_SEE) return false
+  }
+
+  // Nothing disqualified it. A file that paints nothing explicitly is using the
+  // default, and the default is black.
+  return true
+}
+
+/** What a dark paint becomes: the same colour with its lightness turned over. */
+const LIGHT = '#e8e8ef'
+
+function brighten(svg) {
+  const swap = (value) => {
+    const flat = value.toLowerCase()
+    if (flat === 'none' || flat === 'transparent' || flat.startsWith('url(')) return value
+    if (flat === 'currentcolor' || NAMED_BLACK.has(flat)) return LIGHT
+
+    // A shade that is dark but not black keeps its distance from the others,
+    // so a two-tone glyph stays two-tone instead of flattening to one.
+    const luminance = luminanceOf(flat)
+    if (luminance === null) return value
+    const level = Math.round((0.82 + (TOO_DARK_TO_SEE - luminance) * 0.9) * 255)
+    const hex = Math.max(0, Math.min(255, level)).toString(16).padStart(2, '0')
+    return `#${hex}${hex}${hex}`
+  }
+
+  return svg
+    .replace(/(fill|stroke|stop-color)(\s*=\s*)"([^"]*)"/g, (_, k, eq, v) => `${k}${eq}"${swap(v)}"`)
+    .replace(/(fill|stroke|stop-color)(\s*:\s*)([^;"'}]+)/g, (_, k, c, v) => `${k}${c}${swap(v)}`)
+}
+
 const response = await fetch('https://openrouter.ai/api/v1/models')
 /*
  * `name` is "Z.ai: GLM 5.3 Flash", so the author's own name for itself is
@@ -97,6 +189,7 @@ const authors = [...bySlug]
 const entries = []
 const missing = []
 const unconfirmed = []
+const brightened = []
 for (const { slug, displayName } of authors) {
   const mark = markFor(slug, displayName)
   if (!mark) {
@@ -104,8 +197,13 @@ for (const { slug, displayName } of authors) {
     continue
   }
   if (!mark.confirmed) unconfirmed.push(`${slug} -> ${mark.file} (titled "${mark.title}")`)
-  const svg = readFileSync(join(iconDir, `${mark.file}.svg`))
-  entries.push([slug, `data:image/svg+xml;base64,${svg.toString('base64')}`])
+
+  let svg = readFileSync(join(iconDir, `${mark.file}.svg`), 'utf8')
+  if (isDarkOnly(svg)) {
+    svg = brighten(svg)
+    brightened.push(`${slug} (${mark.file})`)
+  }
+  entries.push([slug, `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`])
 }
 
 const body = `/**
@@ -128,6 +226,8 @@ ${entries.map(([slug, url]) => `  ${/^[a-z][a-z0-9]*$/.test(slug) ? slug : `'${s
 writeFileSync(join(root, 'src', 'main', 'modelIconData.ts'), body)
 console.log(`${entries.length}/${authors.length} authors have a bundled mark`)
 console.log(`without one: ${missing.join(', ')}`)
+console.log(`\n${brightened.length} were drawn in black and have been lightened:`)
+console.log(`  ${brightened.join(', ')}`)
 if (unconfirmed.length) {
   console.log(`\nnot confirmed by the icon's own title — worth an eye:`)
   for (const line of unconfirmed) console.log(`  ${line}`)
