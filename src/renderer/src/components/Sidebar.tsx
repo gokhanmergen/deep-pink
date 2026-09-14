@@ -44,6 +44,16 @@ const FIRST_ROWS = 60
 const MORE_ROWS = 60
 
 /**
+ * How long after a turn a name can still be expected.
+ *
+ * Naming is one small request and it starts the moment the turn ends, so it
+ * lands in seconds. Two minutes is far longer than it needs and still short
+ * enough that a thread whose naming failed goes back to reading "Untitled
+ * thread" rather than shimmering at you for the rest of the session.
+ */
+const NAMING_TAKES = 2 * 60 * 1000
+
+/**
  * One thread in the list.
  *
  * Memoised deliberately: selecting a thread changes `activeThreadId`, which
@@ -669,9 +679,19 @@ export function Sidebar(): React.JSX.Element {
    * name it after, and with automatic naming switched off none of them are. The
    * placeholder is a promise that something is coming, so it is only shown
    * where something is.
+   *
+   * And a promise has to expire. Naming can fail — no key, a model that is
+   * gone, a request that timed out — and the thread is then untitled for good.
+   * A shimmer that never resolves is a worse lie than the words it replaced, so
+   * it is only offered while the reply is still arriving or in the short window
+   * after it where the name is being written.
    */
   const awaitingName = (thread: Thread): boolean =>
-    namingEnabled && !thread.title && !thread.temporary && thread.messageCount > 0
+    namingEnabled &&
+    !thread.title &&
+    !thread.temporary &&
+    thread.messageCount > 0 &&
+    (generatingThreadIds.includes(thread.id) || Date.now() - thread.updatedAt < NAMING_TAKES)
 
   const renderThread = (thread: Thread, options: { inFolder?: boolean } = {}): React.JSX.Element => (
     <ThreadRow

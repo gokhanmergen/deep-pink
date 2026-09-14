@@ -1344,6 +1344,18 @@ function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
       emitted.set(event.threadId, { chars: 0, startedAt: Date.now() })
       working(event.threadId, true)
       runStatsTicker(set, get)
+      /*
+       * The list learns about the turn as it starts, not as it ends.
+       *
+       * `send` awaits the whole turn before refreshing — it is one IPC call
+       * that returns when the reply is finished — so for the entire time a
+       * reply is arriving the sidebar still believed the thread was empty.
+       * Everything the row wants to say in that window depends on knowing
+       * otherwise: that it has messages at all, which is what tells the title
+       * a name is coming rather than absent, and where it belongs in an order
+       * sorted by when it was last touched.
+       */
+      void get().refreshThreads()
       break
     case 'done': {
       threadOfMessage.delete(event.messageId)
