@@ -131,7 +131,14 @@ const ThreadRow = memo(function ThreadRow({
           * thing without being mistaken for the answer.
           */}
         {awaitingName ? (
-          <span className="thread-item__title thread-item__pending" aria-label="Naming this conversation" />
+          <span className="thread-item__title thread-item__pending" aria-label="Naming this conversation">
+            {/* Three, because the naming prompt asks for two to six words and
+                three is what most of them come back as. Their widths differ
+                for the same reason real words do. */}
+            <span />
+            <span />
+            <span />
+          </span>
         ) : (
           <span className="thread-item__title">{threadLabel(thread)}</span>
         )}

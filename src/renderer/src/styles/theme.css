@@ -856,17 +856,30 @@ svg.lucide {
 }
 
 /*
- * A title that has not been written yet.
+ * A title that has not been written yet, shaped like one.
  *
- * The width is deliberately not the row's: a bar that filled the line would
- * read as a loading row rather than as a missing name, and every pending
- * thread would look identically broken. Two thirds is enough to be a title's
- * shape.
+ * It was a single bar, and a single bar is the shape of a loading *row* — the
+ * eye reads it as the whole line being absent rather than as the name being
+ * absent from a line that is otherwise fine. Words have gaps, and the gaps are
+ * most of what makes a run of blocks read as writing.
+ *
+ * Not the row's full width either, for the same reason it was not before: a
+ * placeholder that reaches the timestamp looks like damage rather than like a
+ * short title on its way.
  */
 .thread-item__pending {
-  height: 12px;
-  max-width: 62%;
-  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 78%;
+  /* The line box of the title it stands in for, so nothing shifts when the
+     real name arrives and the row goes back to being text. */
+  height: 17px;
+}
+
+.thread-item__pending > span {
+  height: 8px;
+  border-radius: 3px;
   background: linear-gradient(
     90deg,
     var(--bg-elevated) 0%,
@@ -877,7 +890,28 @@ svg.lucide {
   animation: naming 1.6s ease-in-out infinite;
 }
 
-.thread-item[data-active='true'] .thread-item__pending {
+/*
+ * Lengths that are not each other, and a wave that crosses them in order.
+ *
+ * Three equal blocks pulsing together is a progress indicator. Three unequal
+ * ones lit slightly after one another is a line of text being written, which
+ * is the thing that is actually happening.
+ */
+.thread-item__pending > span:nth-child(1) {
+  width: 38%;
+}
+
+.thread-item__pending > span:nth-child(2) {
+  width: 24%;
+  animation-delay: 0.12s;
+}
+
+.thread-item__pending > span:nth-child(3) {
+  width: 30%;
+  animation-delay: 0.24s;
+}
+
+.thread-item[data-active='true'] .thread-item__pending > span {
   background: linear-gradient(
     90deg,
     var(--bg-input) 0%,
