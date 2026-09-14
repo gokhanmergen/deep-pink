@@ -398,5 +398,17 @@ export const MIGRATIONS: string[] = [
    * backfilled with a number nobody measured.
    */
   ALTER TABLE usage ADD COLUMN reasoning_ms INTEGER;
+  `,
+
+  /* 20 — the first name gets the same small model the considered one has */ `
+  /*
+   * Only where it is still the model that shipped, as ever. Somebody who
+   * picked their own namer picked it.
+   */
+  UPDATE settings
+     SET value = json_set(value, '$.titlePregenModel', 'google/gemma-3-12b-it')
+   WHERE key = 'settings'
+     AND json_valid(value)
+     AND json_extract(value, '$.titlePregenModel') = 'google/gemini-2.5-flash-lite';
   `
 ]

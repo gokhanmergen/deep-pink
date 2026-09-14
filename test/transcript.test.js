@@ -214,7 +214,22 @@ suite(
       return true
     })()`)
     await settle(400)
-    await run(`document.querySelector('.sidebar .thread-item').click()`)
+
+    /*
+     * Left and returned to, rather than clicked twice.
+     *
+     * This clicked the row of the thread already open, which used to re-read
+     * the transcript and no longer does — opening the conversation you are
+     * already in is now nothing, because doing it threw away your place in it.
+     * So the reset is a real one: start a new chat, which selects it, and come
+     * back. The blank one is swept on the way out, as an unused thread always
+     * is.
+     */
+    await run(`[...document.querySelectorAll('.sidebar__actions .btn')]
+      .find((b) => b.textContent.trim() === 'New thread').click()`)
+    await settle(700)
+    await run(`[...document.querySelectorAll('.thread-item')]
+      .find((el) => el.textContent.includes('A long conversation')).click()`)
     await settle(900)
     check(
       'reopening reads in the end of the conversation only',

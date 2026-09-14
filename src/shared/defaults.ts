@@ -184,7 +184,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // is replaced a moment later. Worth it to somebody who watches the list while
   // a reply arrives, which is why it is offered rather than assumed.
   titlePregenEnabled: false,
-  titlePregenModel: 'google/gemini-2.5-flash-lite',
+  titlePregenModel: 'google/gemma-3-12b-it',
   titlePrompt: DEFAULT_TITLE_PROMPT,
   baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
   includeDateTimeInPrompt: false,

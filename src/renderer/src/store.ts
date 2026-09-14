@@ -631,8 +631,16 @@ export const useStore = create<State>((set, get) => ({
         void (async () => {
           await get().refreshSettings()
           await get().refreshThreads()
-          const active = get().activeThreadId
-          if (active) await get().selectThread(active)
+          /*
+           * Re-read in place rather than reopened.
+           *
+           * This asked `selectThread` for the thread already open, which was a
+           * way of saying "read that again" and has stopped being one. It is
+           * also the more careful thing: a sync that brought in a message
+           * should add it to what is on screen, not throw the screen away and
+           * rebuild it from wherever the range happens to start.
+           */
+          if (get().activeThreadId) await get().refreshTranscript()
         })()
       })
     )
@@ -706,10 +714,24 @@ export const useStore = create<State>((set, get) => ({
     // the first stepping from the same stale place. The old messages stay on
     // screen for the few milliseconds the read takes; blanking them flashes the
     // empty state instead, which is worse.
-    const switching = get().activeThreadId !== id
-    if (switching) {
-      set({ activeThreadId: id, highlightMessageId: null, editingMessageId: null, renaming: null })
-    }
+    /*
+     * Opening the thread you are already in does nothing.
+     *
+     * It used to re-read the transcript and replace every message with a fresh
+     * copy — into a range that need not be the one on screen, under a scroll
+     * offset measured against the old one. And because `activeThreadId` had
+     * not changed, the transcript was never told to put the reader back, so
+     * the view simply landed wherever the new content happened to reach.
+     * Clicking the row you are on threw away your place in the conversation.
+     *
+     * Nothing needs re-reading here anyway: this thread is the one receiving
+     * live events. What did rely on this — a sync that brought something in —
+     * asks for a refresh in place instead, which is the thing it actually
+     * wanted.
+     */
+    if (get().activeThreadId === id) return
+
+    set({ activeThreadId: id, highlightMessageId: null, editingMessageId: null, renaming: null })
 
     // The end of the conversation, not all of it. The rest arrives as it is
     // scrolled towards, and the totals come from the database because the sum
