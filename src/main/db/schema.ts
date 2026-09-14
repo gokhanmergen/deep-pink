@@ -369,5 +369,20 @@ export const MIGRATIONS: string[] = [
    WHERE key = 'settings'
      AND json_valid(value)
      AND json_extract(value, '$.keybinds."docs.toggle"') = 'mod+shift+d';
+  `,
+
+  /* 18 — a smaller model for the job of writing four words */ `
+  /*
+   * Thread naming moves to Gemma 3 12B.
+   *
+   * Only where the setting is still the model that shipped. Somebody who chose
+   * their own namer chose it, and a migration that reads "this was the default
+   * once" is not entitled to overrule that.
+   */
+  UPDATE settings
+     SET value = json_set(value, '$.titleModel', 'google/gemma-3-12b-it')
+   WHERE key = 'settings'
+     AND json_valid(value)
+     AND json_extract(value, '$.titleModel') = 'google/gemini-2.5-flash-lite';
   `
 ]

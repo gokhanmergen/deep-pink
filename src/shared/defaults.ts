@@ -163,7 +163,7 @@ export const DEFAULT_BASE_SYSTEM_PROMPT =
 export const DEFAULT_SETTINGS: Settings = {
   hasApiKey: false,
   defaultModel: 'anthropic/claude-sonnet-4.5',
-  titleModel: 'google/gemini-2.5-flash-lite',
+  titleModel: 'google/gemma-3-12b-it',
   titleGenerationEnabled: true,
   // Off: it is a second request for every conversation, and the name it writes
   // is replaced a moment later. Worth it to somebody who watches the list while
