@@ -17,7 +17,7 @@ import {
   X
 } from 'lucide-react'
 import { ICON } from '../icons'
-import { useStore } from '../store'
+import { useStore, type SettingsTab as Tab } from '../store'
 import { Overlay } from './Overlay'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '@shared/defaults'
@@ -34,19 +34,6 @@ import type {
 } from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
 import { DOCS_PROMPT } from '@shared/docs'
-
-type Tab =
-  | 'account'
-  | 'models'
-  | 'prompts'
-  | 'web'
-  | 'charts'
-  | 'docs'
-  | 'context'
-  | 'appearance'
-  | 'keys'
-  | 'data'
-  | 'sync'
 
 interface TabDef {
   id: Tab
@@ -290,7 +277,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const showToast = useStore((s) => s.showToast)
   const askConfirm = useStore((s) => s.askConfirm)
 
-  const [tab, setTab] = useState<Tab>(settings?.hasApiKey ? 'models' : 'account')
+  /*
+   * Which section is showing, kept in the store rather than here.
+   *
+   * A caller with somewhere in mind says so — the sync line means Sync, the
+   * shortcut sheet means Keyboard. With nobody having said, it is where this
+   * was last left, and on the very first opening the first thing worth doing:
+   * the key if there is not one, and the models if there is.
+   */
+  const chosen = useStore((s) => s.settingsTab)
+  const setTab = useStore((s) => s.setSettingsTab)
+  const tab: Tab = chosen ?? (settings?.hasApiKey ? 'models' : 'account')
   const [apiKey, setApiKey] = useState('')
   const [dbLocation, setDbLocation] = useState('')
   const [info, setInfo] = useState<AppInfo | null>(null)

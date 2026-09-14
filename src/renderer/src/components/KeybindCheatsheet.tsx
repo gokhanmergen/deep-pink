@@ -4,7 +4,7 @@ import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 
 export function KeybindCheatsheet({ onClose }: { onClose: () => void }): React.JSX.Element {
   const settings = useStore((s) => s.settings)
-  const setOverlay = useStore((s) => s.setOverlay)
+  const openSettings = useStore((s) => s.openSettings)
 
   return (
     <Overlay
@@ -15,7 +15,7 @@ export function KeybindCheatsheet({ onClose }: { onClose: () => void }): React.J
         <>
           <span>Every action is rebindable.</span>
           <div style={{ flex: 1 }} />
-          <button className="btn" onClick={() => setOverlay('settings')} type="button">
+          <button className="btn" onClick={() => openSettings('keys')} type="button">
             Change shortcuts
           </button>
         </>

@@ -230,6 +230,7 @@ export function Sidebar(): React.JSX.Element {
   const selectThread = useStore((s) => s.selectThread)
   const createThread = useStore((s) => s.createThread)
   const setSidebarFilter = useStore((s) => s.setSidebarFilter)
+  const openSettings = useStore((s) => s.openSettings)
   const runSearch = useStore((s) => s.runSearch)
   const setOverlay = useStore((s) => s.setOverlay)
   const revealMessage = useStore((s) => s.revealMessage)
@@ -928,7 +929,7 @@ export function Sidebar(): React.JSX.Element {
                   ? 'error'
                   : 'idle'
           }
-          onClick={() => setOverlay('settings')}
+          onClick={() => openSettings('sync')}
           title={
             sync.paused
               ? sync.config.pause?.until
@@ -1002,7 +1003,7 @@ export function Sidebar(): React.JSX.Element {
         </button>
         <button
           className="btn btn--ghost"
-          onClick={() => setOverlay('settings')}
+          onClick={() => openSettings()}
           title="Settings"
           type="button"
         >

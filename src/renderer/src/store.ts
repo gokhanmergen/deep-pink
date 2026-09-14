@@ -35,6 +35,29 @@ export type Overlay =
   | 'mcp'
   | 'keybinds'
 
+/**
+ * A section of the settings panel, named so other parts of the app can ask for
+ * one.
+ *
+ * Several places offer a way into Settings — the sync line in the sidebar, the
+ * shortcut sheet, the notice about a missing API key — and each of them is
+ * about something specific. Opening the panel on whatever it happened to show
+ * last and leaving the reader to find the rest is the app knowing where they
+ * were going and not taking them there.
+ */
+export type SettingsTab =
+  | 'account'
+  | 'models'
+  | 'prompts'
+  | 'web'
+  | 'charts'
+  | 'docs'
+  | 'context'
+  | 'appearance'
+  | 'keys'
+  | 'data'
+  | 'sync'
+
 export interface PendingApproval {
   toolCall: ToolCall
   serverName: string
@@ -122,6 +145,17 @@ interface State {
   overlay: Overlay
   /** Where to go when the current overlay closes, e.g. back to Settings. */
   overlayReturnTo: Overlay
+  /**
+   * Which section of Settings is open, or null before it has ever been opened.
+   *
+   * Held here rather than in the panel because the panel is unmounted and
+   * remounted constantly — every model picker opened from inside it takes it
+   * off screen and puts it back — and a tab in local state is lost each time.
+   * It is also what lets a caller aim: `openSettings('sync')` sets it, and
+   * `openSettings()` leaves it where it was, so the sidebar's Settings button
+   * reopens the panel where you left it.
+   */
+  settingsTab: SettingsTab | null
   sidebarVisible: boolean
   sidebarFilter: string
   searchHits: SearchHit[]
@@ -256,6 +290,10 @@ interface State {
   stepThread: (delta: number) => void
   runSearch: (query: string) => Promise<void>
   setOverlay: (overlay: Overlay, returnTo?: Overlay) => void
+  /** Opens Settings, on a named section when the caller has one in mind. */
+  openSettings: (tab?: SettingsTab) => void
+  /** Moves to a section, which is how the panel's own list of them works. */
+  setSettingsTab: (tab: SettingsTab) => void
   /** Opens the search overlay, optionally with a query already in it. */
   openSearch: (query?: string) => void
   /** Closes the overlay, returning to whatever opened it. */
@@ -505,6 +543,7 @@ export const useStore = create<State>((set, get) => ({
   mcpStatuses: [],
   overlay: null,
   overlayReturnTo: null,
+  settingsTab: null,
   sidebarVisible: true,
   sidebarFilter: '',
   searchHits: [],
@@ -1061,6 +1100,15 @@ export const useStore = create<State>((set, get) => ({
     // Opening search any other way starts empty, rather than with whatever
     // seeded it last time.
     set({ overlay, overlayReturnTo: returnTo, ...(overlay === 'search' ? { searchSeed: '' } : {}) })
+  },
+
+  openSettings(tab) {
+    // Without a section in mind, whatever was last open stays open.
+    set({ overlay: 'settings', overlayReturnTo: null, ...(tab ? { settingsTab: tab } : {}) })
+  },
+
+  setSettingsTab(tab) {
+    set({ settingsTab: tab })
   },
 
   openSearch(query = '') {

@@ -38,7 +38,7 @@ export function App(): React.JSX.Element {
   const overlay = useStore((s) => s.overlay)
   const sidebarVisible = useStore((s) => s.sidebarVisible)
   const toast = useStore((s) => s.toast)
-  const setOverlay = useStore((s) => s.setOverlay)
+  const openSettings = useStore((s) => s.openSettings)
   const closeOverlay = useStore((s) => s.closeOverlay)
   const init = useStore((s) => s.init)
 
@@ -194,7 +194,7 @@ export function App(): React.JSX.Element {
           <button
             className="btn btn--ghost"
             style={{ color: 'var(--accent)', padding: '0 4px' }}
-            onClick={() => setOverlay('settings')}
+            onClick={() => openSettings('account')}
             type="button"
           >
             add one in Settings

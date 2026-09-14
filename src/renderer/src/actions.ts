@@ -258,7 +258,7 @@ export function buildActions(): AppAction[] {
     },
     { id: 'sidebar.toggle', label: 'Toggle sidebar', group: 'Navigation', run: () => store.toggleSidebar() },
     { id: 'focus.composer', label: 'Focus composer', group: 'Navigation', hidden: true, run: focusComposer },
-    { id: 'settings.open', label: 'Settings', group: 'Navigation', run: () => store.setOverlay('settings') },
+    { id: 'settings.open', label: 'Settings', group: 'Navigation', run: () => store.openSettings() },
     {
       id: 'keybinds.cheatsheet',
       label: 'Keyboard shortcuts',
