@@ -6,6 +6,7 @@ export { useStore, disposeStore, rememberPlace, placeOf, forgetPlace } from '@re
 export { groupIntoTurns, isEmptyAssistantMessage } from '@renderer/turns'
 export { matchesBinding, parseBinding, formatBinding } from '@renderer/keybinds'
 export { landingPoint, tailHeight } from '@renderer/landing'
+export { fencedCode } from '@renderer/fences'
 export {
   isPlausibleMath,
   remarkOnlyPlausibleMath,

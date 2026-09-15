@@ -377,6 +377,15 @@ function pageSize(get: Getter): number {
 }
 
 /**
+ * The same, for a caller outside the store — which is `./prefetch`, reading a
+ * thread before it is asked for. It has to ask for the same range the open
+ * will, or it warms a screenful nobody is about to look at.
+ */
+export function transcriptPageSize(): number {
+  return pageSize(useStore.getState)
+}
+
+/**
  * Re-reads the part of the transcript that is on screen.
  *
  * An edit, a deletion or a tool result changes rows that are already loaded, so

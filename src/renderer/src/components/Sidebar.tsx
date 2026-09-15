@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canBecomeTemporary, useStore } from '../store'
+import { prefetchThread } from '../prefetch'
 import { dateBucket, formatDateTime, formatRelativeShort, formatTokens, threadLabel } from '../format'
 import {
   Archive,
@@ -66,6 +67,18 @@ const NAME_SETTLES = 260
  */
 const NAMING_TAKES = 2 * 60 * 1000
 
+/** How long a pointer has to stay on a row before it counts as interest. */
+const DWELL = 100
+
+/**
+ * How long after a thread opens before its neighbours are read.
+ *
+ * Late enough that the thread actually being opened has the machine to itself
+ * — the highlighter is busy with what is on screen, and getting there first is
+ * the point of all of this.
+ */
+const AFTER_OPENING = 1200
+
 /**
  * One thread in the list.
  *
@@ -86,6 +99,7 @@ const ThreadRow = memo(function ThreadRow({
   renaming,
   inFolder,
   onSelect,
+  onHover,
   onMenu,
   onDragState,
   onRename
@@ -107,6 +121,8 @@ const ThreadRow = memo(function ThreadRow({
   /** Indented, because it is inside an open folder. */
   inFolder: boolean
   onSelect: (id: string) => void
+  /** The pointer came to rest here, or left. See `dwellOn` in the sidebar. */
+  onHover: (id: string | null) => void
   onMenu: (event: React.MouseEvent, thread: Thread) => void
   onDragState: (threadId: string | null) => void
   onRename: (threadId: string, name: string) => void
@@ -145,6 +161,8 @@ const ThreadRow = memo(function ThreadRow({
       className="thread-item"
       data-active={active}
       data-in-folder={inFolder}
+      onMouseEnter={() => onHover(thread.id)}
+      onMouseLeave={() => onHover(null)}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData(THREAD_MIME, thread.id)
@@ -584,6 +602,37 @@ export function Sidebar(): React.JSX.Element {
   // Store actions never change identity, so these are stable for the life of
   // the sidebar — which is what lets the rows below skip re-rendering.
   const onSelectThread = useCallback((id: string) => void selectThread(id), [selectThread])
+
+  /**
+   * A row the pointer has settled on, read ahead of being asked for.
+   *
+   * The delay is the whole of it. A pointer on its way somewhere crosses a
+   * dozen rows, and treating each crossing as interest would read a dozen
+   * conversations to serve one — so nothing happens until the pointer has
+   * stayed, which is the difference between passing over a row and looking at
+   * it. A tenth of a second is far below the time it takes to decide to click
+   * and far above the time it takes to travel past.
+   *
+   * One timer for the whole list rather than one per row, because only one row
+   * can be under the pointer, and because `ThreadRow` is memoised — a callback
+   * that changed identity would wake every row in the sidebar.
+   */
+  const dwell = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dwellOn = useCallback(
+    (id: string | null) => {
+      if (dwell.current) clearTimeout(dwell.current)
+      if (!id) return
+      dwell.current = setTimeout(() => void prefetchThread(id), DWELL)
+    },
+    []
+  )
+  useEffect(
+    () => () => {
+      if (dwell.current) clearTimeout(dwell.current)
+    },
+    []
+  )
+
   /**
    * Writes a new name and closes the input, whichever way it was closed.
    *
@@ -641,6 +690,27 @@ export function Sidebar(): React.JSX.Element {
   useEffect(() => {
     setVisibleThreads(visibleThreadIds)
   }, [visibleThreadIds, setVisibleThreads])
+
+  /**
+   * And the rows either side of the one just opened.
+   *
+   * Hover is no help to the reader who never touches the pointer: Alt+Up and
+   * Alt+Down walk this same list, and the thread most likely to be opened next
+   * is the one next to the thread just opened. It costs the same read, and it
+   * covers the path the shortcut takes.
+   */
+  useEffect(() => {
+    const at = visibleThreadIds.indexOf(activeThreadId ?? '')
+    if (at < 0) return
+    // One after the other: the reader is ahead of them both, and prefetching
+    // takes one thread at a time on purpose.
+    const timer = setTimeout(() => {
+      void prefetchThread(visibleThreadIds[at + 1] ?? null).then(() =>
+        prefetchThread(visibleThreadIds[at - 1] ?? null)
+      )
+    }, AFTER_OPENING)
+    return () => clearTimeout(timer)
+  }, [activeThreadId, visibleThreadIds])
 
   // Hidden sidebar, no visible order — the keys fall back to the thread list.
   useEffect(() => () => setVisibleThreads([]), [setVisibleThreads])
@@ -908,6 +978,7 @@ export function Sidebar(): React.JSX.Element {
       onRename={commitRename}
       inFolder={options.inFolder ?? false}
       onSelect={onSelectThread}
+      onHover={dwellOn}
       onMenu={onThreadMenu}
       onDragState={onDragState}
     />
