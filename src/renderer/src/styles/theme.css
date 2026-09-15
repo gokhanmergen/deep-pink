@@ -1920,22 +1920,24 @@ svg.lucide {
 }
 
 /*
- * What the model thought, offered as an aside rather than as an object.
+ * An aside: something that happened on the way to the answer.
  *
- * This was the same bordered box the tool steps use, with a chip inside it
- * reading "reasoning" — a great deal of furniture around one sentence, and a
- * box says "here is a thing" where what is wanted is "this happened, and you
- * may read it if you like". So: a line of dim text at the size of a caption,
- * a caret, and no edges at all.
+ * Two things are this shape — what the model thought, and what a tool
+ * returned — and they are the same shape because they are the same kind of
+ * thing. Both used to be the bordered box above, with a chip inside naming
+ * them: a great deal of furniture around one sentence, and a box says "here
+ * is a thing" where what is wanted is "this happened, and you may read it if
+ * you like". So: a line of dim text at the size of a caption, a caret, and no
+ * edges at all.
  *
  * It sits between the reply above it and the reply below, so it takes its own
  * space rather than being packed against either.
  */
-.reasoning {
+.aside {
   margin: var(--s2) 0 var(--s3);
 }
 
-.reasoning__summary {
+.aside__summary {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
@@ -1948,27 +1950,55 @@ svg.lucide {
   transition: color var(--quick);
 }
 
-.reasoning__summary::-webkit-details-marker {
+.aside__summary::-webkit-details-marker {
   display: none;
 }
 
-.reasoning__summary:hover {
+.aside__summary:hover {
   color: var(--text-muted);
 }
 
-/* Quieter again than the sentence it follows: the duration is the fact, and
-   the count is for whoever is counting. */
-.reasoning__tokens {
+/* Quieter again than the sentence it follows: what happened is the fact, and
+   how long it took or how much it cost is for whoever is counting. */
+.aside__note {
   opacity: 0.65;
 }
 
-.reasoning__caret {
+.aside__caret {
   flex: none;
   transition: transform var(--quick);
 }
 
-.reasoning[open] > .reasoning__summary .reasoning__caret {
+.aside[open] > .aside__summary .aside__caret {
   transform: rotate(90deg);
+}
+
+/*
+ * A run of tool calls is one list, so it is spaced like one.
+ *
+ * Each aside stands apart from the reply either side of it, which is right for
+ * a lone one and too much for four in a row — they belong together, and four
+ * separated things read as four interruptions rather than as the work.
+ */
+.tool-step:has(+ .tool-step) {
+  margin-bottom: 0;
+}
+
+/*
+ * A tool that failed says so in the one colour that means it.
+ *
+ * What carried this before was a status dot, which is a second thing to read
+ * and a thing that has to be explained. The line already says "failed"; this
+ * only makes sure it is noticed among a run of tool calls that did not.
+ */
+.tool-step[data-failed='true'] > .aside__summary {
+  color: var(--red);
+  opacity: 0.85;
+}
+
+.tool-step[data-failed='true'] > .aside__summary:hover {
+  color: var(--red);
+  opacity: 1;
 }
 
 /*
@@ -1987,14 +2017,14 @@ svg.lucide {
 }
 
 /*
- * The trace itself, ruled off down one side rather than boxed.
+ * What the aside holds, ruled off down one side rather than boxed.
  *
  * It is quoted material — something said elsewhere, reproduced — and a rule
  * down the edge is how quoted material has always been marked. Bounded in
- * height because a trace can be enormous and it is not the thing you came to
- * read.
+ * height because a trace or a tool result can be enormous and neither is the
+ * thing you came to read.
  */
-.reasoning__body {
+.aside__body {
   animation: fade-in 0.14s ease-out;
   margin-top: var(--s2);
   padding-left: var(--s3);
@@ -2006,10 +2036,18 @@ svg.lucide {
   color: var(--text-dim);
 }
 
-.reasoning__body pre {
+.aside__body pre {
   margin: 0;
   font-family: var(--sans);
   white-space: pre-wrap;
+}
+
+/* A tool returns machine output, so it is shown in the machine's font — which
+   is the one thing here that is not like the reasoning trace, and the one
+   place the difference is the reader's. */
+.tool-step > .aside__body pre {
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .disclosure__summary::-webkit-details-marker {
@@ -3419,10 +3457,6 @@ svg.lucide {
 .turn-part + .turn-part,
 .tool-step + .turn-part {
   margin-top: 10px;
-}
-
-.tool-step {
-  margin: 8px 0;
 }
 
 /* ------------------------------------------------------------------ *

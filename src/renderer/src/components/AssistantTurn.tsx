@@ -118,35 +118,57 @@ function ReasoningTrace({
   if (length === 0) return null
 
   return (
-    <details className="reasoning" open={openByDefault} onToggle={trace.onToggle}>
-      <summary className="reasoning__summary">
+    <details className="aside reasoning" open={openByDefault} onToggle={trace.onToggle}>
+      <summary className="aside__summary">
         {message.usage?.reasoningMs
           ? `Reasoned for ${formatDuration(message.usage.reasoningMs)}`
           : 'Reasoned'}
-        <span className="reasoning__tokens">{formatTokens(Math.ceil(length / 4))} tokens</span>
-        <ChevronRight className="reasoning__caret" size={13} strokeWidth={2} />
+        <span className="aside__note">{formatTokens(Math.ceil(length / 4))} tokens</span>
+        <ChevronRight className="aside__caret" size={13} strokeWidth={2} />
       </summary>
-      <div className="reasoning__body">
+      <div className="aside__body">
         {trace.open ? <LongText text={trace.text ?? 'Loading…'} /> : <pre />}
       </div>
     </details>
   )
 }
 
-function ToolStep({ message }: { message: Message }): React.JSX.Element {
+/**
+ * One tool call, in the same shape as the trace above it.
+ *
+ * This was the bordered box, with a status dot in it and the tool's name in
+ * bold — an object on the page, sitting between two halves of a reply that are
+ * not objects. But a tool call is the same kind of thing as the thinking: it
+ * is something that happened on the way to the answer, which you may look
+ * inside if you want to. So it is the same line, and a run of them reads as a
+ * list of things that happened rather than as a stack of boxes.
+ *
+ * "Ran x" or "x failed", because both are how it would be said aloud, and the
+ * failing one puts the word that matters where the eye already is.
+ */
+function ToolStep({
+  message,
+  args
+}: {
+  message: Message
+  /** What it was called with, which lives on the message that called it. */
+  args?: string
+}): React.JSX.Element {
   const result = message.toolResult
   const body = useHiddenPart(message.id, message.content || null, 'content')
+  const name = result?.name ?? 'tool'
   return (
-    <details className="disclosure tool-step" onToggle={body.onToggle}>
-      <summary className="disclosure__summary">
-        <span className="dot" data-state={result?.isError ? 'error' : 'connected'} />
-        <strong>{result?.name ?? 'tool'}</strong>
-        <span className="dim">
-          {result?.isError ? 'failed' : 'returned'}
-          {result ? ` · ${formatDuration(result.durationMs)}` : ''}
-        </span>
+    <details
+      className="aside tool-step"
+      data-failed={result?.isError || undefined}
+      onToggle={body.onToggle}
+    >
+      <summary className="aside__summary" title={args}>
+        {result?.isError ? `${name} failed` : `Ran ${name}`}
+        {result && <span className="aside__note">{formatDuration(result.durationMs)}</span>}
+        <ChevronRight className="aside__caret" size={13} strokeWidth={2} />
       </summary>
-      <div className="disclosure__content">
+      <div className="aside__body">
         {/* Nothing until it is opened: the body is not in the transcript, and
             building a `<pre>` for a result nobody looked at was the other half
             of the same cost. */}
@@ -236,6 +258,25 @@ export const AssistantTurn = memo(function AssistantTurn({
   }
 
   const toolCount = messages.filter((m) => m.role === 'tool').length
+
+  /**
+   * The calls that have a result row of their own, and what each was asked.
+   *
+   * A chip reading "called repo_read" directly above a line reading "Ran
+   * repo_read" is the same fact twice in two different voices, and since the
+   * line replaced the box it used to sit above, the pair now reads as one list
+   * with every entry duplicated. So a call is announced only until it is
+   * answered — which leaves the chip doing the one thing the line cannot,
+   * which is to say that something is happening right now, or that something
+   * was asked for and never came back.
+   */
+  const answered = new Set(
+    messages.map((m) => m.toolResult?.toolCallId).filter((id): id is string => Boolean(id))
+  )
+  const argumentsOf = new Map<string, string>()
+  for (const m of messages) {
+    for (const call of m.toolCalls ?? []) argumentsOf.set(call.id, call.arguments)
+  }
 
   /**
    * The figures under a finished reply, in the order they read in.
@@ -368,7 +409,15 @@ export const AssistantTurn = memo(function AssistantTurn({
           </div>
 
           {messages.map((message) => {
-            if (message.role === 'tool') return <ToolStep key={message.id} message={message} />
+            if (message.role === 'tool') {
+              return (
+                <ToolStep
+                  key={message.id}
+                  message={message}
+                  args={argumentsOf.get(message.toolResult?.toolCallId ?? '')}
+                />
+              )
+            }
             if (isEmptyAssistantMessage(message)) return null
 
             return (
@@ -402,13 +451,15 @@ export const AssistantTurn = memo(function AssistantTurn({
 
                 {message.status === 'streaming' && !message.content && <span className="caret" />}
 
-                {message.toolCalls?.length ? (
+                {message.toolCalls?.some((call) => !answered.has(call.id)) ? (
                   <div className="row row--wrap" style={{ marginTop: 6 }}>
-                    {message.toolCalls.map((call) => (
-                      <span key={call.id} className="chip chip--accent" title={call.arguments}>
-                        {message.status === 'streaming' ? 'calling' : 'called'} {call.name}
-                      </span>
-                    ))}
+                    {message.toolCalls
+                      .filter((call) => !answered.has(call.id))
+                      .map((call) => (
+                        <span key={call.id} className="chip chip--accent" title={call.arguments}>
+                          {message.status === 'streaming' ? 'calling' : 'called'} {call.name}
+                        </span>
+                      ))}
                   </div>
                 ) : null}
 
