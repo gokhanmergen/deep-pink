@@ -13,6 +13,57 @@ import { landingPoint, roomAbove, tailHeight } from '../landing'
 import type { Message } from '@shared/types'
 
 /**
+ * Which messages get built, and which are frames with nothing in them yet.
+ *
+ * `content-visibility` already spares the browser from laying out a message
+ * that is off screen, but React has built it regardless by then — the markdown
+ * parsed, the tree of elements made, the DOM nodes created. Opening a
+ * conversation of long replies spends most of its time on the dozen messages
+ * nobody is going to look at.
+ *
+ * So each block's frame always renders — it has to, because everything below
+ * positions the view by measuring those frames — and what goes inside waits
+ * until the frame is near the window.
+ *
+ * Decided here rather than by each message watching itself with an
+ * `IntersectionObserver`, for two reasons. Intersections are delivered as part
+ * of painting a frame, and a window that is not being painted never delivers
+ * them — the same trap as `requestAnimationFrame`, and one this file has been
+ * caught by before. And `rootMargin` expands the root's rectangle and nothing
+ * else: the clip of an intervening scroller is applied without it, so watching
+ * against the window would have had the transcript clip the whole margin away
+ * and every message would have been built at the moment it appeared, which is
+ * exactly too late.
+ *
+ * Measuring instead means it runs off the scroll handler, which is the same
+ * thing the rest of the transcript already depends on and already works
+ * everywhere.
+ */
+
+/**
+ * Blocks at the end of the conversation that are built before anything is
+ * measured.
+ *
+ * Four rather than one because the landing shows the last exchange with a
+ * glimpse of what came before it, because a thread opens there, and because
+ * the reader's first instinct on arriving is to scroll up.
+ */
+const EAGER_BLOCKS = 4
+
+/**
+ * How far outside the transcript still counts as near.
+ *
+ * Generous on purpose: this is the distance a fast scroll covers between one
+ * measurement and the next, and arriving at a message that has not been built
+ * is the one outcome worth spending memory to avoid. Roughly a screen and a
+ * half either way.
+ */
+const NEARLY_IN_VIEW = 1200
+
+/** Nothing built yet — one object, so an empty transcript is not a new set. */
+const NOTHING_BUILT: ReadonlySet<string> = new Set()
+
+/**
  * How far a message's top is below the top of the view, right now.
  *
  * Rectangles rather than `offsetTop` because a message's offset parent is the
@@ -132,6 +183,15 @@ export function ChatView(): React.JSX.Element {
    * than of what is on the page.
    */
   const [awayFromEnd, setAwayFromEnd] = useState(false)
+
+  /**
+   * The blocks whose contents have been built, by the id of their frame.
+   *
+   * State rather than a ref for the same reason: what it holds is what is
+   * drawn. Emptied when the thread changes, so a long session of reading does
+   * not accumulate a set of every message ever opened.
+   */
+  const [built, setBuilt] = useState<ReadonlySet<string>>(NOTHING_BUILT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedToBottom = useRef(true)
@@ -278,6 +338,67 @@ export function ChatView(): React.JSX.Element {
   }, [readOlder])
 
   /**
+   * Which blocks are near enough to the window to be worth building.
+   *
+   * Only ever added to. A message that scrolled away could be given back, but
+   * then reading up through a conversation would build everything twice and
+   * change heights behind the reader on the way down. What has already been
+   * built costs nothing to leave alone.
+   *
+   * Returning the set unchanged when nothing came near is what keeps this off
+   * the render path: React bails out on an identical value, so a scroll
+   * through already-built conversation renders nothing at all.
+   */
+  const buildNearby = useCallback((): void => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const view = el.getBoundingClientRect()
+    const from = view.top - NEARLY_IN_VIEW
+    const to = view.bottom + NEARLY_IN_VIEW
+
+    setBuilt((before) => {
+      let after: Set<string> | null = null
+      for (const frame of el.querySelectorAll<HTMLElement>('[data-message-id]')) {
+        const id = frame.dataset.messageId
+        if (!id || before.has(id)) continue
+        const box = frame.getBoundingClientRect()
+        // Frames are in document order, so once one starts below the band
+        // every frame after it does too.
+        if (box.top > to) break
+        if (box.bottom < from) continue
+        after ??= new Set(before)
+        after.add(id)
+      }
+      return after ?? before
+    })
+  }, [])
+
+  /**
+   * One pass however many scroll events arrive.
+   *
+   * A rectangle per frame is the measurement the scroll handler goes out of
+   * its way not to do, and doing it on every event would undo that. A tenth of
+   * a second behind the reader is invisible when what is being decided is a
+   * screen and a half ahead of them.
+   */
+  const pendingBuild = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleBuild = useCallback((): void => {
+    if (pendingBuild.current) return
+    pendingBuild.current = setTimeout(() => {
+      pendingBuild.current = null
+      buildNearby()
+    }, 100)
+  }, [buildNearby])
+
+  // Nothing to build for a transcript that has gone.
+  useEffect(() => {
+    return () => {
+      if (pendingBuild.current) clearTimeout(pendingBuild.current)
+    }
+  }, [])
+
+  /**
    * Measured in the event rather than on the next frame.
    *
    * Deferring to `requestAnimationFrame` is the usual advice for scroll
@@ -334,7 +455,8 @@ export function ChatView(): React.JSX.Element {
     }
 
     fetchAhead()
-  }, [fetchAhead])
+    scheduleBuild()
+  }, [fetchAhead, scheduleBuild])
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -348,6 +470,17 @@ export function ChatView(): React.JSX.Element {
     if (opening !== null) {
       if (messages.length && messages[0].threadId !== opening) return
       restoring.current = null
+
+      /*
+       * Start again on what has been built, now rather than on the way out.
+       *
+       * Emptying it when the thread changed would have emptied it while the
+       * previous conversation was still on screen — the new transcript is a
+       * round trip away, and for that round trip the reader would have watched
+       * the thread they just left go blank. These ids belong to messages that
+       * are no longer rendered, so nothing on screen changes by dropping them.
+       */
+      setBuilt(NOTHING_BUILT)
 
       /*
        * Where this conversation opens, which is not simply its end.
@@ -550,6 +683,9 @@ export function ChatView(): React.JSX.Element {
       // measuring the transcript it is about to act on.
       sizeTail()
 
+      // Heights have just changed, so what is near the window has too.
+      buildNearby()
+
       // Whatever the opening landed on, kept where it landed.
       const hold = holding.current
       if (hold) {
@@ -600,7 +736,17 @@ export function ChatView(): React.JSX.Element {
       if (pending) clearTimeout(pending)
       observer.disconnect()
     }
-  }, [sizeTail])
+  }, [sizeTail, buildNearby])
+
+  /*
+   * And after any change to the transcript: a thread opened, a page read in
+   * above, a reply growing as it arrives. A passive effect rather than a
+   * layout one, so the landing above has already put the view where it goes
+   * and this measures against where the reader actually is.
+   */
+  useEffect(() => {
+    buildNearby()
+  }, [messages, buildNearby])
 
   /**
    * Tops the transcript up until there is something to scroll.
@@ -657,6 +803,24 @@ export function ChatView(): React.JSX.Element {
    */
   const blocks = groupIntoTurns(messages)
   const lastBlock = blocks[blocks.length - 1]
+
+  /**
+   * Whether a block's contents are built, before anything has been measured.
+   *
+   * The measuring happens after the first render, and by then the view has
+   * been put somewhere — so the places it can land have to be built already.
+   * A block that is an empty frame at the moment the landing is computed is a
+   * block the landing is aimed against and then changes height under, which is
+   * the bug this file spent its last three commits on.
+   *
+   * Two such places: the end of the conversation, where a thread opens, and
+   * the message the reader left at the top of the window, where it opens if
+   * they had been reading it before.
+   */
+  const landingAnchor = activeThreadId ? (placeOf(activeThreadId)?.topMessageId ?? null) : null
+  const isNear = (index: number, id: string): boolean =>
+    index >= blocks.length - EAGER_BLOCKS || id === landingAnchor || built.has(id)
+
   const unanswered =
     !generating && !compacting && lastBlock?.kind === 'message' && lastBlock.message.role === 'user'
       ? lastBlock.message.id
@@ -917,13 +1081,19 @@ export function ChatView(): React.JSX.Element {
             ) : (
               blocks.map((block, index, blocks) =>
                 block.kind === 'message' ? (
-                  <MessageItem key={block.id} message={block.message} ui={settings.ui} />
+                  <MessageItem
+                    key={block.id}
+                    message={block.message}
+                    ui={settings.ui}
+                    near={isNear(index, block.id)}
+                  />
                 ) : (
                   <AssistantTurn
                     key={block.id}
                     messages={block.messages}
                     ui={settings.ui}
                     isLast={index === blocks.length - 1}
+                    near={isNear(index, block.id)}
                   />
                 )
               )

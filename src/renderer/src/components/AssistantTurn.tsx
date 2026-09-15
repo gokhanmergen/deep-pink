@@ -160,6 +160,8 @@ interface Props {
   messages: Message[]
   ui: UiSettings
   isLast: boolean
+  /** Close enough to the window that its contents are worth building. */
+  near: boolean
 }
 
 /**
@@ -171,7 +173,8 @@ interface Props {
 export const AssistantTurn = memo(function AssistantTurn({
   messages,
   ui,
-  isLast
+  isLast,
+  near
 }: Props): React.JSX.Element {
   const regenerate = useStore((s) => s.regenerate)
   const showToast = useStore((s) => s.showToast)
@@ -198,6 +201,18 @@ export const AssistantTurn = memo(function AssistantTurn({
   const usage = sumUsage(messages)
   const chipSettings = ui.replyChips
   const streaming = messages.some((m) => m.status === 'streaming')
+
+  /*
+   * What goes inside waits until the turn comes near — the transcript decides
+   * which those are, and the frame itself always renders because that is what
+   * it measures to decide. See `ChatView`.
+   *
+   * A reply still arriving is built wherever it is: the text is changing, and
+   * deferring something that is being written is deferring the one thing on
+   * the page that is actually happening.
+   */
+  const built = near || streaming || highlighted
+  const height = estimateTurnHeight(messages, ui.chatWidth)
   const text = messages
     .filter((m) => m.role === 'assistant' && m.content)
     .map((m) => m.content)
@@ -294,133 +309,143 @@ export const AssistantTurn = memo(function AssistantTurn({
       ref={ref}
       // The same, summed over the messages this turn is drawn from.
       style={{
-        containIntrinsicSize: `auto ${estimateTurnHeight(messages, ui.chatWidth)}px`,
+        containIntrinsicSize: `auto ${height}px`,
         ...(highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : {})
       }}
     >
-      <div className="message__head">
-        {/*
-          * The model's name where the word "Assistant" was.
-          *
-          * It said "ASSISTANT" and then, in a chip beside it, which model —
-          * a label followed by the only part of the pair anybody reads. The
-          * name identifies the turn perfectly well on its own, so it is what
-          * stands at the head of it, and "Assistant" is left for replies that
-          * have no attribution to show.
-          */}
-        <span className="message__role" title={attributed.model ?? undefined}>
-          {attributed.model ? modelShortName(attributed.model) : 'Assistant'}
-        </span>
-        {attributed.provider && <span className="chip">{attributed.provider}</span>}
-        {toolCount > 0 && (
-          <span className="chip" title="Tool calls made while answering">
-            {toolCount} tool {toolCount === 1 ? 'call' : 'calls'}
-          </span>
-        )}
-
-        <div className="message__actions">
-          <button className="btn btn--ghost" onClick={copy} title="Copy" type="button">
-            <Copy {...ICON} />
-            Copy
-          </button>
-          <button
-            className="btn btn--ghost"
-            onClick={() => void regenerate(first.id)}
-            title="Regenerate"
-            type="button"
-          >
-            <RefreshCw {...ICON} />
-            Retry
-          </button>
-          <button className="btn btn--ghost" onClick={() => void branch()} title="Branch" type="button">
-            <GitBranch {...ICON} />
-            Branch
-          </button>
-          {attributed.hasPromptSnapshot && (
-            <button
-              className="btn btn--ghost"
-              onClick={() => setOverlay('prompt')}
-              title="What went into the context for this turn"
-              type="button"
-            >
-              <FileText {...ICON} />
-              Context
-            </button>
-          )}
-        </div>
-      </div>
-
-      {messages.map((message) => {
-        if (message.role === 'tool') return <ToolStep key={message.id} message={message} />
-        if (isEmptyAssistantMessage(message)) return null
-
-        return (
-          <div key={message.id} className="turn-part">
-            <ReasoningTrace message={message} openByDefault={ui.showReasoningByDefault} />
-
+      {built ? (
+        <>
+          <div className="message__head">
             {/*
-              * A rule between the thinking and the answer.
+              * The model's name where the word "Assistant" was.
               *
-              * Its own element rather than an edge on the line above it,
-              * because it is not part of the aside — it is the boundary
-              * between two different things the model produced, and an `<hr>`
-              * is exactly that: a thematic break.
-              *
-              * Only where there is something on both sides of it. A turn that
-              * reasoned its way to a tool call and wrote nothing has no
-              * boundary to draw, and a rule under the last thing on screen is
-              * a line with nothing to separate.
+              * It said "ASSISTANT" and then, in a chip beside it, which model —
+              * a label followed by the only part of the pair anybody reads. The
+              * name identifies the turn perfectly well on its own, so it is what
+              * stands at the head of it, and "Assistant" is left for replies that
+              * have no attribution to show.
               */}
-            {reasoningLength(message) > 0 && message.content && <hr className="turn-rule" />}
-
-            {message.content && (
-              <div className="message__body">
-                <Markdown
-                  content={message.content}
-                  codeTheme={ui.codeTheme}
-                  streaming={message.status === 'streaming'}
-                />
-              </div>
-            )}
-
-            {message.status === 'streaming' && !message.content && <span className="caret" />}
-
-            {message.toolCalls?.length ? (
-              <div className="row row--wrap" style={{ marginTop: 6 }}>
-                {message.toolCalls.map((call) => (
-                  <span key={call.id} className="chip chip--accent" title={call.arguments}>
-                    {message.status === 'streaming' ? 'calling' : 'called'} {call.name}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            {message.error && <div className="message__error">{message.error}</div>}
-
-            {message.status === 'aborted' && (
-              <div className="row" style={{ marginTop: 6 }}>
-                <span className="chip">stopped</span>
-              </div>
-            )}
-          </div>
-        )
-      })}
-
-      {usage && chips.length > 0 && (
-        <div className="message__footer">
-          {chips.map((chip) => (
-            <span
-              key={chip.id}
-              className={chip.id === 'cost' ? 'chip chip--accent' : 'chip'}
-              title={chip.title}
-            >
-              {chip.text}
+            <span className="message__role" title={attributed.model ?? undefined}>
+              {attributed.model ? modelShortName(attributed.model) : 'Assistant'}
             </span>
-          ))}
-        </div>
-      )}
+            {attributed.provider && <span className="chip">{attributed.provider}</span>}
+            {toolCount > 0 && (
+              <span className="chip" title="Tool calls made while answering">
+                {toolCount} tool {toolCount === 1 ? 'call' : 'calls'}
+              </span>
+            )}
 
-      {isLast && streaming && text && <span className="caret" />}
+            <div className="message__actions">
+              <button className="btn btn--ghost" onClick={copy} title="Copy" type="button">
+                <Copy {...ICON} />
+                Copy
+              </button>
+              <button
+                className="btn btn--ghost"
+                onClick={() => void regenerate(first.id)}
+                title="Regenerate"
+                type="button"
+              >
+                <RefreshCw {...ICON} />
+                Retry
+              </button>
+              <button className="btn btn--ghost" onClick={() => void branch()} title="Branch" type="button">
+                <GitBranch {...ICON} />
+                Branch
+              </button>
+              {attributed.hasPromptSnapshot && (
+                <button
+                  className="btn btn--ghost"
+                  onClick={() => setOverlay('prompt')}
+                  title="What went into the context for this turn"
+                  type="button"
+                >
+                  <FileText {...ICON} />
+                  Context
+                </button>
+              )}
+            </div>
+          </div>
+
+          {messages.map((message) => {
+            if (message.role === 'tool') return <ToolStep key={message.id} message={message} />
+            if (isEmptyAssistantMessage(message)) return null
+
+            return (
+              <div key={message.id} className="turn-part">
+                <ReasoningTrace message={message} openByDefault={ui.showReasoningByDefault} />
+
+                {/*
+                  * A rule between the thinking and the answer.
+                  *
+                  * Its own element rather than an edge on the line above it,
+                  * because it is not part of the aside — it is the boundary
+                  * between two different things the model produced, and an `<hr>`
+                  * is exactly that: a thematic break.
+                  *
+                  * Only where there is something on both sides of it. A turn that
+                  * reasoned its way to a tool call and wrote nothing has no
+                  * boundary to draw, and a rule under the last thing on screen is
+                  * a line with nothing to separate.
+                  */}
+                {reasoningLength(message) > 0 && message.content && <hr className="turn-rule" />}
+
+                {message.content && (
+                  <div className="message__body">
+                    <Markdown
+                      content={message.content}
+                      codeTheme={ui.codeTheme}
+                      streaming={message.status === 'streaming'}
+                    />
+                  </div>
+                )}
+
+                {message.status === 'streaming' && !message.content && <span className="caret" />}
+
+                {message.toolCalls?.length ? (
+                  <div className="row row--wrap" style={{ marginTop: 6 }}>
+                    {message.toolCalls.map((call) => (
+                      <span key={call.id} className="chip chip--accent" title={call.arguments}>
+                        {message.status === 'streaming' ? 'calling' : 'called'} {call.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {message.error && <div className="message__error">{message.error}</div>}
+
+                {message.status === 'aborted' && (
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <span className="chip">stopped</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {usage && chips.length > 0 && (
+            <div className="message__footer">
+              {chips.map((chip) => (
+                <span
+                  key={chip.id}
+                  className={chip.id === 'cost' ? 'chip chip--accent' : 'chip'}
+                  title={chip.title}
+                >
+                  {chip.text}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {isLast && streaming && text && <span className="caret" />}
+        </>
+      ) : (
+        /*
+         * Standing at the height the frame already claims — see the same
+         * placeholder in `MessageItem`.
+         */
+        <div style={{ height }} aria-hidden="true" />
+      )}
     </div>
   )
 },
@@ -432,6 +457,7 @@ export const AssistantTurn = memo(function AssistantTurn({
  */
 function same(before: Props, after: Props): boolean {
   if (before.ui !== after.ui || before.isLast !== after.isLast) return false
+  if (before.near !== after.near) return false
   if (before.messages.length !== after.messages.length) return false
   return before.messages.every((message, at) => message === after.messages[at])
 })

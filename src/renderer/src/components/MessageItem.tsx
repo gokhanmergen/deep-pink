@@ -19,10 +19,13 @@ import { estimateHeight } from '../messageHeight'
  */
 export const MessageItem = memo(function MessageItem({
   message,
-  ui
+  ui,
+  near
 }: {
   message: Message
   ui: UiSettings
+  /** Close enough to the window that its contents are worth building. */
+  near: boolean
 }): React.JSX.Element | null {
   const showToast = useStore((s) => s.showToast)
   const setHighlight = useStore((s) => s.setHighlight)
@@ -50,6 +53,21 @@ export const MessageItem = memo(function MessageItem({
   const editMessage = useStore((s) => s.editMessage)
   const [draft, setDraft] = useState(message.content)
   const ref = useRef<HTMLDivElement>(null)
+
+  /*
+   * What goes inside waits until the frame comes near — the transcript decides
+   * which those are, and the frame itself is always here because that is what
+   * it measures to decide. See `ChatView`.
+   */
+  const height = estimateHeight(message, ui.chatWidth)
+
+  /*
+   * Two ways in that do not involve scrolling: the editor shortcut, and
+   * jumping to a search result. Both leave the frame in view before the
+   * observer has had a chance to report, and a row that appeared empty for a
+   * frame and then filled in is worse than one that was never deferred.
+   */
+  const built = near || editing || highlighted
 
   /*
    * Seeded when the editor opens rather than when the button is pressed.
@@ -146,117 +164,131 @@ export const MessageItem = memo(function MessageItem({
        * positioned by is made against it. See `estimateHeight`.
        */
       style={{
-        containIntrinsicSize: `auto ${estimateHeight(message, ui.chatWidth)}px`,
+        containIntrinsicSize: `auto ${height}px`,
         ...(highlighted ? { outline: '1px solid var(--accent-line)', borderRadius: 8 } : {})
       }}
     >
-      {/*
-        * No "YOU" over it.
-        *
-        * A label earns its place when the thing under it would be ambiguous
-        * without one, and this one never is: the reader wrote it, it is the
-        * only thing on the page sitting on a raised surface, and it carries
-        * the accent down its leading edge. Three ways of saying whose words
-        * these are, and the word itself was the one that took a line of the
-        * page to say it.
-        */}
-      <div className="message__head">
-        <div className="message__actions">
-          <button
-            className="btn btn--ghost"
-            onClick={() => {
-              void navigator.clipboard.writeText(message.content)
-              showToast('Copied to clipboard')
-            }}
-            title="Copy"
-            type="button"
-          >
-            <Copy {...ICON} />
-            Copy
-          </button>
-          <button
-            className="btn btn--ghost"
-            onClick={() => editMessage(message.id)}
-            title="Edit"
-            type="button"
-          >
-            <Pencil {...ICON} />
-            Edit
-          </button>
-        </div>
-      </div>
-
-      {message.attachments.some((a) => a.kind === 'text') && (
-        <div className="textfiles">
-          {message.attachments
-            .filter((a) => a.kind === 'text')
-            .map((file) => (
-              <TextAttachment key={file.id} attachment={file} />
-            ))}
-        </div>
-      )}
-
-      {message.attachments.some((a) => a.kind === 'image') && (
-        <div className="attachments">
-          {message.attachments
-            .filter((a) => a.kind === 'image')
-            .map((image) => (
-            <a
-              key={image.id}
-              className="attachment"
-              href={image.url}
-              onClick={(event) => {
-                // Opens in the app's own viewer, where it can be zoomed, saved
-                // and stepped through — handing it to the desktop's image
-                // program is still offered, from in there.
-                event.preventDefault()
-                openImageViewer(imagesOnScreen(), image.id)
-              }}
-              title={`${image.filename} — ${Math.round(image.bytes / 1024)} KB`}
-            >
-              <img
-                src={image.url}
-                alt={image.filename}
-                width={image.width ?? undefined}
-                height={image.height ?? undefined}
-                loading="lazy"
-              />
-            </a>
-            ))}
-        </div>
-      )}
-
-      <div className="message__body">
-        {editing ? (
-          <div>
-            <textarea
-              className="textarea"
-              rows={Math.min(draft.split('\n').length + 2, 20)}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                // A way out that does not need the mouse, now that there is a
-                // way in that does not either.
-                if (event.key === 'Escape') {
-                  event.stopPropagation()
-                  editMessage(null)
-                }
-              }}
-              autoFocus
-            />
-            <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn btn--primary" onClick={() => void saveEdit()} type="button">
-                Save
+      {built ? (
+        <>
+          {/*
+            * No "YOU" over it.
+            *
+            * A label earns its place when the thing under it would be ambiguous
+            * without one, and this one never is: the reader wrote it, it is the
+            * only thing on the page sitting on a raised surface, and it carries
+            * the accent down its leading edge. Three ways of saying whose words
+            * these are, and the word itself was the one that took a line of the
+            * page to say it.
+            */}
+          <div className="message__head">
+            <div className="message__actions">
+              <button
+                className="btn btn--ghost"
+                onClick={() => {
+                  void navigator.clipboard.writeText(message.content)
+                  showToast('Copied to clipboard')
+                }}
+                title="Copy"
+                type="button"
+              >
+                <Copy {...ICON} />
+                Copy
               </button>
-              <button className="btn" onClick={() => editMessage(null)} type="button">
-                Cancel
+              <button
+                className="btn btn--ghost"
+                onClick={() => editMessage(message.id)}
+                title="Edit"
+                type="button"
+              >
+                <Pencil {...ICON} />
+                Edit
               </button>
             </div>
           </div>
-        ) : (
-          <Markdown content={message.content} codeTheme={ui.codeTheme} />
-        )}
-      </div>
+
+          {message.attachments.some((a) => a.kind === 'text') && (
+            <div className="textfiles">
+              {message.attachments
+                .filter((a) => a.kind === 'text')
+                .map((file) => (
+                  <TextAttachment key={file.id} attachment={file} />
+                ))}
+            </div>
+          )}
+
+          {message.attachments.some((a) => a.kind === 'image') && (
+            <div className="attachments">
+              {message.attachments
+                .filter((a) => a.kind === 'image')
+                .map((image) => (
+                  <a
+                    key={image.id}
+                    className="attachment"
+                    href={image.url}
+                    onClick={(event) => {
+                      // Opens in the app's own viewer, where it can be zoomed,
+                      // saved and stepped through — handing it to the desktop's
+                      // image program is still offered, from in there.
+                      event.preventDefault()
+                      openImageViewer(imagesOnScreen(), image.id)
+                    }}
+                    title={`${image.filename} — ${Math.round(image.bytes / 1024)} KB`}
+                  >
+                    <img
+                      src={image.url}
+                      alt={image.filename}
+                      width={image.width ?? undefined}
+                      height={image.height ?? undefined}
+                      loading="lazy"
+                    />
+                  </a>
+                ))}
+            </div>
+          )}
+
+          <div className="message__body">
+            {editing ? (
+              <div>
+                <textarea
+                  className="textarea"
+                  rows={Math.min(draft.split('\n').length + 2, 20)}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    // A way out that does not need the mouse, now that there is
+                    // a way in that does not either.
+                    if (event.key === 'Escape') {
+                      event.stopPropagation()
+                      editMessage(null)
+                    }
+                  }}
+                  autoFocus
+                />
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button className="btn btn--primary" onClick={() => void saveEdit()} type="button">
+                    Save
+                  </button>
+                  <button className="btn" onClick={() => editMessage(null)} type="button">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <Markdown content={message.content} codeTheme={ui.codeTheme} />
+            )}
+          </div>
+        </>
+      ) : (
+        /*
+         * Standing at the height the frame already claims.
+         *
+         * Not strictly needed — `contain-intrinsic-size` sizes an empty frame
+         * on its own — but it keeps the two ways a message can be sized
+         * agreeing with each other, so a browser that has laid the frame out
+         * for some other reason still finds it the height it was told.
+         */
+        <div style={{ height }} aria-hidden="true" />
+      )}
     </div>
   )
 })
