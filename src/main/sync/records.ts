@@ -441,6 +441,10 @@ function applyUsage(messageId: string, value: unknown): void {
       cost_usd: typeof row['cost_usd'] === 'number' ? row['cost_usd'] : 0,
       latency_ms: int(row['latency_ms']),
       ttft_ms: row['ttft_ms'] === null ? null : int(row['ttft_ms']),
+      // Null rather than zero when it is missing, and missing is the ordinary
+      // case: every turn recorded before thinking time was measured has no
+      // value for it, and "reasoned for 0s" is a worse answer than "reasoned".
+      reasoning_ms: row['reasoning_ms'] == null ? null : int(row['reasoning_ms']),
       tokens_per_second:
         typeof row['tokens_per_second'] === 'number' ? row['tokens_per_second'] : null,
       generation_id: text(row['generation_id']),
