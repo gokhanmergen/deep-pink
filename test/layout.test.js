@@ -296,12 +296,23 @@ suite(
     )
 
     section('rich content renders')
+    /*
+     * How many, is not the question any more.
+     *
+     * The transcript builds a message's contents when it comes near the
+     * window, so the number of code blocks on screen is a fact about the
+     * window's height rather than about the conversation — it used to be a
+     * page's worth because a page's worth was always built. What is worth
+     * asserting is what the name always claimed: that the blocks which are
+     * there have been highlighted, and that the maths has been typeset.
+     */
     const rich = await run(`({
       codeBlocks: document.querySelectorAll('.codeblock').length,
+      highlighted: document.querySelectorAll('.codeblock .shiki').length,
       katex: document.querySelectorAll('.katex').length
     })`)
-    check('code blocks are highlighted', rich.codeBlocks > 5, rich)
-    check('LaTeX is typeset', rich.katex > 5, rich)
+    check('code blocks are highlighted', rich.codeBlocks > 0 && rich.highlighted > 0, rich)
+    check('LaTeX is typeset', rich.katex > 0, rich)
 
     section('editing a prompt keeps the caret where it was')
     await run(`[...document.querySelectorAll('.sidebar__footer .btn')]
@@ -501,7 +512,8 @@ suite(
 
     await rightClick('Context menu fixture')
     await settle(300)
-    check('reopening offers to unpin', (await menu()).items[0] === 'Unpin', await menu())
+    // In the slot Pin occupied, which is the second: Rename is above it.
+    check('reopening offers to unpin', (await menu()).items[1] === 'Unpin', await menu())
 
     await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
     await settle(300)

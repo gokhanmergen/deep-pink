@@ -132,13 +132,20 @@ suite(
     // Measured and then asked for, in that order and in one evaluation: a
     // round trip between the two is long enough for the page to have landed,
     // and "before" would already be "after".
+    // Held by id rather than by the text in it. The transcript builds a
+    // message's contents when it comes near the window, so a message the
+    // reader has just jumped to is an empty frame for a moment — and every
+    // empty frame has the same text as every other, which is none. Matching on
+    // that found whichever blank frame came first and measured the distance to
+    // something else entirely. The id is what the transcript anchors by, and it
+    // is exact.
     const before = await run(`(() => {
       const el = document.querySelector('.transcript')
       el.scrollTop = 0
       const mark = document.querySelector('.transcript .message')
       const snapshot = {
         rendered: document.querySelectorAll('.transcript .message').length,
-        markText: mark.textContent.slice(0, 40),
+        markId: mark.dataset.messageId,
         markTop: Math.round(mark.getBoundingClientRect().top),
         scrollHeight: Math.round(el.scrollHeight)
       }
@@ -171,11 +178,11 @@ suite(
     // inserted above it.
     const moved = await run(`(() => {
       const mark = [...document.querySelectorAll('.transcript .message')]
-        .find((m) => m.textContent.slice(0, 40) === ${JSON.stringify(before.markText)})
+        .find((m) => m.dataset.messageId === ${JSON.stringify(before.markId)})
       if (!mark) return null
       return Math.round(mark.getBoundingClientRect().top)
     })()`)
-    check('the message that was at the top is still there', moved !== null, before.markText)
+    check('the message that was at the top is still there', moved !== null, before.markId)
     check(
       'and has not moved on screen, though a page was inserted above it',
       moved !== null && Math.abs(moved - before.markTop) <= 2,

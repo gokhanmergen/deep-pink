@@ -94,6 +94,9 @@ suite(
       repo.listThreads().map((t) => [t.title, t.temporary])
     )
 
+    // Held on to, because after it is swept there is nothing left to ask.
+    const temporaryId = repo.listThreads().find((t) => t.temporary).id
+
     section('leaving it ends it')
     check(
       'the ordinary thread can be clicked',
@@ -112,9 +115,20 @@ suite(
       repo.listThreads().filter((t) => t.temporary).length === 0,
       repo.listThreads().map((t) => t.title)
     )
+    /*
+     * Asked about this chat, not about the table.
+     *
+     * Leaving also sweeps away the blank chat the app opens with, and that one
+     * is an ordinary thread being deleted for an ordinary reason — it leaves a
+     * tombstone, as it should. Counting every row here made the promise look
+     * broken by something that has nothing to do with it.
+     */
     check(
       'and no tombstone for another machine to act on',
-      getDb().prepare("SELECT COUNT(*) AS n FROM sync_deletions WHERE kind = 'thread'").get().n === 0
+      getDb()
+        .prepare("SELECT COUNT(*) AS n FROM sync_deletions WHERE kind = 'thread' AND id = ?")
+        .get(temporaryId).n === 0,
+      getDb().prepare("SELECT id FROM sync_deletions WHERE kind = 'thread'").all()
     )
 
     section('a conversation that has been had cannot be un-had')

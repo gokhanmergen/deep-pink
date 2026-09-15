@@ -288,6 +288,18 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   check('a different thread does not paint here', state().messages.length === before,
     state().messages.map((m) => m.id))
 
+  /**
+   * Away and back again, which is what reopening means now.
+   *
+   * Asking for the thread you are already in does nothing — it used to re-read
+   * the transcript and throw away your place in it. So a suite that wants the
+   * transcript read again has to leave first, exactly as a reader would.
+   */
+  const reopen = async (id) => {
+    await state().selectThread(null)
+    await state().selectThread(id)
+  }
+
   section('leaving a thread mid-reply and coming back')
   // The reply so far lives in the main process, not in whichever window was
   // showing it, so reopening the thread must show all of it — not just what
@@ -296,7 +308,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   persisted = [userRow, partial]
   liveStreams = [{ threadId: 't1', messageId: 'a9', content: 'The first half', reasoning: '' }]
 
-  await state().selectThread('t1')
+  await reopen('t1')
   const reopened = state().messages.find((m) => m.id === 'a9')
   check('the text streamed while away is restored', reopened.content === 'The first half', reopened.content)
   check('and it is still shown as streaming', reopened.status === 'streaming', reopened.status)
@@ -311,7 +323,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   // Nothing in flight: the stored row is authoritative and must not be clobbered.
   liveStreams = []
   persisted = [userRow, message({ id: 'a9', threadId: 't1', role: 'assistant', content: 'The whole reply.', status: 'complete' })]
-  await state().selectThread('t1')
+  await reopen('t1')
   check(
     'a finished reply loads whole from storage',
     state().messages.find((m) => m.id === 'a9').content === 'The whole reply.',
@@ -464,6 +476,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     path.join(__dirname, '..', '.test-build', 'store.js')
   )
 
+  await state().selectThread(null)
   opened.length = 0
   await state().selectThread('t1')
   check(

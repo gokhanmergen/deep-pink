@@ -158,18 +158,28 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
     generationId: 'gen-title'
   })
   check('the marker stays out of the transcript', repo.getMessages(thread.id).length === 2)
+  /*
+   * One, because a thread's length is how many times the reader spoke.
+   *
+   * It used to be every row that was not hidden, which meant a turn using four
+   * tools counted five and a re-request after them counted more still — a
+   * number that went up for reasons nobody watching the conversation would
+   * call a message. What a sidebar row reports is now only the questions, and
+   * this fixture holds one.
+   */
   check(
     'nor does it count towards the thread’s length',
-    repo.getThread(thread.id).messageCount === 2,
+    repo.getThread(thread.id).messageCount === 1,
     repo.getThread(thread.id).messageCount
   )
   check(
     'and the list agrees with the thread',
-    repo.listThreads().find((t) => t.id === thread.id).messageCount === 2
+    repo.listThreads().find((t) => t.id === thread.id).messageCount === 1
   )
+  // Of the three questions in the long thread, two were compacted away.
   check(
     'a compacted-away message is not counted either',
-    repo.getThread(long.id).messageCount === 3,
+    repo.getThread(long.id).messageCount === 1,
     repo.getThread(long.id).messageCount
   )
   check(
