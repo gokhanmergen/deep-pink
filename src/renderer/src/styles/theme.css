@@ -2020,17 +2020,24 @@ svg.lucide {
  * What the aside holds, ruled off down one side rather than boxed.
  *
  * It is quoted material — something said elsewhere, reproduced — and a rule
- * down the edge is how quoted material has always been marked. Bounded in
- * height because a trace or a tool result can be enormous and neither is the
- * thing you came to read.
+ * down the edge is how quoted material has always been marked.
+ *
+ * No longer four hundred pixels with its own scrollbar. A scrolling box inside
+ * a scrolling page takes the wheel for itself: with a trace open and the
+ * pointer where you opened it, the conversation stops moving until the trace
+ * reaches its own end. Measured on one: 420 pixels tall holding 1,188, which
+ * is nearly three screens of wheel going somewhere the reader did not aim it.
+ * That is what "opening and closing reasoning breaks the scrolling" is.
+ *
+ * So it is as tall as what is in it. A trace can be enormous, but it is on
+ * screen only because somebody asked to see it — and `LongText` already means
+ * its length costs layout only where it is actually being read.
  */
 .aside__body {
   animation: fade-in 0.14s ease-out;
   margin-top: var(--s2);
   padding-left: var(--s3);
   border-left: 2px solid var(--border);
-  max-height: 420px;
-  overflow: auto;
   font-size: var(--t-small);
   line-height: var(--lh-small);
   color: var(--text-dim);

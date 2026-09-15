@@ -738,6 +738,42 @@ export function ChatView(): React.JSX.Element {
     }
   }, [sizeTail, buildNearby])
 
+  /**
+   * Opening or closing a disclosure is the reader taking the wheel.
+   *
+   * The transcript reacts to its own size changing — it follows the end of a
+   * conversation while a reply arrives, and it holds whatever the landing put
+   * on screen while code blocks finish and heights settle. Neither of those
+   * should survive somebody clicking a reasoning trace open. A trace is
+   * hundreds of pixels; opening one at the end of a thread grew the page and
+   * the follow-the-end rule then scrolled to the bottom of what had just
+   * opened, which is the far end of the thing you asked to read. Measured at
+   * 654 pixels of jump on an ordinary one.
+   *
+   * So a toggle ends both. It is a deliberate act at a place the reader chose,
+   * and after it the only correct thing to do is nothing: the summary they
+   * clicked does not move, because what opens goes underneath it.
+   *
+   * `toggle` does not bubble, so it is listened for on the way down. One
+   * listener on the transcript catches every disclosure in it — traces, tool
+   * results, attachments, the compaction summary — rather than each of them
+   * having to remember to say so.
+   */
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const onToggle = (): void => {
+      pinnedToBottom.current = false
+      holding.current = null
+      applied.current = null
+      setAwayFromEnd(el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight * 0.6)
+    }
+
+    el.addEventListener('toggle', onToggle, true)
+    return () => el.removeEventListener('toggle', onToggle, true)
+  }, [])
+
   /*
    * And after any change to the transcript: a thread opened, a page read in
    * above, a reply growing as it arrives. A passive effect rather than a
