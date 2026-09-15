@@ -1092,8 +1092,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 checked={sync.config.scopes.settings}
                 onChange={(event) => void saveScopes({ settings: event.target.checked })}
               />
+              {/*
+                * The one sentence of explanation left in here on purpose.
+                *
+                * All the commentary under these settings went, because it
+                * belonged on a wiki page rather than on the screen. This is
+                * not commentary: it is a promise about where a secret goes,
+                * made at the moment of switching on the thing that would send
+                * it. Somebody weighing whether to sync their settings to a
+                * bucket is owed it here, not in a document.
+                */}
               <span>
-                Settings and MCP servers
+                Settings and MCP servers — never the OpenRouter key
               </span>
             </label>
             {sync.config.scopes.settings && (
