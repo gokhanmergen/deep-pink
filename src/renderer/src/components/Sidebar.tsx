@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { canBecomeTemporary, useStore } from '../store'
 import { prefetchThread } from '../prefetch'
 import { dateBucket, formatDateTime, formatRelativeShort, formatTokens, threadLabel } from '../format'
@@ -957,6 +957,44 @@ export function Sidebar(): React.JSX.Element {
    * it is only offered while the reply is still arriving or in the short window
    * after it where the name is being written.
    */
+  /**
+   * The moment the nearest naming window runs out, and a nudge to look again.
+   *
+   * `awaitingName` below asks what the time is, and nothing was telling the
+   * list when the answer would change. So a row that started shimmering went
+   * on shimmering after its two minutes were up — until something unrelated
+   * happened to re-render the sidebar, which on an app nobody is touching may
+   * be minutes away or may be never. Measured: a window that closed at zero
+   * was still shimmering forty seconds later, and only stopped at seventy when
+   * some other refresh came along.
+   *
+   * A promise that expires has to have something waiting for it to expire.
+   * One timer, for the soonest of them: when it fires the list renders, that
+   * row settles, and the next deadline — if there is one — is picked up on the
+   * way past. Threads that are still generating are left out, because their
+   * window is held open by that rather than by the clock, and its ending is
+   * itself a change the list hears about.
+   */
+  const [, nameWindowClosed] = useReducer((n: number) => n + 1, 0)
+  const nextNamingDeadline = ((): number | null => {
+    if (!namingEnabled) return null
+    const now = Date.now()
+    let soonest: number | null = null
+    for (const thread of threads) {
+      if (thread.title || thread.temporary || thread.messageCount === 0) continue
+      if (generatingThreadIds.includes(thread.id)) continue
+      const at = thread.updatedAt + NAMING_TAKES
+      if (at > now && (soonest === null || at < soonest)) soonest = at
+    }
+    return soonest
+  })()
+
+  useEffect(() => {
+    if (nextNamingDeadline === null) return
+    const timer = setTimeout(nameWindowClosed, Math.max(nextNamingDeadline - Date.now(), 0) + 50)
+    return () => clearTimeout(timer)
+  }, [nextNamingDeadline])
+
   const awaitingName = (thread: Thread): boolean =>
     namingEnabled &&
     !thread.title &&
