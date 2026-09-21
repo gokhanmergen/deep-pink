@@ -203,6 +203,20 @@ function spentOn(
   }
 }
 
+/**
+ * Of the sentences tied for the best score, the one that comes first.
+ *
+ * "Tied" is against the top score, not against the neighbour above — a
+ * chain of near-equal steps is a different thing from a tie, and would
+ * carry the mark somewhere nobody scored highly at all.
+ */
+export function earliestOfTheBest(ranked: { at: number; score: number }[]): { at: number; score: number }[] {
+  const best = ranked[0]
+  if (!best) return []
+  const tied = ranked.filter((line) => line.score >= best.score - NEARLY)
+  return [tied.reduce((first, line) => (line.at < first.at ? line : first), tied[0])]
+}
+
 /** A `Usage` from the parts a one-shot request actually knows. */
 function usageOf(
   input: number,
@@ -330,7 +344,26 @@ async function askEachSentence(
   const ranked = scored.sort((a, b) => b.score - a.score)
   const taken =
     asked <= 1
-      ? ranked.slice(0, 1)
+      ? /*
+         * The first time the answer is given, not the best-scoring time.
+         *
+         * Models of a certain style answer at the top, explain in the middle
+         * and restate at the bottom, and the restatement is the crisper
+         * sentence of the two — it was written to be a summary. Scored on
+         * "does this answer what was asked" they come out level, and level
+         * with the closing one a hair ahead: measured on a real reply
+         * (2026-09-21) the closing "so the short answer: yes, the traditional
+         * and majority position is…" took 0.93 and the opening sentence
+         * saying the same thing took 0.90. Marking the 0.93 put the highlight
+         * at 93% of the way down a reply whose answer was in the first line.
+         *
+         * So among the sentences that are effectively tied for best, the
+         * earliest wins. Compared against the best score rather than chained
+         * down from it, so a long reply of similar sentences cannot walk the
+         * mark to the top of the page: here 0.87 is outside the window and
+         * the choice is between the two that are genuinely the same answer.
+         */
+        earliestOfTheBest(ranked)
       : // The cut the count asks for, and then whatever is level with it.
         ranked.filter(
           (line) => line.score >= (ranked[Math.min(asked, ranked.length) - 1]?.score ?? 1) - NEARLY
@@ -390,7 +423,9 @@ export async function askKeyPoint(
             instructions:
               'Which single sentence most directly answers what the reader asked? ' +
               'If they asked one question, this is the one sentence that answers it — ' +
-              'not the setup for it, not an example of it.',
+              'not the setup for it, not an example of it. If the reply gives the ' +
+              'answer more than once, choose the first time it is given, not the ' +
+              'summary of it at the end.',
             criteria
           }
         }
@@ -482,7 +517,9 @@ export async function askKeyPointViaModel(
           content:
             'You are given a question somebody asked, and the sentences of the answer ' +
             `they got, numbered. Reply with ${wanted}, and nothing else. Skip examples, ` +
-            'asides, and sentences that restate another. Reply with 0 if no sentence ' +
+            'asides, and sentences that restate another — where the same answer is ' +
+            'given twice, the first one is the answer and the later one is the ' +
+            'restatement, so give the lower number. Reply with 0 if no sentence ' +
             'stands out. Numbers only.'
         },
         {

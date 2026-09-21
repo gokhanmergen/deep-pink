@@ -74,6 +74,8 @@ or a sentence that only sets up the next one.`
 up, not an example of it, and not a summary of the whole reply. If they asked \
 several things, mark the answer to the first.`
 }
+- Where you answer at the top and say it again at the end, mark the first one. \
+The opening answer is the answer; the closing one is a summary of it.
 - Copy each sentence exactly as you wrote it, punctuation and all. Do not shorten it, \
 reword it, or re-punctuate it.
 - Take ${

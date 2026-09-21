@@ -259,6 +259,53 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
     subject.keyPointPrompt(1).slice(0, 200)
   )
 
+  /*
+   * Which of two sentences saying the same thing gets the mark.
+   *
+   * A model that answers at the top, explains in the middle and restates at
+   * the bottom writes its crispest sentence last — it was written to be a
+   * summary — so scored on "does this answer what was asked" the closing one
+   * comes out a hair ahead. Measured on a real reply (2026-09-21): the
+   * closing "so the short answer: yes…" took 0.93 and the opening sentence
+   * saying the same thing took 0.90, and the mark landed 93% of the way down
+   * a reply whose answer was in the first line.
+   */
+  section('the first statement of an answer, not the best-scoring one')
+  const pick = (ranked) => subject.earliestOfTheBest(ranked)[0]?.at
+
+  check(
+    'a closing restatement loses to the opening answer it restates',
+    pick([
+      { at: 9, score: 0.93 },
+      { at: 0, score: 0.9 },
+      { at: 3, score: 0.87 }
+    ]) === 0
+  )
+  // Not a chain: 0.87 is within 0.05 of 0.90 but not of the 0.93 at the top,
+  // so it is not in the tie and cannot drag the mark further up the page.
+  check(
+    'a run of near-equal scores does not walk the mark to the top',
+    pick([
+      { at: 9, score: 0.95 },
+      { at: 5, score: 0.91 },
+      { at: 0, score: 0.87 }
+    ]) === 5
+  )
+  check(
+    'a clear winner is still the winner, wherever it sits',
+    pick([
+      { at: 7, score: 0.94 },
+      { at: 0, score: 0.4 }
+    ]) === 7
+  )
+  check('one candidate is that candidate', pick([{ at: 2, score: 0.8 }]) === 2)
+  check('and nothing scored is nothing marked', subject.earliestOfTheBest([]).length === 0)
+  check('it never returns more than one', subject.earliestOfTheBest([
+    { at: 0, score: 0.9 },
+    { at: 1, score: 0.9 },
+    { at: 2, score: 0.9 }
+  ]).length === 1)
+
   section('HTML extraction')
   const text = htmlToText(
     '<html><head><style>a{}</style></head><body><nav>skip</nav><h2>Title</h2>' +
