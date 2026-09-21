@@ -7,6 +7,7 @@ export { groupIntoTurns, isEmptyAssistantMessage } from '@renderer/turns'
 export { matchesBinding, parseBinding, formatBinding } from '@renderer/keybinds'
 export { landingPoint, tailHeight } from '@renderer/landing'
 export { fencedCode } from '@renderer/fences'
+export { buildActions } from '@renderer/actions'
 export {
   isPlausibleMath,
   remarkOnlyPlausibleMath,

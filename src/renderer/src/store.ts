@@ -29,6 +29,7 @@ export type Overlay =
   | 'defaultModel'
   | 'titleModel'
   | 'pregenTitleModel'
+  | 'keyPointModel'
   | 'providers'
   | 'prompt'
   | 'threadStats'
@@ -1750,7 +1751,9 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
        * round of a turn: a reply that is about to call a tool is not the
        * answer yet, and asking about it would be asking about a fragment.
        */
-      if (!stillWorking && useStore.getState().settings?.keyPointEnabled) {
+      const wantsKey = useStore.getState().settings
+      if (!stillWorking && wantsKey?.keyPointEnabled && wantsKey.keyPointSource !== 'self') {
+        // `self` needs nobody: the sentence arrived with the reply.
         wantKeyPoint(event.messageId)
       }
       break

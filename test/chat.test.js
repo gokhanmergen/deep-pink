@@ -123,6 +123,49 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
     ])[0].role === 'system'
   )
 
+  section('the model naming its own key sentence')
+  /*
+   * An HTML comment, because `react-markdown` is never given `rehype-raw` and
+   * so never renders raw HTML: the marker is invisible from the first
+   * character streamed, with no moment where the reader watches the model
+   * write scaffolding. It is taken out of the text all the same — invisible
+   * is not the same as gone, and it would otherwise travel into an export, a
+   * copy to the clipboard, and the next turn's context.
+   */
+  const marked = subject.takeKeyPointMarker('The answer is 42.\n\n<!--key: The answer is 42.-->')
+  check('the sentence comes out', marked.keyPoint === 'The answer is 42.', marked.keyPoint)
+  check('and the comment comes out of the reply', marked.content === 'The answer is 42.', marked.content)
+
+  const spaced = subject.takeKeyPointMarker('Body.\n<!--  key:   A sentence.  -->')
+  check('however it was spaced', spaced.keyPoint === 'A sentence.', spaced.keyPoint)
+
+  const bold = subject.takeKeyPointMarker('Use **LUKS**.\n<!--key: Use **LUKS**.-->')
+  check(
+    'a sentence keeps the markdown it was written with',
+    bold.keyPoint === 'Use **LUKS**.',
+    bold.keyPoint
+  )
+
+  const none = subject.takeKeyPointMarker('Nothing marked here.')
+  check('a reply with no marker names nothing', none.keyPoint === null)
+  check('and is handed back untouched', none.content === 'Nothing marked here.')
+
+  const empty = subject.takeKeyPointMarker('Body.\n<!--key: -->')
+  check('an empty marker names nothing', empty.keyPoint === null, empty.keyPoint)
+
+  // A reply may talk about HTML comments without meaning this one.
+  const innocent = subject.takeKeyPointMarker('Write <!-- a comment --> like so.')
+  check(
+    'an unrelated comment is left alone',
+    innocent.keyPoint === null && innocent.content === 'Write <!-- a comment --> like so.',
+    innocent
+  )
+
+  check(
+    'and the instruction actually asks for that shape',
+    subject.KEY_POINT_PROMPT.includes('<!--key:')
+  )
+
   section('HTML extraction')
   const text = htmlToText(
     '<html><head><style>a{}</style></head><body><nav>skip</nav><h2>Title</h2>' +

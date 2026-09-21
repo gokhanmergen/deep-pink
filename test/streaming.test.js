@@ -13,6 +13,8 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   const chatListeners = []
   /** Threads the main process would admit to working on. */
   const reallyGenerating = new Set()
+  /** What each `chat.send` was asked to regenerate from. */
+  const askedFrom = []
   const mcpListeners = []
   const syncListeners = []
   const syncStateListeners = []
@@ -153,6 +155,10 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
         // itself against this, so a suite without it strands the check.
         generating: async () => [...reallyGenerating],
         liveStreams: async () => liveStreams,
+        /** Every turn asked for, so a shortcut can be checked by what it sent. */
+        send: async (req) => {
+          askedFrom.push(req.regenerateFromMessageId ?? null)
+        },
         onEvent: (fn) => {
           chatListeners.push(fn)
           return () => chatListeners.splice(chatListeners.indexOf(fn), 1)
@@ -514,6 +520,46 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   )
   reallyGenerating.clear()
   emit({ type: 'done', messageId: 'live-1', message: message({ id: 'live-1', threadId: 't1', role: 'assistant', content: 'done' }) })
+
+  section('regenerating, when there is nothing to regenerate')
+  /*
+   * A turn stopped before it produced anything leaves no assistant message at
+   * all — the empty one is withdrawn — so the last thing in the conversation
+   * is the question, and the transcript offers "Ask again". The shortcut for
+   * the same thing looked for the newest assistant message and did nothing
+   * when there was none: the button worked and the keystroke silently did
+   * not.
+   *
+   * And in a thread with history it was worse than nothing. The newest
+   * assistant message was then one from an earlier exchange, and regenerating
+   * that throws away everything after it — including the question nobody had
+   * answered.
+   */
+  const pressRegenerate = async (messages) => {
+    askedFrom.length = 0
+    useStore.setState({ activeThreadId: 't1', messages })
+    buildActions(state()).find((a) => a.id === 'message.regenerate').run()
+    await settle(40)
+    return askedFrom[0] ?? null
+  }
+
+  const q1 = message({ id: 'q1', threadId: 't1', role: 'user', content: 'first' })
+  const a1 = message({ id: 'a1', threadId: 't1', role: 'assistant', content: 'answered' })
+  const q2 = message({ id: 'q2', threadId: 't1', role: 'user', content: 'second' })
+
+  check(
+    'a reply at the end is regenerated',
+    (await pressRegenerate([q1, a1])) === 'q1'
+  )
+  check(
+    'a question nobody answered is asked again',
+    (await pressRegenerate([q1])) === 'q1'
+  )
+  check(
+    'and after an earlier exchange it is that question, not the old reply',
+    (await pressRegenerate([q1, a1, q2])) === 'q2'
+  )
+  check('an empty thread asks for nothing', (await pressRegenerate([])) === null)
 
   section('a thread reopens where it was left')
   const { rememberPlace, placeOf, forgetPlace } = require(

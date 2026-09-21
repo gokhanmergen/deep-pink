@@ -189,6 +189,30 @@ const PAD_Y = 2
 const PAD_X = 4
 
 /**
+ * The same sentence, whatever it is wearing.
+ *
+ * Exactly, first. Then without the markdown, because two of the three ways a
+ * sentence can be chosen hand back something written rather than something
+ * read: a model told to copy a sentence verbatim copies it out of its own
+ * reply, asterisks and backticks and all, and none of those characters exist
+ * in the text on the page. Jev is given the rendered sentences and so returns
+ * one, but the other two are not, and a highlight that silently never
+ * appeared for them would look like the feature simply not working.
+ */
+function bare(text: string): string {
+  return text.replace(/[*_`~]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function match(candidates: Candidate[], sentence: string): Candidate | undefined {
+  const exact = candidates.find((candidate) => candidate.text === sentence)
+  if (exact) return exact
+
+  const wanted = bare(sentence)
+  if (!wanted) return undefined
+  return candidates.find((candidate) => bare(candidate.text) === wanted)
+}
+
+/**
  * Where to draw the highlighter over a reply, or nothing if the sentence is
  * not on this page.
  *
@@ -205,7 +229,7 @@ const PAD_X = 4
 export function strokesFor(body: Element, sentence: string | null): Stroke[] {
   if (!sentence) return []
 
-  const hit = sentencesIn(body).find((candidate) => candidate.text === sentence)
+  const hit = match(sentencesIn(body), sentence)
   if (!hit) return []
 
   const base = body.getBoundingClientRect()

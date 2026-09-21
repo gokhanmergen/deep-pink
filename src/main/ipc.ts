@@ -27,7 +27,7 @@ import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
-import { askKeyPoint } from './providers/typesafe'
+import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { loadSettings, saveSettings } from './settings'
 import { isEncryptionAvailable, setApiKey } from './secrets'
 
@@ -602,7 +602,21 @@ export function registerIpc(): void {
   ipcMain.handle(
     'messages:keyPoint',
     async (_e, messageId: string, reply: string, candidates: string[]) => {
-      const found = await askKeyPoint(reply, candidates)
+      const settings = loadSettings()
+      /*
+       * `self` never reaches here: in that mode the model named its own
+       * sentence while writing, the engine took it out of the text, and there
+       * is nothing left to ask. The renderer knows not to call, and this is
+       * the second lock on the same door — a stale window would otherwise pay
+       * for a request whose answer is already stored.
+       */
+      const found =
+        settings.keyPointSource === 'model'
+          ? await askKeyPointViaModel(candidates, settings.keyPointModel)
+          : settings.keyPointSource === 'jev'
+            ? await askKeyPoint(reply, candidates)
+            : null
+      if (settings.keyPointSource === 'self') return null
       // Recorded either way: null is an answer, and writing it stops the same
       // question being asked again every time the thread is opened.
       repo.setKeyPoint(messageId, found?.text ?? null)

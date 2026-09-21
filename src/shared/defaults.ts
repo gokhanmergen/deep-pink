@@ -196,6 +196,10 @@ export const DEFAULT_SETTINGS: Settings = {
   chartsEnabled: false,
   docsEnabled: false,
   keyPointEnabled: false,
+  keyPointSource: 'jev',
+  // The same small, cheap model the app names threads with. Only consulted
+  // when the source is `model`.
+  keyPointModel: 'google/gemma-3-12b-it',
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,

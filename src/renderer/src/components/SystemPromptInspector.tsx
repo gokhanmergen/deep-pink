@@ -16,7 +16,8 @@ const SOURCE_LABEL: Record<SystemPromptSegment['source'], string> = {
   compaction: 'Compaction',
   datetime: 'Built-in',
   charts: 'Charts',
-  docs: 'Documents'
+  docs: 'Documents',
+  keyPoint: 'Key sentence'
 }
 
 /**

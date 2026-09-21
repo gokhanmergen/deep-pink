@@ -250,6 +250,7 @@ export type SystemPromptSource =
   | 'datetime'
   | 'charts'
   | 'docs'
+  | 'keyPoint'
 
 export interface SystemPromptSegment {
   /** Stable id so a segment can be toggled off and remembered. */
@@ -524,6 +525,8 @@ export interface CompactionSettings {
  * Settings
  * ------------------------------------------------------------------ */
 
+export type KeyPointSource = 'jev' | 'model' | 'self'
+
 export interface Settings {
   /** Whether an OpenRouter key is stored. The key itself never crosses IPC. */
   hasApiKey: boolean
@@ -565,6 +568,19 @@ export interface Settings {
    * who did not ask for one should not be paying for one.
    */
   keyPointEnabled: boolean
+  /**
+   * Who decides which sentence matters.
+   *
+   * `jev` asks a decision model, which is the only one of the three that
+   * returns a probability for every candidate and so the only one that can
+   * say "nothing here stands out" and mean it. `model` asks an ordinary chat
+   * model of your choosing, which will almost always pick something. `self`
+   * asks nobody: the model writing the reply names its own sentence as it
+   * goes, so there is no second request at all.
+   */
+  keyPointSource: KeyPointSource
+  /** The chat model asked, when `keyPointSource` is `model`. */
+  keyPointModel: string
   web: WebSearchSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */

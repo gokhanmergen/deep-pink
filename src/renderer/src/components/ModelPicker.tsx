@@ -11,7 +11,7 @@ interface Props {
    * have been answered, and 'pregenTitle' the one that names them from the
    * question while the answer is still arriving.
    */
-  mode: 'chat' | 'title' | 'pregenTitle' | 'default'
+  mode: 'chat' | 'title' | 'pregenTitle' | 'default' | 'keyPoint'
   onClose: () => void
 }
 
@@ -37,13 +37,15 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   const current =
-    mode === 'title'
-      ? settings?.titleModel
-      : mode === 'pregenTitle'
-        ? settings?.titlePregenModel
-        : mode === 'default'
-          ? settings?.defaultModel
-          : thread?.config.model ?? settings?.defaultModel
+    mode === 'keyPoint'
+      ? settings?.keyPointModel
+      : mode === 'title'
+        ? settings?.titleModel
+        : mode === 'pregenTitle'
+          ? settings?.titlePregenModel
+          : mode === 'default'
+            ? settings?.defaultModel
+            : thread?.config.model ?? settings?.defaultModel
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -65,7 +67,10 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   }, [cursor])
 
   const choose = async (modelId: string): Promise<void> => {
-    if (mode === 'title') {
+    if (mode === 'keyPoint') {
+      await saveSettings({ keyPointModel: modelId })
+      showToast(`Key sentences will be picked by ${modelShortName(modelId)}`)
+    } else if (mode === 'title') {
       await saveSettings({ titleModel: modelId })
       showToast(`Thread names will use ${modelShortName(modelId)}`)
     } else if (mode === 'pregenTitle') {

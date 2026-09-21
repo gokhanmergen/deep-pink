@@ -1,4 +1,6 @@
 import { getSecret } from '../secrets'
+import { complete } from './openrouter'
+import { loadSettings } from '../settings'
 
 /**
  * Jev, TypeSafe's System One model, asked which sentence of a reply matters.
@@ -34,6 +36,7 @@ const MOST_CANDIDATES = 200
 
 /** Past this a sentence is a paragraph, and describing it in full is waste. */
 const LONGEST_OPTION = 300
+
 
 /**
  * How far ahead the winner has to be.
@@ -128,6 +131,81 @@ export async function askKeyPoint(
   } catch {
     // Offline, rate limited, or an account without the beta. The reply is
     // already on screen and complete; this was only ever going to add to it.
+    return null
+  }
+}
+
+
+/**
+ * The same question, put to an ordinary chat model.
+ *
+ * Offered because not everybody wants a second vendor in the loop for this,
+ * and because somebody may simply prefer a model they already trust. It is a
+ * worse instrument and the difference is worth being clear about: a chat model
+ * returns a number and nothing else, so there is no distribution to read and
+ * no way to tell a confident answer from a shrug. Jev's gate — the winner has
+ * to be clearly ahead of the runner-up — has no equivalent here. What stands
+ * in for it is the model's own option to answer 0.
+ *
+ * Numbered rather than quoted back, because a model asked to repeat a
+ * sentence verbatim will tidy it, and a sentence that has been tidied cannot
+ * be found again on the page.
+ */
+export async function askKeyPointViaModel(
+  candidates: string[],
+  model: string
+): Promise<KeyPoint | null> {
+  if (candidates.length < 2) return null
+
+  const offered = candidates.slice(0, MOST_CANDIDATES)
+  const numbered = offered
+    .map((sentence, at) => `${at + 1}. ${sentence.slice(0, LONGEST_OPTION)}`)
+    .join('\n')
+
+  try {
+    const settings = loadSettings()
+    const result = await complete({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are given the sentences of an answer, numbered. Reply with the number of ' +
+            'the single most important sentence for the reader to take away, and nothing ' +
+            'else. Reply with 0 if no single sentence stands out. Reply with a number only.'
+        },
+        { role: 'user', content: numbered }
+      ],
+      temperature: 0,
+      maxTokens: 8,
+      providerRouting: settings.modelProviderRouting[model] ?? null,
+      attribution: settings.sendAppAttribution
+    })
+
+    const picked = Number(/-?\d+/.exec(result.content)?.[0])
+    if (!Number.isInteger(picked) || picked < 1 || picked > offered.length) {
+      return null
+    }
+
+    return {
+      text: offered[picked - 1],
+      // No distribution to read, and saying otherwise would be inventing one.
+      probability: 0,
+      costUsd: result.usage.costUsd
+    }
+  } catch {
+    /*
+     * No mark, and no second attempt.
+     *
+     * Every failure seen in testing was a 429 from the cheap model this
+     * defaults to — asking four times in under two seconds got three of
+     * them. A retry was the obvious answer and made it worse: it doubles the
+     * rate at exactly the moment the service is saying there is too much of
+     * it, and the same burst then failed four times out of four instead of
+     * two. One reply at a time is nothing like that load.
+     *
+     * The failure is benign either way. A reply with no mark is the reply.
+     */
     return null
   }
 }

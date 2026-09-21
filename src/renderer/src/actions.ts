@@ -278,9 +278,31 @@ export function buildActions(): AppAction[] {
       id: 'message.regenerate',
       label: 'Regenerate the last reply',
       group: 'Messages',
+      /*
+       * Or ask again, when there is no reply to regenerate.
+       *
+       * A turn stopped before it produced anything leaves no assistant message
+       * at all — the empty one is withdrawn — so the last thing in the
+       * conversation is the question. This looked for the newest assistant
+       * message and did nothing when there was none, which is exactly the
+       * moment the transcript is offering an "Ask again" button for: the
+       * button worked and the shortcut for the same thing quietly did not.
+       *
+       * Worse than nothing, in a thread with history: the newest assistant
+       * message was then one from an *earlier* exchange, and regenerating that
+       * throws away everything after it, including the question nobody had
+       * answered yet.
+       *
+       * So it asks the same thing the transcript asks — what is at the end of
+       * the conversation — and does what that calls for.
+       */
       run: () => {
-        const last = [...store.messages].reverse().find((m) => m.role === 'assistant')
-        if (last) void store.regenerate(last.id)
+        const last = [...store.messages]
+          .reverse()
+          .find((m) => m.role === 'assistant' || m.role === 'user')
+        if (!last) return
+        if (last.role === 'user') void store.resendFrom(last.id)
+        else void store.regenerate(last.id)
       }
     },
     {

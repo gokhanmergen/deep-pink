@@ -1,6 +1,7 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
 import { DOCS_PROMPT } from '@shared/docs'
+import { KEY_POINT_PROMPT } from '@shared/keyPointPrompt'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
@@ -116,6 +117,19 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
       label: 'Multiple documents',
       origin: 'Deep Pink',
       text: DOCS_PROMPT,
+      removable: true
+    })
+  }
+
+  // With the others that say what a reply may *be*. This one asks for one
+  // extra line at the end of it and changes nothing else.
+  if (settings.keyPointEnabled && settings.keyPointSource === 'self') {
+    push({
+      id: 'keyPoint',
+      source: 'keyPoint',
+      label: 'Key sentence',
+      origin: 'Deep Pink',
+      text: KEY_POINT_PROMPT,
       removable: true
     })
   }

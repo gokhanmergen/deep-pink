@@ -832,18 +832,78 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span>Mark the most important sentence of a reply</span>
               <Revert path="keyPointEnabled" what="marking the key sentence" />
             </label>
-            {/*
-              * Kept, where the rest of the commentary in here went, for the
-              * same reason the sync panel keeps its one line: this is not an
-              * explanation of the switch, it is where the reply goes and what
-              * it costs. Neither is guessable from "mark the most important
-              * sentence", and one of them is a second company.
-              */}
             {settings.keyPointEnabled && (
-              <p className="field__hint">
-                Sends each finished reply to Jev, a decision model from TypeSafe — not the
-                model that wrote it. About $0.00006 a reply.
-              </p>
+              <>
+                <div className="field">
+                  <FieldLabel path="keyPointSource" what="who picks the sentence">
+                    Who picks it
+                  </FieldLabel>
+                  <select
+                    className="input"
+                    value={settings.keyPointSource}
+                    onChange={(event) =>
+                      void saveSettings({
+                        keyPointSource: event.target.value as Settings['keyPointSource']
+                      })
+                    }
+                  >
+                    <option value="jev">Jev, a decision model</option>
+                    <option value="model">A model of my choosing</option>
+                    <option value="self">The model that wrote the reply</option>
+                  </select>
+                </div>
+
+                {/*
+                  * One line each, kept where the rest of the commentary in
+                  * here went, and for the same reason the sync panel keeps
+                  * its one line: none of these is an explanation of the
+                  * control, they are where the reply goes, what it costs, and
+                  * what each choice is worse at. None of it is guessable from
+                  * a list of three names, and one of the three sends every
+                  * reply to a second company.
+                  */}
+                {settings.keyPointSource === 'jev' && (
+                  <p className="field__hint">
+                    Sends each finished reply to Jev, from TypeSafe — not the model that
+                    wrote it. About $0.00006 a reply. Alone of the three it scores every
+                    sentence, so it can say nothing stands out, and often does.
+                  </p>
+                )}
+
+                {settings.keyPointSource === 'model' && (
+                  <>
+                    <div className="field">
+                      <FieldLabel path="keyPointModel" what="the model that picks">
+                        Model
+                      </FieldLabel>
+                      <div className="row">
+                        <button
+                          className="btn"
+                          onClick={() => setOverlay('keyPointModel', 'settings')}
+                          type="button"
+                        >
+                          {modelShortName(settings.keyPointModel)}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="field__hint">
+                      A second request per reply, priced by whichever model you pick. It
+                      answers with a number and nothing else, so unlike Jev there is no way
+                      to tell a confident choice from a shrug — expect it to mark something
+                      in almost every reply.
+                    </p>
+                  </>
+                )}
+
+                {settings.keyPointSource === 'self' && (
+                  <p className="field__hint">
+                    No second request and no second model: a line is added to the system
+                    prompt asking for the sentence, and the reply names its own. Costs a
+                    few tokens a turn instead, and a model that ignores the instruction
+                    simply marks nothing.
+                  </p>
+                )}
+              </>
             )}
           </>
         )}
