@@ -1411,20 +1411,72 @@ svg.lucide {
 }
 
 /*
- * The sentence a decision model picked out of a reply.
+ * The sentence a decision model picked out of a reply, in highlighter.
  *
- * Drawn with the CSS Custom Highlight API rather than a `<mark>` wrapped
- * around the words: the reply is React's, and a range laid over it needs no
- * element at all — it crosses bold, links and inline code without any of them
- * having to be split, and taking it away is forgetting a range.
+ * Bands drawn over the text rather than a colour behind it, one per line the
+ * sentence covers, because a highlighter is a shape and not a colour: it is
+ * wider than the letters, its ends are round, it is never quite level, and it
+ * runs on a little past the last word. The CSS Custom Highlight API can do
+ * none of that — it colours text and its background and stops there.
  *
- * A wash rather than a block of colour. The sentence is still the same
- * sentence and still part of the paragraph around it; what is wanted is the
- * eye landing there first, not a label stuck over the text.
+ * `screen` is what makes it read as ink rather than as paint. The band is a
+ * deep blue and the page under it is nearly black, so screening lifts the
+ * background to a strong blue while the near-white text stays near-white and
+ * legible. Painting it flat over the top dimmed the words; putting it behind
+ * meant putting it behind the message's own surface, where it barely showed.
+ *
+ * The gradient is ink pooling: heavier where the pen pressed at either end of
+ * the stroke, thinner where it lifted.
  */
-::highlight(key-point) {
-  background-color: var(--accent-dim);
-  color: var(--text);
+.ink {
+  position: absolute;
+  inset: 0;
+  /* Nothing here can be clicked, selected or read aloud. */
+  pointer-events: none;
+}
+
+.ink__stroke {
+  position: absolute;
+  transform-origin: left center;
+  background: linear-gradient(
+    97deg,
+    rgba(41, 98, 255, 0.34) 0%,
+    rgba(41, 98, 255, 0.78) 14%,
+    rgba(41, 98, 255, 0.62) 55%,
+    rgba(41, 98, 255, 0.82) 88%,
+    rgba(41, 98, 255, 0.3) 100%
+  );
+  /* The halo that makes the eye land here before anywhere else on the page. */
+  box-shadow: 0 0 14px rgba(41, 98, 255, 0.45);
+  mix-blend-mode: screen;
+  /*
+   * Drawn on, left to right, one line after the last — which is the whole of
+   * why it reads as somebody highlighting rather than as a box appearing.
+   *
+   * A transition and not an animation, because the two fail in opposite
+   * directions. An animation held at its first frame holds a stroke clipped
+   * to nothing, and a stroke clipped to nothing is no mark at all: measured
+   * in a window whose compositor was not advancing, every stroke sat
+   * invisible while reporting `animation-play-state: running`. A transition
+   * that never runs simply arrives at its end value, which is the mark. The
+   * flourish may be lost; the mark may not.
+   */
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 340ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ink[data-drawn='true'] .ink__stroke {
+  clip-path: inset(0 0 0 0);
+}
+
+/*
+ * Switched off, the stroke is simply there.
+ *
+ * The drawing-on is the flourish; the mark is the point, and a reader who has
+ * turned motion off still needs to see which sentence was chosen.
+ */
+[data-animations='off'] .ink__stroke {
+  transition: none;
 }
 
 /*
@@ -1855,6 +1907,8 @@ svg.lucide {
 .message__body {
   color: var(--text);
   overflow-wrap: anywhere;
+  /* Positioned, so the highlighter can be laid out against it. */
+  position: relative;
 }
 
 /*

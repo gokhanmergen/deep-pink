@@ -8,11 +8,16 @@
  * never reach the screen, so a sentence taken from it would carry asterisks
  * and backticks that no text node contains.
  *
- * The mark itself is a `Range` registered with the CSS Custom Highlight API,
- * not an element wrapped around anything. Nothing in the DOM React owns is
- * touched, a range crosses bold and links and inline code without caring, and
- * turning the highlight off is forgetting a range rather than re-rendering a
- * message.
+ * The mark is drawn rather than applied. A `Range` finds where the sentence
+ * is and reports a rectangle per line it covers; the reply renders a band over
+ * each. Nothing in the DOM React owns is touched and a range crosses bold,
+ * links and inline code without caring.
+ *
+ * Drawn rather than set as a highlight because a highlighter is a shape. The
+ * CSS Custom Highlight API can colour text and its background and almost
+ * nothing else — no rounded ends, no tilt, no glow, and no way to make the
+ * stroke arrive across the line — and all of those are what separate a marker
+ * pen from a selection.
  */
 
 /** What a sentence can live inside. A sentence never spans two of these. */
@@ -30,9 +35,6 @@ const NOT_PROSE = '.codeblock, .chartblock, .docsblock, .katex, pre, code, butto
 
 /** Below this a sentence is a fragment — a label, a lead-in, a list marker. */
 const SHORTEST = 40
-
-/** The name the stylesheet knows this highlight by. */
-const REGISTRY = 'key-point'
 
 interface Span {
   node: Text
@@ -127,42 +129,96 @@ export function sentencesIn(body: Element): Candidate[] {
 }
 
 /**
- * Marks a sentence in a reply, and says whether it could be found.
+ * One line's worth of highlighter, as a box to draw.
  *
- * Every highlight in the app lives in one registry, keyed by the element it
- * belongs to, so a reply scrolling away or being rebuilt takes its own mark
- * with it and leaves everyone else's alone.
+ * A sentence that wraps is several of these — a pen crossing three lines
+ * makes three strokes, not one tall rectangle — which is why this is per
+ * client rect rather than per range.
  */
-const marked = new Map<Element, Range>()
-
-function republish(): void {
-  if (!('highlights' in CSS)) return
-  const ranges = [...marked.values()]
-  if (!ranges.length) {
-    CSS.highlights.delete(REGISTRY)
-    return
-  }
-  CSS.highlights.set(REGISTRY, new Highlight(...ranges))
+export interface Stroke {
+  left: number
+  top: number
+  width: number
+  height: number
+  /** Degrees. Nobody draws a perfectly level line. */
+  tilt: number
+  /** Elliptical corners, so the ends read as ink rather than as a box. */
+  radius: string
+  /** Milliseconds before this line is drawn, so the pen crosses them in turn. */
+  delay: number
 }
 
-export function markKeyPoint(body: Element, sentence: string | null): boolean {
-  marked.delete(body)
+/** Rects within this many pixels of each other are the same line of text. */
+const SAME_LINE = 3
 
-  if (!sentence || !('highlights' in CSS)) {
-    republish()
-    return false
+/**
+ * One box per line, out of the many a range reports.
+ *
+ * `getClientRects` gives a rectangle per *inline box*, not per line, so every
+ * bold run, link and piece of inline code inside the sentence starts another
+ * one. A sentence of eleven such fragments was eleven separate strokes, each
+ * with its own tilt and rounded ends and its own moment of being drawn — a row
+ * of disconnected blobs rather than a pen crossing the line. Merged by the
+ * line they sit on, a stroke runs through the bold words instead of stopping
+ * at them.
+ */
+function perLine(rects: DOMRect[]): { left: number; top: number; right: number; bottom: number }[] {
+  const lines: { left: number; top: number; right: number; bottom: number }[] = []
+
+  for (const rect of rects) {
+    const line = lines.find((seen) => Math.abs(seen.top - rect.top) <= SAME_LINE)
+    if (!line) {
+      lines.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom })
+      continue
+    }
+    line.left = Math.min(line.left, rect.left)
+    line.right = Math.max(line.right, rect.right)
+    line.top = Math.min(line.top, rect.top)
+    line.bottom = Math.max(line.bottom, rect.bottom)
   }
+
+  return lines.sort((a, b) => a.top - b.top)
+}
+
+/** How much taller than the text the band is: a pen is wider than a glyph. */
+const BLEED = 3
+
+/** How far past the last word the stroke runs on. */
+const OVERSHOOT = 6
+
+/**
+ * Where to draw the highlighter over a reply, or nothing if the sentence is
+ * not on this page.
+ *
+ * Positions are relative to the body, so the strokes move with the text and
+ * only need working out again when the text reflows.
+ *
+ * The wobble is derived from the line's index rather than randomised: a stroke
+ * that tilted a different way each time React re-rendered would be a stroke
+ * nobody could read.
+ */
+export function strokesFor(body: Element, sentence: string | null): Stroke[] {
+  if (!sentence) return []
 
   const hit = sentencesIn(body).find((candidate) => candidate.text === sentence)
-  if (hit) marked.set(body, hit.range)
-  republish()
-  return Boolean(hit)
-}
+  if (!hit) return []
 
-/** Forgets a reply's mark, when it is scrolled away or the thread is left. */
-export function forgetKeyPoint(body: Element): void {
-  if (!marked.delete(body)) return
-  republish()
+  const base = body.getBoundingClientRect()
+  const lines = perLine([...hit.range.getClientRects()].filter((rect) => rect.width > 1))
+
+  return lines.map((rect, at) => {
+    const last = at === lines.length - 1
+    const lean = at % 2 === 0
+    return {
+      left: rect.left - base.left - 4,
+      top: rect.top - base.top - BLEED + (lean ? 0.5 : -0.5),
+      width: rect.right - rect.left + 4 + (last ? OVERSHOOT : 3),
+      height: rect.bottom - rect.top + BLEED * 2,
+      tilt: lean ? 0.28 : -0.34,
+      radius: lean ? '10px 6px 8px 12px / 60% 45% 55% 40%' : '7px 11px 13px 6px / 45% 60% 40% 55%',
+      delay: at * 90
+    }
+  })
 }
 
 /**

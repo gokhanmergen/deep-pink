@@ -7,7 +7,7 @@ import { LongText } from './LongText'
 import { useStore } from '../store'
 import { isEmptyAssistantMessage } from '../turns'
 import { estimateTurnHeight } from '../messageHeight'
-import { forgetKeyPoint, markKeyPoint, sentencesIn, takeKeyPointWish } from '../keyPoint'
+import { sentencesIn, strokesFor, takeKeyPointWish, type Stroke } from '../keyPoint'
 import { formatCost, formatDuration, formatTokens, modelShortName } from '../format'
 
 /**
@@ -160,16 +160,75 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
     void useStore.getState().findKeyPoint(message.id, message.content, candidates)
   }, [message.id, message.content, streaming])
 
+  /*
+   * Where to draw, worked out from the page and redrawn when the page moves.
+   *
+   * The strokes are positions, so they are wrong the moment the text reflows
+   * — the window resized, the measure changed, a code block finished
+   * highlighting and pushed a paragraph down. The observer is on the body
+   * itself, which is the thing whose shape decides all of that.
+   */
+  const [strokes, setStrokes] = useState<Stroke[]>([])
+  const wanted = streaming ? null : message.keyPoint
+
+  /*
+   * Off, then on a beat later, which is what makes the transition happen.
+   *
+   * Keyed on the sentence rather than on the strokes: the strokes are worked
+   * out again whenever the text reflows, and a window being resized is not a
+   * reason to draw the highlighter across the line a second time.
+   *
+   * A timer rather than an animation frame, for the reason the transcript
+   * gives: a window that is not being painted never runs one, and the mark
+   * would then never be asked to appear at all.
+   */
+  const [drawn, setDrawn] = useState(false)
+  useEffect(() => {
+    setDrawn(false)
+    if (!wanted) return
+    const timer = setTimeout(() => setDrawn(true), 0)
+    return () => clearTimeout(timer)
+  }, [wanted])
+
   useEffect(() => {
     const element = body.current
     if (!element) return
-    markKeyPoint(element, streaming ? null : message.keyPoint)
-    return () => forgetKeyPoint(element)
-  }, [message.keyPoint, message.content, streaming])
+
+    if (!wanted) {
+      setStrokes([])
+      return
+    }
+
+    const redraw = (): void => setStrokes(strokesFor(element, wanted))
+    redraw()
+
+    const observer = new ResizeObserver(redraw)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [wanted, message.content])
 
   return (
     <div className="message__body" ref={body}>
       <Markdown content={message.content} codeTheme={ui.codeTheme} streaming={streaming} />
+      {strokes.length > 0 && (
+        <div className="ink" data-drawn={drawn} aria-hidden="true">
+          {strokes.map((stroke, at) => (
+            <span
+              key={at}
+              className="ink__stroke"
+              style={{
+                left: stroke.left,
+                top: stroke.top,
+                width: stroke.width,
+                height: stroke.height,
+                borderRadius: stroke.radius,
+                transform: `rotate(${stroke.tilt}deg)`,
+                transitionDelay: `${stroke.delay}ms`
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
