@@ -12,6 +12,12 @@
  * one: `==like this==` shows its markers until the turn ends, and a trailing
  * line shows itself for as long as it takes to finish.
  *
+ * What decides how many are marked is the reader's question, not the reply and
+ * not the setting: the setting is a ceiling. A model told "up to five" treats
+ * five as a quota and finds five in a reply that made one point, which is the
+ * shape of the complaint this went through — the marks stopped meaning
+ * anything because there were always the same number of them.
+ *
  * The wording is insistent because the polite version was ignored. Measured
  * across four models, three questions each: asking nicely was obeyed eight
  * times in twelve, and this wording eleven. The whole of the difference was
@@ -31,8 +37,8 @@ export function keyPointPrompt(asked: number): string {
 
   return `Every reply you write must end with ${
     many
-      ? `an HTML comment for each of its key sentences, up to ${most} of them`
-      : 'an HTML comment naming its single most important sentence'
+      ? `an HTML comment for each sentence that answers something the reader asked, up to ${most} of them`
+      : 'an HTML comment naming the one sentence that answers what the reader asked'
   }, copied out exactly:
 
 <!--key: the sentence, verbatim-->${many ? '\n<!--key: another sentence, verbatim-->' : ''}
@@ -43,14 +49,20 @@ This is required, not optional. ${
 ${
   many
     ? `
-- One for each distinct thing the reply answers. If the reader asked five \
-questions and you answered all five, mark five sentences — the one that answers \
-each. If the reply makes a single point, mark one.
-- Up to ${most}. If the reply answers more things than that, mark the ${most} that \
+- How many you mark is decided by the reader's question, not by this number. \
+Count the separate things they want to know, and mark the one sentence that answers \
+each. Count the things, not the question marks: "how do I find the protons, \
+electrons and neutrons" is three things asked in one sentence, and gets three marks. \
+One thing with one answer gets exactly one mark, however long the reply is.
+- ${most} is a limit, not a target. Never mark more sentences than there were \
+things asked; if they asked for more than ${most} things, mark the ${most} that \
 matter most.
 - Never two sentences that say the same thing, and never an example, an aside, \
 or a sentence that only sets up the next one.`
-    : ''
+    : `
+- The one sentence that answers what they asked — not the sentence that sets it \
+up, not an example of it, and not a summary of the whole reply. If they asked \
+several things, mark the answer to the first.`
 }
 - Copy each sentence exactly as you wrote it, punctuation and all. Do not shorten it, \
 reword it, or re-punctuate it.

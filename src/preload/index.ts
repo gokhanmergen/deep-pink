@@ -110,14 +110,16 @@ const api = {
     /**
      * Asks which of these sentences are the ones to read first, and
      * remembers the answer against the message. Null when nothing stood out
-     * — see `askKeyPoint`.
+     * — see `askKeyPoint`. The question goes with them because how many
+     * sentences matter is decided by how much was asked, not by the reply.
      */
     keyPoint: (
       messageId: string,
+      question: string,
       reply: string,
       candidates: string[]
     ): Promise<{ texts: string[]; costUsd: number } | null> =>
-      ipcRenderer.invoke('messages:keyPoint', messageId, reply, candidates),
+      ipcRenderer.invoke('messages:keyPoint', messageId, question, reply, candidates),
     /** What the whole thread cost, however much of it has been read in. */
     totals: (threadId: string): Promise<ThreadTotals> =>
       ipcRenderer.invoke('messages:totals', threadId),

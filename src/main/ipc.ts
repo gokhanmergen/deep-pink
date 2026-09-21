@@ -602,7 +602,7 @@ export function registerIpc(): void {
    */
   ipcMain.handle(
     'messages:keyPoint',
-    async (_e, messageId: string, reply: string, candidates: string[]) => {
+    async (_e, messageId: string, question: string, reply: string, candidates: string[]) => {
       const settings = loadSettings()
       /*
        * `self` never reaches here: in that mode the model named its own
@@ -615,8 +615,8 @@ export function registerIpc(): void {
       const most = clampKeyPoints(settings.keyPointMost)
       const found =
         settings.keyPointSource === 'model'
-          ? await askKeyPointViaModel(candidates, settings.keyPointModel, most)
-          : await askKeyPoint(reply, candidates, most)
+          ? await askKeyPointViaModel(question, candidates, settings.keyPointModel, most)
+          : await askKeyPoint(question, reply, candidates, most)
       // Recorded either way: null is an answer, and writing it stops the same
       // question being asked again every time the thread is opened.
       repo.setKeyPoints(messageId, found?.texts ?? [])

@@ -836,7 +836,33 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async findKeyPoint(messageId, reply, candidates) {
-    const found = await api.messages.keyPoint(messageId, reply, candidates)
+    /*
+     * The question this reply answered, found here rather than passed in.
+     *
+     * Which sentence matters is not a property of the reply. Marking the key
+     * points of an answer without knowing what was asked means marking what
+     * the answer emphasises, and an answer emphasises its own structure — so
+     * a reply to five questions came back with seven marks and a reply to one
+     * came back with the sentence that set it up. The store already holds the
+     * turn this reply belongs to; nothing had to be plumbed for it.
+     *
+     * The nearest user message above, which is the turn: a retry or an edit
+     * leaves the assistant message in place under the same question.
+     */
+    const at = get().messages.findIndex((m) => m.id === messageId)
+    let question = ''
+    for (let above = at - 1; above >= 0; above--) {
+      const message = get().messages[above]
+      if (message.role === 'user') {
+        question = message.content
+        break
+      }
+      // Past another assistant turn is a different question, and a wrong
+      // question is worse than none: it renames what the reply is about.
+      if (message.role === 'assistant') break
+    }
+
+    const found = await api.messages.keyPoint(messageId, question, reply, candidates)
     // Written onto the message rather than held aside, so they travel with it
     // through every re-read of the transcript.
     set({

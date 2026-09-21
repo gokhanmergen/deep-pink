@@ -29,6 +29,8 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   const removed = []
   /** Every `messages.open`, so the tests can say where a thread was read from. */
   const opened = []
+  /** Every `messages.keyPoint`, so the tests can say what was sent with it. */
+  const keyPointAsks = []
   let createdCount = 0
 
   const thread = {
@@ -128,6 +130,10 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
           hasOlder: false
         }),
         totals: async () => ({ costUsd: 0, totalTokens: 0 }),
+        keyPoint: async (messageId, question, reply, candidates) => {
+          keyPointAsks.push({ messageId, question, reply, candidates })
+          return null
+        },
         /**
          * How a thread is actually opened — one crossing carrying all four
          * answers. `opened` records what it was asked for, because *where* a
@@ -694,6 +700,55 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
     'and a shift binding still requires shift',
     matchesBinding(press('m', { ctrl: true, shift: true }), 'mod+shift+m') &&
       !matchesBinding(press('m', { ctrl: true }), 'mod+shift+m')
+  )
+
+  section('the question a reply is marked against')
+  /*
+   * Which sentence of a reply matters is not a property of the reply.
+   *
+   * Asked to mark the key points of an answer on its own, a model marks what
+   * the answer emphasises — a reply to five questions came back with seven
+   * marks and a reply to one came back with the sentence that set it up. So
+   * the question goes with it, and the store is where it comes from, because
+   * the store is the only place that holds the turn the reply belongs to.
+   */
+  const askedWith = async (messages, messageId) => {
+    keyPointAsks.length = 0
+    useStore.setState({ activeThreadId: 't1', messages })
+    await state().findKeyPoint(messageId, 'a reply', ['one sentence.', 'another sentence.'])
+    return keyPointAsks[0] ?? null
+  }
+
+  const kq1 = message({ id: 'kq1', threadId: 't1', role: 'user', content: 'what is a closure?' })
+  const ka1 = message({ id: 'ka1', threadId: 't1', role: 'assistant', content: 'a reply' })
+  const kq2 = message({ id: 'kq2', threadId: 't1', role: 'user', content: 'and why does var break it?' })
+  const ka2 = message({ id: 'ka2', threadId: 't1', role: 'assistant', content: 'a second reply' })
+
+  check(
+    'the question above the reply travels with it',
+    (await askedWith([kq1, ka1], 'ka1'))?.question === 'what is a closure?'
+  )
+  // The wrong question is worse than none: it renames what the reply is about,
+  // and the count of marks follows it.
+  check(
+    'and in a thread with history it is that turn, not the first',
+    (await askedWith([kq1, ka1, kq2, ka2], 'ka2'))?.question === 'and why does var break it?',
+    await askedWith([kq1, ka1, kq2, ka2], 'ka2')
+  )
+  check(
+    'a reply with nothing above it asks anyway, with no question',
+    (await askedWith([ka1], 'ka1'))?.question === ''
+  )
+  check(
+    'and the reply and its sentences still go',
+    (await askedWith([kq1, ka1], 'ka1'))?.candidates.length === 2
+  )
+  // Null is an answer — it is what a reply with nothing worth marking gets —
+  // and it has to leave the message with no marks rather than untouched.
+  check(
+    'nothing worth marking leaves the message unmarked',
+    state().messages.find((m) => m.id === 'ka1')?.keyPoints.length === 0,
+    state().messages.find((m) => m.id === 'ka1')
   )
 
   section('a sync that brought something in refreshes the window')

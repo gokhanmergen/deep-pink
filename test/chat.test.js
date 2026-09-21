@@ -182,10 +182,6 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
     subject.keyPointPrompt(1).slice(0, 80)
   )
   check('asking for three says so', subject.keyPointPrompt(3).includes('up to 3'))
-  // The point of allowing several is a reply that answers several things, so
-  // the instruction has to say that rather than leave it to be inferred. An
-  // earlier wording said only "fewer is better", which is advice against
-  // doing the thing the setting exists for.
   /*
    * How many is typed rather than chosen from a list, so it arrives as
    * whatever somebody typed. Clamped where it is used and not only where it
@@ -206,11 +202,35 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
       !subject.keyPointPrompt(400).includes('400')
   )
 
+  /*
+   * The number is a ceiling and the instruction has to say which. A model
+   * told "up to five" and nothing else treats five as a quota and finds five
+   * in a reply that made one point, which is how the marks stopped meaning
+   * anything — so the wording has to name the thing that actually decides,
+   * which is the reader's question, and has to say the number is a limit.
+   */
   check(
-    'and asks for one per question, not for fewer',
-    subject.keyPointPrompt(5).includes('five questions') &&
-      !subject.keyPointPrompt(5).includes('Fewer is better'),
-    subject.keyPointPrompt(5).slice(0, 200)
+    'asking for several says the count comes from the question',
+    /decided by the reader's question/.test(subject.keyPointPrompt(5)),
+    subject.keyPointPrompt(5).slice(0, 300)
+  )
+  check(
+    'and says the number is a limit rather than a target',
+    subject.keyPointPrompt(5).includes('5 is a limit, not a target'),
+    subject.keyPointPrompt(5)
+  )
+  check(
+    'and still insists one thing asked gets one mark',
+    /[Oo]ne thing with one answer gets exactly one mark/.test(subject.keyPointPrompt(5))
+  )
+  // Not inherited from the several-sentence wording: asked for one, there is
+  // no count to work out, and the instruction says which one rather than how
+  // many.
+  check(
+    'asking for one names the sentence to pick, not a count',
+    subject.keyPointPrompt(1).includes('answers what the reader asked') &&
+      !subject.keyPointPrompt(1).includes('limit, not a target'),
+    subject.keyPointPrompt(1).slice(0, 200)
   )
 
   section('HTML extraction')

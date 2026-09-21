@@ -213,10 +213,29 @@ export const DEFAULT_SETTINGS: Settings = {
   docsEnabled: false,
   keyPointEnabled: false,
   keyPointSource: 'jev',
-  // The same small, cheap model the app names threads with. Only consulted
-  // when the source is `model`.
-  keyPointModel: 'google/gemma-3-12b-it',
-  keyPointMost: 1,
+  /*
+   * Only consulted when the source is `model`, and deliberately not the tiny
+   * model the app names threads with.
+   *
+   * Naming a thread is a paraphrase and a 12B model does it well. This is a
+   * counting problem — how many separate things did the reader want to know —
+   * and measured across four questions (2026-09-20) gemma-3-12b answered a
+   * single question about closures with four marks and a three-part question
+   * with three, while haiku-4.5 and gpt-4.1-mini were right on every one. A
+   * mark in the wrong place is worse than no mark, and this call is a rounding
+   * error beside the reply it annotates.
+   */
+  keyPointModel: 'anthropic/claude-haiku-4.5',
+  /*
+   * A ceiling, and so a generous one.
+   *
+   * It used to be the quantity — one mark, always — and at one the model is
+   * never allowed to answer the question it is now asked, which is how many
+   * things the reader wanted to know. Five is about as many as anybody asks
+   * at once; below that the count stops following the question and starts
+   * following this. A reply making one point still gets one mark.
+   */
+  keyPointMost: 5,
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,

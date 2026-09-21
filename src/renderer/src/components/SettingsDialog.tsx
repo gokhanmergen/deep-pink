@@ -875,16 +875,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </div>
 
                 {/*
-                  * Worth saying because it is not a volume knob: allowing a
-                  * second sentence changes what a tie means. Asked for one,
-                  * two sentences neck and neck are a reason to mark neither;
-                  * asked for two, they are the answer.
+                  * Worth saying because it reads like a quantity and is not
+                  * one. The count comes from the question — the model is
+                  * asked how many things were wanted — and this only stops
+                  * it. Setting it to 1 does turn it back into a quantity,
+                  * which is a real preference and why 1 is allowed.
                   */}
                 {settings.keyPointMost > 1 && (
                   <p className="field__hint">
-                    A ceiling, not a target: a reply making one point still gets one mark. Set
-                    it to about as many things as you tend to ask at once — a reply answering
-                    five questions can then mark the answer to each.
+                    A ceiling, not a target. How many sentences get marked follows your
+                    question: ask one thing and one sentence is marked, ask five and the
+                    answer to each is. This only caps it, so leave room for the most you
+                    tend to ask at once.
                   </p>
                 )}
 
