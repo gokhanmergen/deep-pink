@@ -258,13 +258,22 @@ export function strokesFor(body: Element, sentences: string[]): Stroke[] {
     const rects = [...hit.range.getClientRects()].filter((rect) => rect.width > 1)
     for (const rect of perLine(rects)) {
       strokes.push({
-        left: Math.max(rect.left - base.left - PAD_X, 0),
+        /*
+         * The same padding on every line, including the ones that reach the
+         * edge of the column.
+         *
+         * This used to clamp to the body box, because there was nothing
+         * outside it to draw into: `content-visibility` on the message brings
+         * paint containment, and the body sat flush against it at exactly
+         * zero room. So a line running the full width lost its padding on
+         * both ends while the short lines above and below kept theirs, and
+         * one mark read as two. The message now carries `--ink-bleed` either
+         * side for this to reach into, given back to the layout as a negative
+         * margin so the text stays where it was.
+         */
+        left: rect.left - base.left - PAD_X,
         top: rect.top - base.top - PAD_Y,
-        width: Math.max(
-          Math.min(rect.right - base.left + PAD_X, base.width) -
-            Math.max(rect.left - base.left - PAD_X, 0),
-          0
-        ),
+        width: rect.right - rect.left + PAD_X * 2,
         height: rect.bottom - rect.top + PAD_Y * 2,
         // Drawn in the order they are read, whichever sentence they belong to.
         delay: strokes.length * 70

@@ -18,6 +18,13 @@
  * shape of the complaint this went through — the marks stopped meaning
  * anything because there were always the same number of them.
  *
+ * The one-thing rule is stated twice, at the top of the list and at the end of
+ * it, which is not an oversight. A list this long is weighted at both ends and
+ * the rule at stake is the one a reader notices being broken: asked one thing
+ * and given two marks, the second is always the first said again. Measured on
+ * haiku-4.5 over a reply that kept over-marking, the closing repeat took it
+ * from three marks to two while leaving every other case alone.
+ *
  * The wording is insistent because the polite version was ignored. Measured
  * across four models, three questions each: asking nicely was obeyed eight
  * times in twelve, and this wording eleven. The whole of the difference was
@@ -49,11 +56,14 @@ This is required, not optional. ${
 ${
   many
     ? `
-- How many you mark is decided by the reader's question, not by this number. \
-Count the separate things they want to know, and mark the one sentence that answers \
-each. Count the things, not the question marks: "how do I find the protons, \
-electrons and neutrons" is three things asked in one sentence, and gets three marks. \
-One thing with one answer gets exactly one mark, however long the reply is.
+- If the reader wanted to know one thing, mark exactly one sentence. Not two, \
+whatever else the reply covers and however long it is. A second mark on a reply \
+making a single point always turns out to be the first one said again, and two \
+marks saying the same thing are worse than one.
+- Otherwise: count the separate things they want to know, and mark the one \
+sentence that answers each. Count the things, not the question marks — a single \
+sentence asking about several things at once is asking about several — and never \
+mark more sentences than there were things asked.
 - ${most} is a limit, not a target. Never mark more sentences than there were \
 things asked; if they asked for more than ${most} things, mark the ${most} that \
 matter most.
@@ -74,7 +84,13 @@ reword it, or re-punctuate it.
   }, or explain ${many ? 'them' : 'it'}. ${many ? 'They are' : 'It is'} not part of your answer.
 - The only reply that may leave ${
     many ? 'them' : 'it'
-  } out is one with no prose in it at all.`
+  } out is one with no prose in it at all.${
+    many
+      ? `
+- Before you write ${'them'}, ask yourself how many separate things the reader wanted \
+to know. Write that many comments and no more. If the answer is one, write one comment.`
+      : ''
+  }`
 }
 
 /**

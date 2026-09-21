@@ -933,7 +933,22 @@ async function nameIfUnnamed(threadId: string, emit: Emit): Promise<void> {
     // something that is about to stop existing, and it already reads as
     // "Temporary chat" wherever it appears.
     if (thread.temporary) return
-    await generateTitle(threadId, emit)
+    const named = await generateTitle(threadId, emit)
+    /*
+     * And if it produced nothing, say that too.
+     *
+     * This is the half that was missing. Naming fails in ordinary ways — the
+     * small model it defaults to rate-limits, the account is out, the reply
+     * comes back empty — and every one of them left the sidebar shimmering
+     * where the name would go, because nothing had told it to stop. It
+     * stopped on a two-minute clock instead, which is a hundred and nineteen
+     * seconds of a finished conversation looking like one still being
+     * written. The request takes about a second; the answer to "is a name
+     * coming" is known then.
+     */
+    if (!named && !repo.getThread(threadId)?.title) {
+      emit({ type: 'title', threadId, title: null })
+    }
   } catch {
     // Naming is a convenience. A failure must not disturb the conversation.
   }

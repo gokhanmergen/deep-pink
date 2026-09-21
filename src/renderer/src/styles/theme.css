@@ -90,6 +90,16 @@
   --s8: 40px;
   --s9: 56px;
 
+  /*
+   * How far the highlighter reaches past the words it holds.
+   *
+   * The same number as `PAD_X` in `keyPoint.ts`, which is where the panel is
+   * actually measured; this is only what makes room for it. They have to
+   * agree: too little here and the mark is clipped at the edge of the column,
+   * which is the bug this exists for.
+   */
+  --ink-bleed: 4px;
+
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius: 9px;
@@ -1835,6 +1845,25 @@ svg.lucide {
    * is never laid out to correct it.
    */
   contain-intrinsic-size: auto 220px;
+
+  /*
+   * Four pixels of room either side, taken straight back out again.
+   *
+   * `content-visibility` above brings paint containment with it, and paint
+   * containment clips every descendant at this element's padding edge. The
+   * body was flush with it — measured at exactly zero room on both sides — so
+   * the highlighter panel, which reaches four pixels past the words it holds,
+   * had nowhere to reach into and was clamped to the text instead. A mark
+   * padded in the middle of a line and tight against it at either end looks
+   * like two different marks.
+   *
+   * The padding makes the room and the negative margin gives it back to the
+   * layout, so the column of text does not move and nothing else in here has
+   * to know. Nothing is painted on `.message` itself — the user's surface is
+   * on `.message__body` — so widening its box shows nothing.
+   */
+  padding-inline: var(--ink-bleed);
+  margin-inline: calc(-1 * var(--ink-bleed));
 }
 
 .message[data-density='compact'] {

@@ -32,6 +32,27 @@ suite(
       })
     }
 
+    /*
+     * A reply with a mark on it, for the highlighter's geometry.
+     *
+     * Its own thread rather than a message in the fixture above, because what
+     * is being measured is where the panel sits relative to the column and a
+     * transcript that is scrolling is a transcript where that moves.
+     */
+    const EDGE =
+      'A sentence long enough that it certainly wraps across the whole width of ' +
+      'the column and so has a line reaching the left edge and a line reaching ' +
+      'the right edge, which is the case this is here for.'
+    const inked = repo.createThread('Ink fixture')
+    repo.insertMessage({ threadId: inked.id, role: 'user', content: 'ask' })
+    const marked = repo.insertMessage({
+      threadId: inked.id,
+      role: 'assistant',
+      model: 'test/model',
+      content: `${EDGE}\n\nA short closing line.`
+    })
+    repo.setKeyPoints(marked.id, [EDGE])
+
     // A user message with an image, so the transcript has one to render.
     const PNG =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
@@ -569,6 +590,69 @@ suite(
     check('confirming removes it', repo.listThreads().length === threadsBefore - 1, repo.listThreads().length)
     check('its messages go too', repo.getMessages(extra.id, true).length === 0)
     check('the dialog closes', await run(`!document.querySelector('.dialog')`))
+
+    section('the highlighter keeps its padding at the edge of the column')
+    /*
+     * The same room on every line, including the ones with no room to spare.
+     *
+     * The panel reaches a few pixels past the words it holds. `content-
+     * visibility` on a message brings paint containment with it, which clips
+     * every descendant at the message's own edge — and the body was flush
+     * against that edge, measured at exactly zero either side. So the panel
+     * was clamped to the text wherever a line reached the edge of the column,
+     * which is every line's left edge and the right edge of any line that
+     * fills. Padded in the middle and tight at the ends, one mark read as
+     * two.
+     *
+     * Measured against the text rather than against a number, because what
+     * has to hold is that the line reaching the edge is treated like any
+     * other, not that the gap is four pixels.
+     */
+    await run(`[...document.querySelectorAll('.thread-item')]
+      .find((e) => e.textContent.includes('Ink fixture')).click()`)
+    await settle(1200)
+
+    const ink = await run(`(() => {
+      const msg = document.querySelector('.message[data-role="assistant"]')
+      const body = msg.querySelector('.message__body')
+      const base = body.getBoundingClientRect()
+      const strokes = [...msg.querySelectorAll('.ink__stroke')].map((s) => {
+        const r = s.getBoundingClientRect()
+        return { left: +(r.left - base.left).toFixed(1), right: +(base.right - r.right).toFixed(1) }
+      })
+      // Where the words themselves sit, for the strokes to be compared to.
+      const range = document.createRange()
+      range.selectNodeContents(msg.querySelector('p'))
+      const lines = [...range.getClientRects()]
+        .filter((r) => r.width > 1)
+        .map((r) => ({ left: +(r.left - base.left).toFixed(1), right: +(base.right - r.right).toFixed(1) }))
+      return { strokes, lines, clipped: getComputedStyle(msg).contentVisibility }
+    })()`)
+
+    check('the sentence is marked at all', ink.strokes.length >= 2, ink)
+    check('and it wrapped, so there is an edge to reach', ink.lines.length >= 2, ink.lines)
+    // The whole of the bug: every one of these was 0 before, while the
+    // strokes on lines that stopped short kept their padding.
+    check(
+      'every stroke reaches past the text on its left',
+      ink.strokes.every((s) => s.left < 0),
+      ink.strokes
+    )
+    check(
+      'and past it on its right',
+      ink.strokes.every((s, i) => s.right < (ink.lines[i]?.right ?? Infinity)),
+      { strokes: ink.strokes, lines: ink.lines }
+    )
+    check(
+      'by the same amount on the line that fills the column as on the one that does not',
+      new Set(ink.strokes.map((s) => s.left)).size === 1,
+      ink.strokes
+    )
+    check(
+      'and the message is still the thing being clipped, so this is the real case',
+      ink.clipped === 'auto',
+      ink.clipped
+    )
 
     section('the About box reports the real version')
     await run(`[...document.querySelectorAll('.sidebar__footer .btn')]

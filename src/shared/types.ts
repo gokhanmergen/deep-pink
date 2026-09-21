@@ -721,7 +721,16 @@ export type StreamEvent =
   | { type: 'aborted'; messageId: string; threadId: string }
   | { type: 'compaction-start'; threadId: string }
   | { type: 'compaction-done'; threadId: string; summaryMessageId: string; freedTokens: number }
-  | { type: 'title'; threadId: string; title: string }
+  /**
+   * A thread was named, or naming finished without a name.
+   *
+   * Null is the whole reason this carries a title at all rather than being a
+   * nudge to re-read the list. The sidebar shimmers where the name will go,
+   * and for as long as nothing said otherwise it could only stop by running a
+   * clock — two minutes of pretending to work on a request that had already
+   * failed in one second, which reads as a thread stuck mid-reply.
+   */
+  | { type: 'title'; threadId: string; title: string | null }
 
 export interface SendMessageRequest {
   threadId: string

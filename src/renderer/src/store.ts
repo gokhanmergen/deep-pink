@@ -188,6 +188,15 @@ interface State {
    */
   generatingThreadIds: string[]
   /**
+   * Threads naming has finished with and produced no name for.
+   *
+   * Only ever grows, and only within a session: what it records is that the
+   * request came back empty, which is a fact about a moment and not about the
+   * thread. Renaming one by hand, or a later sweep naming it, gives it a
+   * title and takes it out of the shimmering case anyway.
+   */
+  namingFinished: Set<string>
+  /**
    * How much each working thread has produced, and how fast.
    *
    * Only ever holds threads that are generating, and only exists so the list
@@ -607,6 +616,7 @@ export const useStore = create<State>((set, get) => ({
   toast: null,
   dialog: null,
   generatingThreadIds: [],
+  namingFinished: new Set<string>(),
   liveStats: {},
   highlightMessageId: null,
   editingMessageId: null,
@@ -1633,6 +1643,18 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
   const state = get()
 
   if (event.type === 'title') {
+    /*
+     * A null title is naming saying it has finished and produced nothing.
+     *
+     * Recorded rather than acted on, because there is nothing to write: the
+     * thread keeps no name and reads as "Untitled thread". What it ends is
+     * the shimmer in the sidebar, which otherwise runs on a two-minute clock
+     * because nothing ever told it the answer had already come back.
+     */
+    if (event.title === null) {
+      set({ namingFinished: new Set(get().namingFinished).add(event.threadId) })
+      return
+    }
     void get().refreshThreads()
     return
   }

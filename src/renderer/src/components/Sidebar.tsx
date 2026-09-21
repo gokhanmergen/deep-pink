@@ -327,6 +327,7 @@ export function Sidebar(): React.JSX.Element {
   const draggingThreadId = useStore((s) => s.draggingThreadId)
   const activeThreadId = useStore((s) => s.activeThreadId)
   const generatingThreadIds = useStore((s) => s.generatingThreadIds)
+  const namingFinished = useStore((s) => s.namingFinished)
   const liveStats = useStore((s) => s.liveStats)
   const rename = useStore((s) => s.renaming)
   const startRename = useStore((s) => s.startRename)
@@ -983,6 +984,7 @@ export function Sidebar(): React.JSX.Element {
     for (const thread of threads) {
       if (thread.title || thread.temporary || thread.messageCount === 0) continue
       if (generatingThreadIds.includes(thread.id)) continue
+      if (namingFinished.has(thread.id)) continue
       const at = thread.updatedAt + NAMING_TAKES
       if (at > now && (soonest === null || at < soonest)) soonest = at
     }
@@ -1000,6 +1002,9 @@ export function Sidebar(): React.JSX.Element {
     !thread.title &&
     !thread.temporary &&
     thread.messageCount > 0 &&
+    // Naming has come back empty for this one, so nothing is coming and the
+    // clock below is beside the point.
+    !namingFinished.has(thread.id) &&
     (generatingThreadIds.includes(thread.id) || Date.now() - thread.updatedAt < NAMING_TAKES)
 
   const renderThread = (thread: Thread, options: { inFolder?: boolean } = {}): React.JSX.Element => (

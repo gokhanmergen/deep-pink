@@ -238,21 +238,38 @@ async function askEachSentence(
 
   const asked = Math.max(Math.round((body.answers?.how_many?.score ?? 0) + 1), 1)
 
-  const ranked = Object.entries(body.answers ?? {})
+  const scored = Object.entries(body.answers ?? {})
     .filter(([id]) => id.startsWith('k'))
     .map(([id, answer]) => ({ at: Number(id.slice(1)), score: answer?.noul ?? 0 }))
-    .filter((scored) => scored.score >= WORTH_MARKING)
-    .sort((a, b) => b.score - a.score)
+    .filter((line) => line.score >= WORTH_MARKING)
 
-  // The cut the count asks for, and then whatever is level with it.
-  const cut = ranked[Math.min(asked, ranked.length) - 1]?.score ?? 1
-  const texts = ranked
-    .filter((scored) => scored.score >= cut - NEARLY)
+  /*
+   * One thing asked is one mark, and nothing is level with it.
+   *
+   * The slack below exists for a genuine ambiguity — whether "find the
+   * protons, electrons and neutrons" is one thing or three — and that
+   * ambiguity has no version at one. Applied there it did real damage:
+   * "best c formatter neovim" scored 1 for the count, and the reply's
+   * opening sentence at 0.94 brought its closing "unless your team mandates
+   * otherwise, just use clang-format" at 0.89 in behind it. Two marks on a
+   * reply making one point, and the second one a restatement of the first,
+   * which is exactly what a mark is supposed to rule out.
+   */
+  const ranked = scored.sort((a, b) => b.score - a.score)
+  const taken =
+    asked <= 1
+      ? ranked.slice(0, 1)
+      : // The cut the count asks for, and then whatever is level with it.
+        ranked.filter(
+          (line) => line.score >= (ranked[Math.min(asked, ranked.length) - 1]?.score ?? 1) - NEARLY
+        )
+
+  const texts = taken
     .slice(0, most)
     // Back into reading order: marks that appear down the page in the order
     // they were scored would be drawn in a sequence nobody can follow.
     .sort((a, b) => a.at - b.at)
-    .map((scored) => offered[scored.at])
+    .map((line) => offered[line.at])
     .filter((text): text is string => Boolean(text))
 
   if (!texts.length) return null
@@ -412,18 +429,24 @@ export async function askKeyPointViaModel(
     })
 
     /*
-     * The count is read past, not enforced.
+     * The count binds at one and nowhere else.
      *
-     * It earns its place by changing what comes after it and not by being
-     * right: measured on four questions across three models (2026-09-20),
-     * every model listed the correct sentences and several of them wrote the
-     * wrong number in front — haiku-4.5 answered "3: 1, 3, 6, 7, 9", which is
-     * the wrong count and the right five sentences. Truncating to the three
-     * it claimed threw two real answers away. Having to write a number first
-     * is what stops a model listing five sentences for a question that asked
-     * one thing; what number it happens to write is not worth acting on.
+     * Above one it is not worth acting on: measured on four questions across
+     * three models (2026-09-20), every model listed the correct sentences and
+     * several wrote the wrong number in front — haiku-4.5 answered
+     * "3: 1, 3, 6, 7, 9", which is the wrong count and the right five
+     * sentences, and truncating to three threw two real answers away.
+     *
+     * At one it is the whole point. "The reader asked for one thing" is the
+     * one part of the count a model gets right and the one the reader
+     * notices getting wrong — a second mark on a reply making a single point
+     * is a restatement of the first, and two marks that say the same thing
+     * are worse than one. So a model that opens with "1:" gets held to it,
+     * however many numbers it goes on to list.
      */
-    const [, listed] = most > 1 ? splitOnce(result.content, ':') : ['', result.content]
+    const [head, listed] = most > 1 ? splitOnce(result.content, ':') : ['', result.content]
+    const claimed = Number(/\d+/.exec(head)?.[0] ?? 0)
+    const room = claimed === 1 ? 1 : Math.max(most, 1)
 
     const texts: string[] = []
     for (const found of listed.matchAll(/\d+/g)) {
@@ -432,7 +455,7 @@ export async function askKeyPointViaModel(
       const text = offered[at - 1]
       // A model asked for three sometimes says "2, 2, 5".
       if (text && !texts.includes(text)) texts.push(text)
-      if (texts.length >= Math.max(most, 1)) break
+      if (texts.length >= room) break
     }
     if (!texts.length) return null
 
