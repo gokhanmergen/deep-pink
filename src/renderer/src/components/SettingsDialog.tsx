@@ -39,6 +39,8 @@ interface TabDef {
   id: Tab
   label: string
   icon: ReactNode
+  /** Newer than the rest, and saying so. See `Experimental`. */
+  experimental?: boolean
 }
 
 /**
@@ -58,9 +60,9 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
   {
     title: 'Capabilities',
     tabs: [
-      { id: 'web', label: 'Web access', icon: <Globe {...ICON} /> },
-      { id: 'charts', label: 'Charts', icon: <BarChart3 {...ICON} /> },
-      { id: 'docs', label: 'Documents', icon: <FileText {...ICON} /> },
+      { id: 'web', label: 'Web access', icon: <Globe {...ICON} />, experimental: true },
+      { id: 'charts', label: 'Charts', icon: <BarChart3 {...ICON} />, experimental: true },
+      { id: 'docs', label: 'Documents', icon: <FileText {...ICON} />, experimental: true },
       { id: 'context', label: 'Context', icon: <Layers {...ICON} /> }
     ]
   },
@@ -70,10 +72,32 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
       { id: 'appearance', label: 'Appearance', icon: <Palette {...ICON} /> },
       { id: 'keys', label: 'Keyboard', icon: <Keyboard {...ICON} /> },
       { id: 'data', label: 'Data', icon: <Database {...ICON} /> },
-      { id: 'sync', label: 'Sync', icon: <RefreshCw {...ICON} /> }
+      { id: 'sync', label: 'Sync', icon: <RefreshCw {...ICON} />, experimental: true }
     ]
   }
 ]
+
+/**
+ * Says a section is not as settled as the rest of the app.
+ *
+ * Four of them are newer than the app around them and still moving: the ones
+ * that reach the network on their own, the two that let a reply decide how it
+ * is drawn, and the one that copies the library to a bucket. Saying so is not
+ * a disclaimer — it is the difference between a setting you can lean on and
+ * one you should look at again after an update.
+ *
+ * Shown in two weights. In the list down the side it is a mark, because there
+ * is no room for a word beside "Appearance" and because what the list is for
+ * is finding the section; here in the panel it is the word, because this is
+ * where somebody is about to switch the thing on.
+ */
+function Experimental(): React.JSX.Element {
+  return (
+    <span className="chip chip--experimental" title="Newer than the rest, and still moving">
+      Experimental
+    </span>
+  )
+}
 
 /*
  * Putting one setting back, and only one.
@@ -426,13 +450,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   className="tab"
                   data-active={tab === entry.id}
                   onClick={() => setTab(entry.id)}
-                  title={entry.label}
-                  aria-label={entry.label}
+                  title={entry.experimental ? `${entry.label} — experimental` : entry.label}
+                  aria-label={entry.experimental ? `${entry.label}, experimental` : entry.label}
                   aria-current={tab === entry.id ? 'page' : undefined}
                   type="button"
                 >
                   {entry.icon}
                   <span className="tab__label">{entry.label}</span>
+                  {/* A mark rather than the word: the word does not fit beside
+                      the longer labels, and a row of tags down a list of
+                      eleven would be a column of its own. What it says is on
+                      the button's title, and in full inside the section. */}
+                  {entry.experimental && <span className="tab__experimental" aria-hidden="true" />}
                 </button>
               ))}
             </div>
@@ -653,7 +682,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
         {tab === 'web' && (
           <>
-            <div className="section-title">Web access</div>
+            <div className="section-title">
+              Web access
+              <Experimental />
+            </div>
             <label className="switch">
               <input
                 type="checkbox"
@@ -741,7 +773,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
         {tab === 'charts' && (
           <>
-            <div className="section-title">Charts in replies</div>
+            <div className="section-title">
+              Charts in replies
+              <Experimental />
+            </div>
             <label className="switch">
               <input
                 type="checkbox"
@@ -782,7 +817,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
         {tab === 'docs' && (
           <>
-            <div className="section-title">Replies of several documents</div>
+            <div className="section-title">
+              Replies of several documents
+              <Experimental />
+            </div>
             <label className="switch">
               <input
                 type="checkbox"
@@ -811,7 +849,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
         {tab === 'sync' && sync && (
           <>
-            <div className="section-title">Sync</div>
+            <div className="section-title">
+              Sync
+              <Experimental />
+            </div>
             <label className="switch">
               <input
                 type="checkbox"

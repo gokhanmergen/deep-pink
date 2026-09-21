@@ -58,6 +58,10 @@
 
   --green: #4cbf8b;
   --amber: #d9a441;
+  /* The same, as a line and as a wash, so a tag in it is built the way an
+     accent-coloured one is. */
+  --amber-line: rgba(217, 164, 65, 0.38);
+  --amber-dim: rgba(217, 164, 65, 0.14);
   --red: #e26a5c;
   --blue: #5f9ede;
 
@@ -1404,6 +1408,32 @@ svg.lucide {
   color: var(--accent);
   border-color: var(--accent-line);
   background: var(--accent-dim);
+}
+
+/*
+ * Not settled yet, and saying so.
+ *
+ * Amber rather than the accent, because the accent is what the app uses for
+ * the thing you are doing and this is a note about the thing you are looking
+ * at. `text-transform: none` because it sits inside a section heading, which
+ * is uppercase — and a tag that is part of the heading is not a tag.
+ */
+.chip--experimental {
+  color: var(--amber);
+  border-color: var(--amber-line);
+  background: var(--amber-dim);
+  text-transform: none;
+}
+
+/* The same fact at the size the list has room for. Pushed to the far edge, so
+   it lines up down the column instead of tracking the ends of the words. */
+.tab__experimental {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--amber);
 }
 
 /* Drawn as the key it stands for: a face lit along its top edge and a slightly

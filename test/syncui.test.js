@@ -29,9 +29,34 @@ suite(
     const tabs = await run(`[...document.querySelectorAll('.tab')].map((t) => t.textContent.trim())`)
     check('there is a Sync section', tabs.includes('Sync'), tabs)
 
+    /*
+     * Which sections admit to still moving.
+     *
+     * Checked here because this suite already has Settings open and because
+     * sync is one of them. The mark is an element rather than a word on
+     * purpose — a word in the list would change what these very assertions
+     * match on, and there is no room for one beside the longer labels.
+     */
+    const marked = await run(`[...document.querySelectorAll('.tab')]
+      .filter((t) => t.querySelector('.tab__experimental'))
+      .map((t) => t.textContent.trim())`)
+    check(
+      'the newer sections are marked experimental',
+      JSON.stringify(marked) === '["Web access","Charts","Documents","Sync"]',
+      marked
+    )
+
     await run(`[...document.querySelectorAll('.tab')]
       .find((t) => t.textContent.trim() === 'Sync').click()`)
     await settle(400)
+
+    check(
+      'and the section itself says so in words',
+      (await run(
+        `[...document.querySelectorAll('.panel__body .chip--experimental')]
+          .map((e) => e.textContent.trim())`
+      )).includes('Experimental')
+    )
 
     const before = await run(`(() => {
       const panel = document.querySelector('.panel__body')
