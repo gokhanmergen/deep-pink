@@ -221,8 +221,6 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
                 top: stroke.top,
                 width: stroke.width,
                 height: stroke.height,
-                borderRadius: stroke.radius,
-                transform: `rotate(${stroke.tilt}deg)`,
                 transitionDelay: `${stroke.delay}ms`
               }}
             />

@@ -140,10 +140,6 @@ export interface Stroke {
   top: number
   width: number
   height: number
-  /** Degrees. Nobody draws a perfectly level line. */
-  tilt: number
-  /** Elliptical corners, so the ends read as ink rather than as a box. */
-  radius: string
   /** Milliseconds before this line is drawn, so the pen crosses them in turn. */
   delay: number
 }
@@ -180,11 +176,17 @@ function perLine(rects: DOMRect[]): { left: number; top: number; right: number; 
   return lines.sort((a, b) => a.top - b.top)
 }
 
-/** How much taller than the text the band is: a pen is wider than a glyph. */
-const BLEED = 3
-
-/** How far past the last word the stroke runs on. */
-const OVERSHOOT = 6
+/**
+ * How far the band reaches past the text it covers.
+ *
+ * Enough to read as a shape holding the words rather than a rule struck
+ * through them, and no more. This was three times as much, with the stroke
+ * running on past the last word and leaning a third of a degree — a marker
+ * pen, which turned out to look like a marker pen: loud, and drawn by
+ * somebody in a hurry.
+ */
+const PAD_Y = 2
+const PAD_X = 4
 
 /**
  * Where to draw the highlighter over a reply, or nothing if the sentence is
@@ -193,9 +195,12 @@ const OVERSHOOT = 6
  * Positions are relative to the body, so the strokes move with the text and
  * only need working out again when the text reflows.
  *
- * The wobble is derived from the line's index rather than randomised: a stroke
- * that tilted a different way each time React re-rendered would be a stroke
- * nobody could read.
+ * Level, evenly rounded and the same on every line. The first version leaned
+ * each line a third of a degree, gave it elliptical ends and ran it on past
+ * the last word — an actual marker pen, which read as exactly that: loud, and
+ * drawn in a hurry. What is wanted is the quiet rounded panel Google puts
+ * behind the answer in an AI Overview: unmistakable because nothing else on
+ * the page has one, not because it shouts.
  */
 export function strokesFor(body: Element, sentence: string | null): Stroke[] {
   if (!sentence) return []
@@ -206,19 +211,13 @@ export function strokesFor(body: Element, sentence: string | null): Stroke[] {
   const base = body.getBoundingClientRect()
   const lines = perLine([...hit.range.getClientRects()].filter((rect) => rect.width > 1))
 
-  return lines.map((rect, at) => {
-    const last = at === lines.length - 1
-    const lean = at % 2 === 0
-    return {
-      left: rect.left - base.left - 4,
-      top: rect.top - base.top - BLEED + (lean ? 0.5 : -0.5),
-      width: rect.right - rect.left + 4 + (last ? OVERSHOOT : 3),
-      height: rect.bottom - rect.top + BLEED * 2,
-      tilt: lean ? 0.28 : -0.34,
-      radius: lean ? '10px 6px 8px 12px / 60% 45% 55% 40%' : '7px 11px 13px 6px / 45% 60% 40% 55%',
-      delay: at * 90
-    }
-  })
+  return lines.map((rect, at) => ({
+    left: rect.left - base.left - PAD_X,
+    top: rect.top - base.top - PAD_Y,
+    width: rect.right - rect.left + PAD_X * 2,
+    height: rect.bottom - rect.top + PAD_Y * 2,
+    delay: at * 70
+  }))
 }
 
 /**
