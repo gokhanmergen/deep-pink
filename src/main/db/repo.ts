@@ -61,6 +61,7 @@ interface MessageRow {
   system_prompt_snapshot: string | null
   is_compaction_summary: number
   compacted_into: string | null
+  key_point: string | null
 }
 
 interface UsageRow {
@@ -182,6 +183,9 @@ function toMessage(
     hasPromptSnapshot: Boolean(row.system_prompt_snapshot),
     isCompactionSummary: row.is_compaction_summary === 1,
     compactedInto: row.compacted_into,
+    // Carried even when the rest of the message is folded away: it is one
+    // sentence, and it is what the transcript needs in order to mark it.
+    keyPoint: row.key_point,
     usage,
     attachments
   }
@@ -779,6 +783,20 @@ export function updateMessage(id: string, patch: Partial<Message>): Message | nu
       id
     )
   return getMessage(id)
+}
+
+/**
+ * Writes the sentence a decision model picked out of a reply.
+ *
+ * Its own statement rather than a field on `updateMessage`, and pointedly not
+ * touching `updated_at`. This is a note *about* a message that arrives a
+ * second after it was written; a thread must not climb the sidebar, or restart
+ * the window in which it is still expecting a name, because a highlight
+ * landed. The full-text trigger fires on `UPDATE OF content` and so is not
+ * disturbed either.
+ */
+export function setKeyPoint(id: string, keyPoint: string | null): void {
+  getDb().prepare('UPDATE messages SET key_point = ? WHERE id = ?').run(keyPoint, id)
 }
 
 export function getMessage(id: string): Message | null {

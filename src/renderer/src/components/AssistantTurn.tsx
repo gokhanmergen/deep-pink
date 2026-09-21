@@ -7,6 +7,7 @@ import { LongText } from './LongText'
 import { useStore } from '../store'
 import { isEmptyAssistantMessage } from '../turns'
 import { estimateTurnHeight } from '../messageHeight'
+import { forgetKeyPoint, markKeyPoint, sentencesIn, takeKeyPointWish } from '../keyPoint'
 import { formatCost, formatDuration, formatTokens, modelShortName } from '../format'
 
 /**
@@ -130,6 +131,46 @@ function ReasoningTrace({
         {trace.open ? <LongText text={trace.text ?? 'Loading…'} /> : <pre />}
       </div>
     </details>
+  )
+}
+
+/**
+ * A reply's text, and the mark on the sentence worth reading first.
+ *
+ * Both halves need the rendered element, which is why they live here rather
+ * than in the turn above: the sentences are read off the page, and the one
+ * that comes back is found again on the same page. See `../keyPoint`.
+ *
+ * Nothing is marked while the text is still arriving. A sentence chosen from
+ * half a reply is a sentence chosen from a different reply, and the range
+ * would be rebuilt on every delta for as long as it kept coming.
+ */
+function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React.JSX.Element {
+  const body = useRef<HTMLDivElement>(null)
+  const streaming = message.status === 'streaming'
+
+  // Asked once, by whoever draws the finished reply first.
+  useEffect(() => {
+    const element = body.current
+    if (!element || streaming) return
+    if (!takeKeyPointWish(message.id)) return
+
+    const candidates = sentencesIn(element).map((candidate) => candidate.text)
+    if (candidates.length < 2) return
+    void useStore.getState().findKeyPoint(message.id, message.content, candidates)
+  }, [message.id, message.content, streaming])
+
+  useEffect(() => {
+    const element = body.current
+    if (!element) return
+    markKeyPoint(element, streaming ? null : message.keyPoint)
+    return () => forgetKeyPoint(element)
+  }, [message.keyPoint, message.content, streaming])
+
+  return (
+    <div className="message__body" ref={body}>
+      <Markdown content={message.content} codeTheme={ui.codeTheme} streaming={streaming} />
+    </div>
   )
 }
 
@@ -439,15 +480,7 @@ export const AssistantTurn = memo(function AssistantTurn({
                   */}
                 {reasoningLength(message) > 0 && message.content && <hr className="turn-rule" />}
 
-                {message.content && (
-                  <div className="message__body">
-                    <Markdown
-                      content={message.content}
-                      codeTheme={ui.codeTheme}
-                      streaming={message.status === 'streaming'}
-                    />
-                  </div>
-                )}
+                {message.content && <ReplyBody message={message} ui={ui} />}
 
                 {message.status === 'streaming' && !message.content && <span className="caret" />}
 

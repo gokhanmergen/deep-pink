@@ -27,6 +27,7 @@ import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
+import { askKeyPoint } from './providers/typesafe'
 import { loadSettings, saveSettings } from './settings'
 import { isEncryptionAvailable, setApiKey } from './secrets'
 
@@ -585,6 +586,27 @@ export function registerIpc(): void {
    * because they are not on screen; this is the disclosure being opened.
    */
   ipcMain.handle('messages:hidden', (_e, messageId: string) => repo.getHiddenParts(messageId))
+
+  /**
+   * The sentence of a reply worth reading first.
+   *
+   * The candidates come from the renderer because only the renderer knows what
+   * the reply looks like once it is drawn — the sentence has to be matched
+   * against the text on screen, and the markdown source is full of markers
+   * that never make it there. The request is made here because this is where
+   * the key lives, and the answer is written down here so a thread reopened
+   * tomorrow still shows it.
+   */
+  ipcMain.handle(
+    'messages:keyPoint',
+    async (_e, messageId: string, reply: string, candidates: string[]) => {
+      const found = await askKeyPoint(reply, candidates)
+      // Recorded either way: null is an answer, and writing it stops the same
+      // question being asked again every time the thread is opened.
+      repo.setKeyPoint(messageId, found?.text ?? null)
+      return found
+    }
+  )
 
   ipcMain.handle('icons:author', (_e, modelId: string) =>
     icons.iconForAuthor(icons.authorOf(modelId))

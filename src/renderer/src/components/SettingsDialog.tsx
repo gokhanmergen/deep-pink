@@ -7,6 +7,7 @@ import {
   Play,
   RefreshCw,
   Globe,
+  Highlighter,
   KeyRound,
   Keyboard,
   Layers,
@@ -63,6 +64,7 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
       { id: 'web', label: 'Web access', icon: <Globe {...ICON} />, experimental: true },
       { id: 'charts', label: 'Charts', icon: <BarChart3 {...ICON} />, experimental: true },
       { id: 'docs', label: 'Documents', icon: <FileText {...ICON} />, experimental: true },
+      { id: 'keyPoint', label: 'Key point', icon: <Highlighter {...ICON} />, experimental: true },
       { id: 'context', label: 'Context', icon: <Layers {...ICON} /> }
     ]
   },
@@ -812,6 +814,37 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <pre>{CHARTS_PROMPT}</pre>
               </div>
             </details>
+          </>
+        )}
+
+        {tab === 'keyPoint' && (
+          <>
+            <div className="section-title">
+              The line worth reading first
+              <Experimental />
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.keyPointEnabled}
+                onChange={(event) => void saveSettings({ keyPointEnabled: event.target.checked })}
+              />
+              <span>Mark the most important sentence of a reply</span>
+              <Revert path="keyPointEnabled" what="marking the key sentence" />
+            </label>
+            {/*
+              * Kept, where the rest of the commentary in here went, for the
+              * same reason the sync panel keeps its one line: this is not an
+              * explanation of the switch, it is where the reply goes and what
+              * it costs. Neither is guessable from "mark the most important
+              * sentence", and one of them is a second company.
+              */}
+            {settings.keyPointEnabled && (
+              <p className="field__hint">
+                Sends each finished reply to Jev, a decision model from TypeSafe — not the
+                model that wrote it. About $0.00006 a reply.
+              </p>
+            )}
           </>
         )}
 

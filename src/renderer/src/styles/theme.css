@@ -1411,6 +1411,23 @@ svg.lucide {
 }
 
 /*
+ * The sentence a decision model picked out of a reply.
+ *
+ * Drawn with the CSS Custom Highlight API rather than a `<mark>` wrapped
+ * around the words: the reply is React's, and a range laid over it needs no
+ * element at all — it crosses bold, links and inline code without any of them
+ * having to be split, and taking it away is forgetting a range.
+ *
+ * A wash rather than a block of colour. The sentence is still the same
+ * sentence and still part of the paragraph around it; what is wanted is the
+ * eye landing there first, not a label stuck over the text.
+ */
+::highlight(key-point) {
+  background-color: var(--accent-dim);
+  color: var(--text);
+}
+
+/*
  * Not settled yet, and saying so.
  *
  * Amber rather than the accent, because the accent is what the app uses for

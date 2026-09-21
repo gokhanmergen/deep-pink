@@ -115,6 +115,12 @@ export interface Message {
    * per message where they are.
    */
   hasPromptSnapshot: boolean
+  /**
+   * The one sentence of this reply worth reading first, as picked by a
+   * decision model and stored verbatim. Null when nothing was asked, nothing
+   * stood out, or the reply predates the feature.
+   */
+  keyPoint: string | null
   /** Set when this message replaced older messages during context compaction. */
   isCompactionSummary: boolean
   /** Compacted-away messages are hidden from the transcript but kept on disk. */
@@ -553,6 +559,12 @@ export interface Settings {
    */
   chartsEnabled: boolean
   docsEnabled: boolean
+  /**
+   * After a reply lands, asks a decision model which sentence matters most and
+   * marks it. Off by default: it is a second request per reply, and a reader
+   * who did not ask for one should not be paying for one.
+   */
+  keyPointEnabled: boolean
   web: WebSearchSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */

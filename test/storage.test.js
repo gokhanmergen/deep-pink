@@ -37,6 +37,39 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   check('both messages are stored in order', stored.length === 2 && stored[0].id === question.id)
   check('usage is attached to its message', stored[1].usage?.costUsd === 0.00234)
 
+  section('the line worth reading first')
+  /*
+   * Stored beside the reply, and pointedly not counted as a change to it.
+   *
+   * The sentence arrives a second after the reply does, from a different
+   * model, and the sidebar reads `updated_at` for two things that would both
+   * be wrong if this touched it: where a thread sits in the list, and whether
+   * it is still within the window where a name might yet arrive. A highlight
+   * landing must not push a conversation to the top or restart its shimmer.
+   */
+  const bornAt = repo.getMessage(answer.id).createdAt
+  const touchedAt = getDb()
+    .prepare('SELECT updated_at AS at FROM messages WHERE id = ?')
+    .get(answer.id).at
+  repo.setKeyPoint(answer.id, 'The borrow checker enforces aliasing rules.')
+  check(
+    'it comes back on the message',
+    repo.getMessage(answer.id).keyPoint === 'The borrow checker enforces aliasing rules.',
+    repo.getMessage(answer.id).keyPoint
+  )
+  check(
+    'and the message did not count as edited',
+    getDb().prepare('SELECT updated_at AS at FROM messages WHERE id = ?').get(answer.id).at ===
+      touchedAt
+  )
+  check('nor did anything else about it move', repo.getMessage(answer.id).createdAt === bornAt)
+  check('a reply nobody asked about has none', repo.getMessage(question.id).keyPoint === null)
+  repo.setKeyPoint(answer.id, null)
+  check(
+    'and nothing standing out clears it again',
+    repo.getMessage(answer.id).keyPoint === null
+  )
+
   section('search')
   const bodyHits = repo.search('borrow')
   const bodyHit = bodyHits.find((hit) => hit.messageId)

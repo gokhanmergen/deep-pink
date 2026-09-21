@@ -410,5 +410,18 @@ export const MIGRATIONS: string[] = [
    WHERE key = 'settings'
      AND json_valid(value)
      AND json_extract(value, '$.titlePregenModel') = 'google/gemini-2.5-flash-lite';
+  `,
+
+  /* 21 — the one line of a reply worth reading first */ `
+  /*
+   * The sentence a decision model picked out of the reply, stored verbatim
+   * rather than as an offset. Offsets into markdown mean nothing once the
+   * reply is rendered — the markers are gone and the text has moved — and the
+   * sentence is what the highlight is looked up by anyway.
+   *
+   * Null for every reply written before this existed, and for every one where
+   * nothing stood out. Both are the same thing to the reader: no highlight.
+   */
+  ALTER TABLE messages ADD COLUMN key_point TEXT;
   `
 ]

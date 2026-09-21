@@ -195,6 +195,7 @@ export const DEFAULT_SETTINGS: Settings = {
   streamReasoning: true,
   chartsEnabled: false,
   docsEnabled: false,
+  keyPointEnabled: false,
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,

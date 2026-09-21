@@ -18,6 +18,7 @@ import type {
   ThreadTotals,
   ToolCall
 } from '@shared/types'
+import { wantKeyPoint } from './keyPoint'
 
 export type Overlay =
   | null
@@ -52,6 +53,7 @@ export type SettingsTab =
   | 'web'
   | 'charts'
   | 'docs'
+  | 'keyPoint'
   | 'context'
   | 'appearance'
   | 'keys'
@@ -238,6 +240,11 @@ interface State {
   refreshThreads: () => Promise<void>
   refreshSettings: () => Promise<Settings>
   selectThread: (id: string | null) => Promise<void>
+  /**
+   * Asks which of a reply's sentences is the one to read first, and remembers
+   * the answer on the message. See `./keyPoint`.
+   */
+  findKeyPoint: (messageId: string, reply: string, candidates: string[]) => Promise<void>
   createThread: () => Promise<Thread>
   deleteThread: (id: string) => Promise<void>
   /** Stops a temporary chat being temporary, so it outlives the session. */
@@ -827,6 +834,18 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  async findKeyPoint(messageId, reply, candidates) {
+    const found = await api.messages.keyPoint(messageId, reply, candidates)
+    // Written onto the message rather than held aside, so it travels with it
+    // through every re-read of the transcript.
+    set({
+      messages: patchMessage(get().messages, messageId, (m) => ({
+        ...m,
+        keyPoint: found?.text ?? null
+      }))
+    })
+  },
+
   async refreshTranscript() {
     const threadId = get().activeThreadId
     if (!threadId) return
@@ -1067,6 +1086,7 @@ export const useStore = create<State>((set, get) => ({
       toolResult: null,
       systemPromptSnapshot: null,
       hasPromptSnapshot: false,
+      keyPoint: null,
       isCompactionSummary: false,
       compactedInto: null,
       usage: null,
@@ -1566,7 +1586,8 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
         toolResult: null,
         systemPromptSnapshot: null,
       hasPromptSnapshot: false,
-        isCompactionSummary: false,
+        keyPoint: null,
+      isCompactionSummary: false,
         compactedInto: null,
         usage: null,
         attachments: []
@@ -1664,6 +1685,14 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       const stillWorking = event.message.toolCalls != null && event.message.toolCalls.length > 0
       set({ messages: merged, generating: stillWorking })
       void get().refreshTotals()
+      /*
+       * A finished answer may have a sentence worth marking. Only the last
+       * round of a turn: a reply that is about to call a tool is not the
+       * answer yet, and asking about it would be asking about a fragment.
+       */
+      if (!stillWorking && useStore.getState().settings?.keyPointEnabled) {
+        wantKeyPoint(event.messageId)
+      }
       break
     }
 
