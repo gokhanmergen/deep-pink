@@ -135,6 +135,11 @@ const api = {
   },
 
   chat: {
+    /**
+     * Which threads actually have a turn in flight. The renderer's own idea of
+     * this is assembled from events and can be stranded; this is the truth.
+     */
+    generating: (): Promise<string[]> => ipcRenderer.invoke('chat:generating'),
     send: (req: SendMessageRequest): Promise<void> => ipcRenderer.invoke('chat:send', req),
     abort: (threadId: string): Promise<void> => ipcRenderer.invoke('chat:abort', threadId),
     isGenerating: (threadId: string): Promise<boolean> =>

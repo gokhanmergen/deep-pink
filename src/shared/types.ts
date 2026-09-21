@@ -684,7 +684,13 @@ export type StreamEvent =
   | { type: 'tool-approval-request'; messageId: string; toolCall: ToolCall; serverName: string }
   | { type: 'usage'; messageId: string; usage: Usage }
   | { type: 'done'; messageId: string; message: Message }
-  | { type: 'error'; messageId: string; error: string }
+  /*
+   * `threadId` because the renderer has to know whose failure this is without
+   * looking it up. It used to match the message against a map built from the
+   * `start` events it had seen, and an error it could not place was an error
+   * it dropped — leaving the sidebar showing a reply still arriving, forever.
+   */
+  | { type: 'error'; messageId: string; threadId?: string; error: string }
   /** The turn was stopped before it produced anything and was discarded. */
   | { type: 'aborted'; messageId: string; threadId: string }
   | { type: 'compaction-start'; threadId: string }

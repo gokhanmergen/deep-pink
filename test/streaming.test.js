@@ -11,6 +11,8 @@ const { suite, settle, message } = require('./support/harness')
  */
 suite('renderer streaming — one subscription, one bubble per turn', async ({ check, section }) => {
   const chatListeners = []
+  /** Threads the main process would admit to working on. */
+  const reallyGenerating = new Set()
   const mcpListeners = []
   const syncListeners = []
   const syncStateListeners = []
@@ -147,6 +149,9 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       models: { list: async () => [] },
       chat: {
         isGenerating: async () => false,
+        // What the main process would say is really running. The store checks
+        // itself against this, so a suite without it strands the check.
+        generating: async () => [...reallyGenerating],
         liveStreams: async () => liveStreams,
         onEvent: (fn) => {
           chatListeners.push(fn)
@@ -470,6 +475,45 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   )
   await state().selectThread('t1')
   check('and then leaving it leaves it alone', !removed.includes(rescued.id), removed)
+
+  section('a row cannot be left saying a reply is still coming')
+  /*
+   * The sidebar's idea of which threads are working is assembled from events,
+   * and an assembled idea can be wrong in one direction forever. A turn whose
+   * ending never arrives, or arrives naming a message this window never saw
+   * start, used to leave the row lit and its name shimmering for the rest of
+   * the session — there was nothing that ever went back and checked.
+   */
+  reallyGenerating.clear()
+  emit({ type: 'start', messageId: 'stuck-1', threadId: 't1' })
+  check('the row lights up when a turn starts', state().generatingThreadIds.includes('t1'))
+
+  // A failure the renderer cannot match to anything it has seen.
+  emit({ type: 'error', messageId: 'a-message-from-another-life', error: 'boom' })
+  check(
+    'an error it cannot place leaves it lit, for now',
+    state().generatingThreadIds.includes('t1')
+  )
+
+  // Four seconds is the interval; this gives it one turn of the wheel.
+  await settle(5200)
+  check(
+    'but the main process is asked, and it goes out',
+    !state().generatingThreadIds.includes('t1'),
+    state().generatingThreadIds
+  )
+
+  // And the reverse: a turn that really is running is left alone.
+  reallyGenerating.add('t1')
+  emit({ type: 'start', messageId: 'live-1', threadId: 't1' })
+  await settle(5200)
+  check(
+    'a turn that really is running stays lit',
+    state().generatingThreadIds.includes('t1'),
+    state().generatingThreadIds
+  )
+  reallyGenerating.clear()
+  emit({ type: 'done', messageId: 'live-1', message: message({ id: 'live-1', threadId: 't1', role: 'assistant', content: 'done' }) })
 
   section('a thread reopens where it was left')
   const { rememberPlace, placeOf, forgetPlace } = require(

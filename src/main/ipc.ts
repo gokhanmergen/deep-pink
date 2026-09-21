@@ -585,6 +585,8 @@ export function registerIpc(): void {
    * Reasoning traces and tool bodies are folded away by the paged reads
    * because they are not on screen; this is the disclosure being opened.
    */
+  ipcMain.handle('chat:generating', () => engine.generatingThreads())
+
   ipcMain.handle('messages:hidden', (_e, messageId: string) => repo.getHiddenParts(messageId))
 
   /**

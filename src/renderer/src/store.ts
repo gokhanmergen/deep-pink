@@ -1464,6 +1464,56 @@ function runStatsTicker(set: Setter, get: Getter): void {
   }, 250)
 }
 
+/**
+ * How often the sidebar checks its own story against the main process.
+ *
+ * Only while it believes something is happening, so an idle app asks nothing.
+ * Four seconds is far below noticing and far above the cost: it is one
+ * synchronous read of a map.
+ */
+const RECONCILE_EVERY = 4000
+
+let reconciler: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Drops threads the main process is not actually working on.
+ *
+ * The set above is assembled from events, and an assembled set can be wrong in
+ * one direction permanently: a turn whose ending was never announced, or was
+ * announced in a way that could not be matched to a thread, leaves a row
+ * claiming a reply is still coming and a name still on its way. Every one of
+ * those was reachable — measured by driving the store with the sequences the
+ * engine can actually produce — and no amount of care at the emitting end
+ * makes the class of bug go away, because the renderer cannot know about an
+ * event that never arrives.
+ *
+ * So it asks. Removals only: a turn that has just started may not have
+ * reached this window's notion of it yet, and the controller is registered
+ * before the first event goes out, so anything genuinely running is in the
+ * answer.
+ */
+function runReconciler(set: Setter, get: Getter): void {
+  if (reconciler) return
+  reconciler = setInterval(() => {
+    const believed = get().generatingThreadIds
+    if (!believed.length) {
+      clearInterval(reconciler as ReturnType<typeof setInterval>)
+      reconciler = null
+      return
+    }
+    void api.chat.generating().then((actually) => {
+      const real = new Set(actually)
+      const kept = get().generatingThreadIds.filter((id) => real.has(id))
+      if (kept.length === get().generatingThreadIds.length) return
+      set({ generatingThreadIds: kept })
+      // Whatever was stranded is not producing tokens either.
+      for (const id of get().liveStats ? Object.keys(get().liveStats) : []) {
+        if (!real.has(id)) emitted.delete(id)
+      }
+    })
+  }, RECONCILE_EVERY)
+}
+
 /** Counts what a delta added, wherever it is going. */
 function countDelta(event: StreamEvent, set: Setter, get: Getter): void {
   if (event.type !== 'content' && event.type !== 'reasoning') return
@@ -1504,6 +1554,7 @@ function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
       emitted.set(event.threadId, { chars: 0, startedAt: Date.now() })
       working(event.threadId, true)
       runStatsTicker(set, get)
+      runReconciler(set, get)
       /*
        * The list learns about the turn as it starts, not as it ends.
        *
@@ -1519,8 +1570,14 @@ function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
       break
     case 'done': {
       threadOfMessage.delete(event.messageId)
-      emitted.delete(event.message.threadId)
-      working(event.message.threadId, false)
+      // The thread it names, or the one it was started under. A `done` whose
+      // message has gone — deleted mid-turn, or a thread swept from under it —
+      // used to throw here, which left the row believing a reply was still on
+      // its way and stopped everything below this line from running.
+      const threadId = event.message?.threadId ?? threadOfMessage.get(event.messageId)
+      if (!threadId) break
+      emitted.delete(threadId)
+      working(threadId, false)
       break
     }
     case 'aborted':
@@ -1529,7 +1586,10 @@ function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
       working(event.threadId, false)
       break
     case 'error': {
-      const threadId = event.messageId ? threadOfMessage.get(event.messageId) : undefined
+      // What it says first, and only then what was remembered about it. An
+      // error the renderer could not place used to be an error it ignored,
+      // and ignoring it is how a row gets stuck saying a reply is arriving.
+      const threadId = event.threadId ?? (event.messageId ? threadOfMessage.get(event.messageId) : undefined)
       if (!threadId) break
       threadOfMessage.delete(event.messageId)
       emitted.delete(threadId)

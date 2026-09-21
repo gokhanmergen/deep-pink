@@ -86,6 +86,20 @@ export function isGenerating(threadId: string): boolean {
   return abortControllers.has(threadId)
 }
 
+/**
+ * Every thread with a turn in flight, which is the only reliable answer.
+ *
+ * The renderer keeps its own idea of this, assembled from the events it has
+ * seen, and an assembled idea can be wrong in one direction forever: a
+ * terminal event that never arrives, or arrives naming a message the renderer
+ * has no record of, leaves a row claiming a reply is still coming. This is
+ * held by the controller that is created before the turn starts and removed
+ * in its `finally`, so it is right however the turn ended.
+ */
+export function generatingThreads(): string[] {
+  return [...abortControllers.keys()]
+}
+
 export function resolveToolApproval(toolCallId: string, approved: boolean): void {
   const resolve = pendingApprovals.get(toolCallId)
   if (resolve) {
@@ -797,15 +811,25 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             repo.deleteMessage(assistant.id)
             emit({ type: 'aborted', messageId: assistant.id, threadId: thread.id })
           } else {
+            /*
+             * `done` carries the finished message, so there has to be one.
+             *
+             * The row can be gone by now — the thread was swept, or the reply
+             * was regenerated over — and `done` with nothing in it used to
+             * throw in the renderer's handler, which stopped the rest of that
+             * handler running and left the row saying a reply was still on its
+             * way. Nothing to show is what `aborted` means.
+             */
             const finished = repo.updateMessage(assistant.id, { status: 'aborted' })
-            emit({ type: 'done', messageId: assistant.id, message: finished! })
+            if (finished) emit({ type: 'done', messageId: assistant.id, message: finished })
+            else emit({ type: 'aborted', messageId: assistant.id, threadId: thread.id })
           }
           return
         }
 
         // Errors keep their message so the failure is visible in the transcript.
         repo.updateMessage(assistant.id, { status: 'error', error: message })
-        emit({ type: 'error', messageId: assistant.id, error: message })
+        emit({ type: 'error', messageId: assistant.id, threadId: thread.id, error: message })
         return
       }
 
@@ -817,7 +841,13 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         provider: result.provider,
         toolCalls: result.toolCalls.length ? result.toolCalls : null,
         status: 'complete'
-      })!
+      })
+      // Gone from under the turn. Say so and stop, rather than carry a null
+      // through three more emits.
+      if (!stored) {
+        emit({ type: 'aborted', messageId: assistant.id, threadId: thread.id })
+        return
+      }
 
       if (result.usage.totalTokens || result.usage.costUsd) {
         repo.recordUsage(thread.id, assistant.id, model, result.provider, result.usage)
@@ -825,7 +855,9 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       }
 
       if (!result.toolCalls.length) {
-        emit({ type: 'done', messageId: assistant.id, message: repo.getMessage(assistant.id)! })
+        const complete = repo.getMessage(assistant.id)
+        if (complete) emit({ type: 'done', messageId: assistant.id, message: complete })
+        else emit({ type: 'aborted', messageId: assistant.id, threadId: thread.id })
         break
       }
 
