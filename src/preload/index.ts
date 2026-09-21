@@ -108,15 +108,15 @@ const api = {
     hidden: (messageId: string): Promise<{ reasoning: string | null; content: string }> =>
       ipcRenderer.invoke('messages:hidden', messageId),
     /**
-     * Asks which of these sentences is the one to read first, and remembers
-     * the answer against the message. Null when nothing stood out — see
-     * `askKeyPoint`.
+     * Asks which of these sentences are the ones to read first, and
+     * remembers the answer against the message. Null when nothing stood out
+     * — see `askKeyPoint`.
      */
     keyPoint: (
       messageId: string,
       reply: string,
       candidates: string[]
-    ): Promise<{ text: string; probability: number; costUsd: number } | null> =>
+    ): Promise<{ texts: string[]; costUsd: number } | null> =>
       ipcRenderer.invoke('messages:keyPoint', messageId, reply, candidates),
     /** What the whole thread cost, however much of it has been read in. */
     totals: (threadId: string): Promise<ThreadTotals> =>

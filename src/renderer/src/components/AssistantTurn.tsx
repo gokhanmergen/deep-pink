@@ -169,7 +169,7 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
    * itself, which is the thing whose shape decides all of that.
    */
   const [strokes, setStrokes] = useState<Stroke[]>([])
-  const wanted = streaming ? null : message.keyPoint
+  const wanted = streaming ? [] : message.keyPoints
 
   /*
    * Off, then on a beat later, which is what makes the transition happen.
@@ -185,16 +185,16 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
   const [drawn, setDrawn] = useState(false)
   useEffect(() => {
     setDrawn(false)
-    if (!wanted) return
+    if (!wanted.length) return
     const timer = setTimeout(() => setDrawn(true), 0)
     return () => clearTimeout(timer)
-  }, [wanted])
+  }, [wanted.join('\u0000')])
 
   useEffect(() => {
     const element = body.current
     if (!element) return
 
-    if (!wanted) {
+    if (!wanted.length) {
       setStrokes([])
       return
     }
@@ -205,7 +205,8 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
     const observer = new ResizeObserver(redraw)
     observer.observe(element)
     return () => observer.disconnect()
-  }, [wanted, message.content])
+    // A fresh array every render, so the sentences themselves are the key.
+  }, [wanted.join('\u0000'), message.content])
 
   return (
     <div className="message__body" ref={body}>

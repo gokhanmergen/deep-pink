@@ -8,7 +8,7 @@ import type {
   ToolResult,
   Usage
 } from '@shared/types'
-import { takeKeyPointMarker } from '@shared/keyPointPrompt'
+import { takeKeyPointMarkers } from '@shared/keyPointPrompt'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
 import { loadSettings } from '../settings'
@@ -837,7 +837,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       liveStreams.delete(assistant.id)
       lastPersisted.delete(assistant.id)
       /*
-       * The model may have named its own key sentence on the way past.
+       * The model may have named its own key sentences on the way past.
        *
        * Taken out of the text before it is stored, so the marker never
        * reaches an export, the clipboard, or the next turn's context — it is
@@ -846,8 +846,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
        */
       const marked =
         settings.keyPointEnabled && settings.keyPointSource === 'self'
-          ? takeKeyPointMarker(result.content)
-          : { content: result.content, keyPoint: null }
+          ? takeKeyPointMarkers(result.content, settings.keyPointMost)
+          : { content: result.content, keyPoints: [] }
 
       const stored = repo.updateMessage(assistant.id, {
         content: marked.content,
@@ -856,7 +856,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         toolCalls: result.toolCalls.length ? result.toolCalls : null,
         status: 'complete'
       })
-      if (marked.keyPoint) repo.setKeyPoint(assistant.id, marked.keyPoint)
+      if (marked.keyPoints.length) repo.setKeyPoints(assistant.id, marked.keyPoints)
 
       // Gone from under the turn. Say so and stop, rather than carry a null
       // through three more emits.

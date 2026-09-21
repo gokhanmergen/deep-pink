@@ -116,11 +116,11 @@ export interface Message {
    */
   hasPromptSnapshot: boolean
   /**
-   * The one sentence of this reply worth reading first, as picked by a
-   * decision model and stored verbatim. Null when nothing was asked, nothing
-   * stood out, or the reply predates the feature.
+   * The sentences of this reply worth reading first, stored verbatim. Empty
+   * when nothing was asked, nothing stood out, or the reply predates the
+   * feature. More than one only where the reader allowed it.
    */
-  keyPoint: string | null
+  keyPoints: string[]
   /** Set when this message replaced older messages during context compaction. */
   isCompactionSummary: boolean
   /** Compacted-away messages are hidden from the transcript but kept on disk. */
@@ -581,6 +581,16 @@ export interface Settings {
   keyPointSource: KeyPointSource
   /** The chat model asked, when `keyPointSource` is `model`. */
   keyPointModel: string
+  /**
+   * How many sentences may be marked at most.
+   *
+   * One is the honest default: the question "which sentence matters" has a
+   * different character from "which two or three do", and a reply with half
+   * of it marked is a reply with nothing marked. Raising it also changes what
+   * a tie means — with one allowed, two sentences neck and neck are a reason
+   * to mark neither; with two, they are both worth marking.
+   */
+  keyPointMost: number
   web: WebSearchSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */

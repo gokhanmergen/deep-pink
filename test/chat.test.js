@@ -132,39 +132,56 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
    * is not the same as gone, and it would otherwise travel into an export, a
    * copy to the clipboard, and the next turn's context.
    */
-  const marked = subject.takeKeyPointMarker('The answer is 42.\n\n<!--key: The answer is 42.-->')
-  check('the sentence comes out', marked.keyPoint === 'The answer is 42.', marked.keyPoint)
+  const marked = subject.takeKeyPointMarkers('The answer is 42.\n\n<!--key: The answer is 42.-->', 1)
+  check('the sentence comes out', marked.keyPoints[0] === 'The answer is 42.', marked.keyPoints)
   check('and the comment comes out of the reply', marked.content === 'The answer is 42.', marked.content)
 
-  const spaced = subject.takeKeyPointMarker('Body.\n<!--  key:   A sentence.  -->')
-  check('however it was spaced', spaced.keyPoint === 'A sentence.', spaced.keyPoint)
+  const spaced = subject.takeKeyPointMarkers('Body.\n<!--  KEY :   A sentence.  -->', 1)
+  check('however it was spaced or cased', spaced.keyPoints[0] === 'A sentence.', spaced.keyPoints)
 
-  const bold = subject.takeKeyPointMarker('Use **LUKS**.\n<!--key: Use **LUKS**.-->')
+  const bold = subject.takeKeyPointMarkers('Use **LUKS**.\n<!--key: Use **LUKS**.-->', 1)
   check(
     'a sentence keeps the markdown it was written with',
-    bold.keyPoint === 'Use **LUKS**.',
-    bold.keyPoint
+    bold.keyPoints[0] === 'Use **LUKS**.',
+    bold.keyPoints
   )
 
-  const none = subject.takeKeyPointMarker('Nothing marked here.')
-  check('a reply with no marker names nothing', none.keyPoint === null)
+  // More than one, and never more than was asked for.
+  const two = subject.takeKeyPointMarkers('A. B.\n<!--key: A.-->\n<!--key: B.-->', 2)
+  check('two markers give two sentences', two.keyPoints.length === 2, two.keyPoints)
+  check('and both comments leave the reply', two.content === 'A. B.', two.content)
+  const capped = subject.takeKeyPointMarkers('A. B.\n<!--key: A.-->\n<!--key: B.-->', 1)
+  check('an eager model is held to the setting', capped.keyPoints.length === 1, capped.keyPoints)
+
+  const none = subject.takeKeyPointMarkers('Nothing marked here.', 1)
+  check('a reply with no marker names nothing', none.keyPoints.length === 0)
   check('and is handed back untouched', none.content === 'Nothing marked here.')
 
-  const empty = subject.takeKeyPointMarker('Body.\n<!--key: -->')
-  check('an empty marker names nothing', empty.keyPoint === null, empty.keyPoint)
+  const empty = subject.takeKeyPointMarkers('Body.\n<!--key: -->', 1)
+  check('an empty marker names nothing', empty.keyPoints.length === 0, empty.keyPoints)
+  // And still goes: a model that decides nothing stands out may keep the
+  // shape and leave it blank, and a blank marker left in the text reaches the
+  // export and the next turn's context.
+  check('but is still taken out of the reply', empty.content === 'Body.', empty.content)
 
   // A reply may talk about HTML comments without meaning this one.
-  const innocent = subject.takeKeyPointMarker('Write <!-- a comment --> like so.')
+  const innocent = subject.takeKeyPointMarkers('Write <!-- a comment --> like so.', 1)
   check(
     'an unrelated comment is left alone',
-    innocent.keyPoint === null && innocent.content === 'Write <!-- a comment --> like so.',
+    innocent.keyPoints.length === 0 && innocent.content === 'Write <!-- a comment --> like so.',
     innocent
   )
 
   check(
     'and the instruction actually asks for that shape',
-    subject.KEY_POINT_PROMPT.includes('<!--key:')
+    subject.keyPointPrompt(1).includes('<!--key:')
   )
+  check(
+    'asking for one does not ask for several',
+    !subject.keyPointPrompt(1).includes('up to'),
+    subject.keyPointPrompt(1).slice(0, 80)
+  )
+  check('asking for three says so', subject.keyPointPrompt(3).includes('up to 3'))
 
   section('HTML extraction')
   const text = htmlToText(

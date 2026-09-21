@@ -213,8 +213,8 @@ function match(candidates: Candidate[], sentence: string): Candidate | undefined
 }
 
 /**
- * Where to draw the highlighter over a reply, or nothing if the sentence is
- * not on this page.
+ * Where to draw the highlighter over a reply, or nothing if none of the
+ * sentences is on this page.
  *
  * Positions are relative to the body, so the strokes move with the text and
  * only need working out again when the text reflows.
@@ -226,36 +226,53 @@ function match(candidates: Candidate[], sentence: string): Candidate | undefined
  * behind the answer in an AI Overview: unmistakable because nothing else on
  * the page has one, not because it shouts.
  */
-export function strokesFor(body: Element, sentence: string | null): Stroke[] {
-  if (!sentence) return []
+export function strokesFor(body: Element, sentences: string[]): Stroke[] {
+  if (!sentences.length) return []
 
-  const hit = match(sentencesIn(body), sentence)
-  if (!hit) return []
+  /*
+   * Read once, matched against each.
+   *
+   * Walking the reply is the expensive half, and a reply with three sentences
+   * marked is still one reply. Sentences that cannot be found are simply not
+   * drawn — a model that reworded the one it named leaves the others marked
+   * rather than losing all of them.
+   */
+  const candidates = sentencesIn(body)
+  const found = sentences
+    .map((sentence) => match(candidates, sentence))
+    .filter((hit): hit is Candidate => Boolean(hit))
+  if (!found.length) return []
 
   const base = body.getBoundingClientRect()
-  const lines = perLine([...hit.range.getClientRects()].filter((rect) => rect.width > 1))
+  const strokes: Stroke[] = []
 
-  return lines.map((rect, at) => {
-    /*
-     * Kept inside the column, which is not a nicety.
-     *
-     * A line that starts hard against the left edge — most of them — put the
-     * panel four pixels outside the message, and a message is paint-contained
-     * by `content-visibility`, so those four pixels were clipped. What was
-     * clipped was exactly the rounded corner, which is the one part of this
-     * shape anybody notices: the panel arrived with a square top-left and a
-     * square bottom-left, like a box that had been cut off.
-     */
-    const left = Math.max(rect.left - base.left - PAD_X, 0)
-    const right = Math.min(rect.right - base.left + PAD_X, base.width)
-    return {
-      left,
-      top: rect.top - base.top - PAD_Y,
-      width: Math.max(right - left, 0),
-      height: rect.bottom - rect.top + PAD_Y * 2,
-      delay: at * 70
+  /*
+   * Lines are merged within a sentence and never across two.
+   *
+   * Merging everything by the line it sits on is what one sentence needs —
+   * bold runs and links otherwise each start their own box. Doing it across
+   * sentences joins two of them that happen to share a line, and paints a
+   * band straight through whatever was written between them.
+   */
+  for (const hit of found) {
+    const rects = [...hit.range.getClientRects()].filter((rect) => rect.width > 1)
+    for (const rect of perLine(rects)) {
+      strokes.push({
+        left: Math.max(rect.left - base.left - PAD_X, 0),
+        top: rect.top - base.top - PAD_Y,
+        width: Math.max(
+          Math.min(rect.right - base.left + PAD_X, base.width) -
+            Math.max(rect.left - base.left - PAD_X, 0),
+          0
+        ),
+        height: rect.bottom - rect.top + PAD_Y * 2,
+        // Drawn in the order they are read, whichever sentence they belong to.
+        delay: strokes.length * 70
+      })
     }
-  })
+  }
+
+  return strokes
 }
 
 /**

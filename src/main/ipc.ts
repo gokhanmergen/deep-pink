@@ -610,16 +610,15 @@ export function registerIpc(): void {
        * the second lock on the same door — a stale window would otherwise pay
        * for a request whose answer is already stored.
        */
+      if (settings.keyPointSource === 'self') return null
+      const most = Math.max(settings.keyPointMost, 1)
       const found =
         settings.keyPointSource === 'model'
-          ? await askKeyPointViaModel(candidates, settings.keyPointModel)
-          : settings.keyPointSource === 'jev'
-            ? await askKeyPoint(reply, candidates)
-            : null
-      if (settings.keyPointSource === 'self') return null
+          ? await askKeyPointViaModel(candidates, settings.keyPointModel, most)
+          : await askKeyPoint(reply, candidates, most)
       // Recorded either way: null is an answer, and writing it stops the same
       // question being asked again every time the thread is opened.
-      repo.setKeyPoint(messageId, found?.text ?? null)
+      repo.setKeyPoints(messageId, found?.texts ?? [])
       return found
     }
   )

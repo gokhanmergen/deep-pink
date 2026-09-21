@@ -423,5 +423,18 @@ export const MIGRATIONS: string[] = [
    * nothing stood out. Both are the same thing to the reader: no highlight.
    */
   ALTER TABLE messages ADD COLUMN key_point TEXT;
+  `,
+
+  /* 22 — a reply may have more than one line worth reading first */ `
+  /*
+   * One column, holding a JSON array instead of a sentence.
+   *
+   * Renamed rather than added beside the old one: there is exactly one fact
+   * here — which sentences were picked — and two columns for it would be two
+   * places to keep in step. What is already stored is a single sentence, so
+   * it becomes an array of one and nothing is lost.
+   */
+  ALTER TABLE messages RENAME COLUMN key_point TO key_points;
+  UPDATE messages SET key_points = json_array(key_points) WHERE key_points IS NOT NULL;
   `
 ]

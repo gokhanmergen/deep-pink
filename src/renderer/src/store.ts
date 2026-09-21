@@ -837,12 +837,12 @@ export const useStore = create<State>((set, get) => ({
 
   async findKeyPoint(messageId, reply, candidates) {
     const found = await api.messages.keyPoint(messageId, reply, candidates)
-    // Written onto the message rather than held aside, so it travels with it
+    // Written onto the message rather than held aside, so they travel with it
     // through every re-read of the transcript.
     set({
       messages: patchMessage(get().messages, messageId, (m) => ({
         ...m,
-        keyPoint: found?.text ?? null
+        keyPoints: found?.texts ?? []
       }))
     })
   },
@@ -1087,7 +1087,7 @@ export const useStore = create<State>((set, get) => ({
       toolResult: null,
       systemPromptSnapshot: null,
       hasPromptSnapshot: false,
-      keyPoint: null,
+      keyPoints: [],
       isCompactionSummary: false,
       compactedInto: null,
       usage: null,
@@ -1647,7 +1647,7 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
         toolResult: null,
         systemPromptSnapshot: null,
       hasPromptSnapshot: false,
-        keyPoint: null,
+        keyPoints: [],
       isCompactionSummary: false,
         compactedInto: null,
         usage: null,

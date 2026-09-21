@@ -853,6 +853,37 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   </select>
                 </div>
 
+                <div className="field">
+                  <FieldLabel path="keyPointMost" what="how many sentences">
+                    How many
+                  </FieldLabel>
+                  <select
+                    className="input"
+                    value={String(settings.keyPointMost)}
+                    onChange={(event) =>
+                      void saveSettings({ keyPointMost: Number(event.target.value) })
+                    }
+                  >
+                    <option value="1">One sentence</option>
+                    <option value="2">Up to two</option>
+                    <option value="3">Up to three</option>
+                  </select>
+                </div>
+
+                {/*
+                  * Worth saying because it is not a volume knob: allowing a
+                  * second sentence changes what a tie means. Asked for one,
+                  * two sentences neck and neck are a reason to mark neither;
+                  * asked for two, they are the answer.
+                  */}
+                {settings.keyPointMost > 1 && (
+                  <p className="field__hint">
+                    Fewer is still better — a reply with half of it marked has nothing
+                    marked. Allowing a second also means two sentences of equal weight are
+                    both marked, where asking for one would have marked neither.
+                  </p>
+                )}
+
                 {/*
                   * One line each, kept where the rest of the commentary in
                   * here went, and for the same reason the sync panel keeps

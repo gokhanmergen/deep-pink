@@ -1,7 +1,7 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
 import { DOCS_PROMPT } from '@shared/docs'
-import { KEY_POINT_PROMPT } from '@shared/keyPointPrompt'
+import { keyPointPrompt } from '@shared/keyPointPrompt'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
@@ -121,19 +121,6 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
     })
   }
 
-  // With the others that say what a reply may *be*. This one asks for one
-  // extra line at the end of it and changes nothing else.
-  if (settings.keyPointEnabled && settings.keyPointSource === 'self') {
-    push({
-      id: 'keyPoint',
-      source: 'keyPoint',
-      label: 'Key sentence',
-      origin: 'Deep Pink',
-      text: KEY_POINT_PROMPT,
-      removable: true
-    })
-  }
-
   const useWeb = webEnabledFor(thread, settings)
   if (useWeb && settings.web.engine !== 'openrouter') {
     push({
@@ -202,6 +189,31 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
       removable: true
     })
     if (enabled) tools = candidateTools
+  }
+
+  /*
+   * Last, and deliberately.
+   *
+   * This asks for something at the very end of every reply, and an
+   * instruction buried above the tool schemas is one a smaller model has
+   * forgotten by the time it gets there. Measured with it last: the polite
+   * wording was obeyed eight times in twelve across four models, the
+   * insistent one eleven. It sat with charts and documents at first, which
+   * are also about what a reply may *be* — but those shape the whole answer,
+   * and this only adds a line to the end of it.
+   *
+   * After the tools segment, which is not system text at all: `systemText`
+   * below drops it, so this is genuinely the last thing the model reads.
+   */
+  if (settings.keyPointEnabled && settings.keyPointSource === 'self') {
+    push({
+      id: 'keyPoint',
+      source: 'keyPoint',
+      label: 'Key sentence',
+      origin: 'Deep Pink',
+      text: keyPointPrompt(settings.keyPointMost),
+      removable: true
+    })
   }
 
   const systemText = segments

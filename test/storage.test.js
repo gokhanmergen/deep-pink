@@ -51,23 +51,33 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   const touchedAt = getDb()
     .prepare('SELECT updated_at AS at FROM messages WHERE id = ?')
     .get(answer.id).at
-  repo.setKeyPoint(answer.id, 'The borrow checker enforces aliasing rules.')
+  repo.setKeyPoints(answer.id, ['The borrow checker enforces aliasing rules.'])
   check(
     'it comes back on the message',
-    repo.getMessage(answer.id).keyPoint === 'The borrow checker enforces aliasing rules.',
-    repo.getMessage(answer.id).keyPoint
+    repo.getMessage(answer.id).keyPoints[0] === 'The borrow checker enforces aliasing rules.',
+    repo.getMessage(answer.id).keyPoints
   )
+  repo.setKeyPoints(answer.id, ['One.', 'Two.'])
+  check(
+    'and so do several, in the order they were given',
+    JSON.stringify(repo.getMessage(answer.id).keyPoints) === '["One.","Two."]',
+    repo.getMessage(answer.id).keyPoints
+  )
+  repo.setKeyPoints(answer.id, ['The borrow checker enforces aliasing rules.'])
   check(
     'and the message did not count as edited',
     getDb().prepare('SELECT updated_at AS at FROM messages WHERE id = ?').get(answer.id).at ===
       touchedAt
   )
   check('nor did anything else about it move', repo.getMessage(answer.id).createdAt === bornAt)
-  check('a reply nobody asked about has none', repo.getMessage(question.id).keyPoint === null)
-  repo.setKeyPoint(answer.id, null)
+  check(
+    'a reply nobody asked about has none',
+    repo.getMessage(question.id).keyPoints.length === 0
+  )
+  repo.setKeyPoints(answer.id, [])
   check(
     'and nothing standing out clears it again',
-    repo.getMessage(answer.id).keyPoint === null
+    repo.getMessage(answer.id).keyPoints.length === 0
   )
 
   section('search')

@@ -61,7 +61,7 @@ interface MessageRow {
   system_prompt_snapshot: string | null
   is_compaction_summary: number
   compacted_into: string | null
-  key_point: string | null
+  key_points: string | null
 }
 
 interface UsageRow {
@@ -183,9 +183,9 @@ function toMessage(
     hasPromptSnapshot: Boolean(row.system_prompt_snapshot),
     isCompactionSummary: row.is_compaction_summary === 1,
     compactedInto: row.compacted_into,
-    // Carried even when the rest of the message is folded away: it is one
-    // sentence, and it is what the transcript needs in order to mark it.
-    keyPoint: row.key_point,
+    // Carried even when the rest of the message is folded away: a sentence or
+    // two, and what the transcript needs in order to mark them.
+    keyPoints: parseJson<string[]>(row.key_points, []) ?? [],
     usage,
     attachments
   }
@@ -786,7 +786,7 @@ export function updateMessage(id: string, patch: Partial<Message>): Message | nu
 }
 
 /**
- * Writes the sentence a decision model picked out of a reply.
+ * Writes the sentences picked out of a reply.
  *
  * Its own statement rather than a field on `updateMessage`, and pointedly not
  * touching `updated_at`. This is a note *about* a message that arrives a
@@ -795,8 +795,10 @@ export function updateMessage(id: string, patch: Partial<Message>): Message | nu
  * landed. The full-text trigger fires on `UPDATE OF content` and so is not
  * disturbed either.
  */
-export function setKeyPoint(id: string, keyPoint: string | null): void {
-  getDb().prepare('UPDATE messages SET key_point = ? WHERE id = ?').run(keyPoint, id)
+export function setKeyPoints(id: string, keyPoints: string[]): void {
+  getDb()
+    .prepare('UPDATE messages SET key_points = ? WHERE id = ?')
+    .run(keyPoints.length ? JSON.stringify(keyPoints) : null, id)
 }
 
 export function getMessage(id: string): Message | null {

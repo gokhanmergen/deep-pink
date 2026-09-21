@@ -55,10 +55,19 @@ const LONGEST_OPTION = 300
  */
 const CLEAR_ENOUGH = 0.15
 
+/**
+ * The least a sentence can score and still be worth marking alongside another.
+ *
+ * Only consulted when more than one is allowed. Two hundred candidates
+ * sharing a flat distribution score half a percent each, so this is the line
+ * between "several sentences stood out" and "nothing did, take the top few
+ * anyway".
+ */
+const WORTH_MARKING = 0.15
+
 export interface KeyPoint {
-  text: string
-  /** The winner's own probability, kept so the reader can be told how sure. */
-  probability: number
+  /** In the order they were ranked, most important first. */
+  texts: string[]
   costUsd: number
 }
 
@@ -77,7 +86,8 @@ interface ChoiceAnswer {
  */
 export async function askKeyPoint(
   reply: string,
-  candidates: string[]
+  candidates: string[],
+  most = 1
 ): Promise<KeyPoint | null> {
   const key = getSecret('openrouter')
   if (!key || candidates.length < 2) return null
@@ -117,17 +127,41 @@ export async function askKeyPoint(
       usage?: { cost?: number }
     }
     const answer = body.answers?.key_point
-    if (!answer?.choice || answer.choice === 'none') return null
+    const probabilities = answer?.probabilities ?? {}
 
-    const at = Number(answer.choice.slice(1))
-    const text = offered[at]
-    if (!text) return null
+    const ranked = Object.entries(probabilities)
+      .filter(([option]) => option !== 'none')
+      .sort((a, b) => b[1] - a[1])
+    if (!ranked.length || answer?.choice === 'none') return null
 
-    const spread = Object.values(answer.probabilities ?? {}).sort((a, b) => b - a)
-    const [first = 0, second = 0] = spread
-    if (first - second < CLEAR_ENOUGH) return null
+    /*
+     * One, or several, and the difference is not only how many are kept.
+     *
+     * Asked for one, a near-tie is a reason to mark nothing: choosing between
+     * two sentences the model could not choose between is the app inventing
+     * an answer. Asked for several, the same near-tie is the answer — both
+     * are worth reading — so the gap test applies only when a single sentence
+     * has to win outright.
+     *
+     * The floor is what stops that becoming "mark the top three of two
+     * hundred whatever they scored". Spread evenly over that many options
+     * nothing reaches 0.15, so a flat distribution still marks nothing.
+     */
+    const [first, second = 0] = ranked.map(([, p]) => p)
+    if (most <= 1) {
+      if (first - second < CLEAR_ENOUGH) return null
+      const only = offered[Number(ranked[0][0].slice(1))]
+      return only ? { texts: [only], costUsd: body.usage?.cost ?? 0 } : null
+    }
 
-    return { text, probability: first, costUsd: body.usage?.cost ?? 0 }
+    const texts = ranked
+      .filter(([, p]) => p >= WORTH_MARKING)
+      .slice(0, most)
+      .map(([option]) => offered[Number(option.slice(1))])
+      .filter((text): text is string => Boolean(text))
+
+    if (!texts.length) return null
+    return { texts, costUsd: body.usage?.cost ?? 0 }
   } catch {
     // Offline, rate limited, or an account without the beta. The reply is
     // already on screen and complete; this was only ever going to add to it.
@@ -153,7 +187,8 @@ export async function askKeyPoint(
  */
 export async function askKeyPointViaModel(
   candidates: string[],
-  model: string
+  model: string,
+  most = 1
 ): Promise<KeyPoint | null> {
   if (candidates.length < 2) return null
 
@@ -161,6 +196,12 @@ export async function askKeyPointViaModel(
   const numbered = offered
     .map((sentence, at) => `${at + 1}. ${sentence.slice(0, LONGEST_OPTION)}`)
     .join('\n')
+
+  const wanted =
+    most > 1
+      ? `the numbers of up to ${most} sentences that matter most, most important first, ` +
+        'separated by commas'
+      : 'the number of the single most important sentence for the reader to take away'
 
   try {
     const settings = loadSettings()
@@ -170,29 +211,30 @@ export async function askKeyPointViaModel(
         {
           role: 'system',
           content:
-            'You are given the sentences of an answer, numbered. Reply with the number of ' +
-            'the single most important sentence for the reader to take away, and nothing ' +
-            'else. Reply with 0 if no single sentence stands out. Reply with a number only.'
+            `You are given the sentences of an answer, numbered. Reply with ${wanted}, ` +
+            'and nothing else. Reply with 0 if no sentence stands out. Numbers only.'
         },
         { role: 'user', content: numbered }
       ],
       temperature: 0,
-      maxTokens: 8,
+      // Room for a few numbers and their commas, and no room to start talking.
+      maxTokens: most > 1 ? 16 : 8,
       providerRouting: settings.modelProviderRouting[model] ?? null,
       attribution: settings.sendAppAttribution
     })
 
-    const picked = Number(/-?\d+/.exec(result.content)?.[0])
-    if (!Number.isInteger(picked) || picked < 1 || picked > offered.length) {
-      return null
+    const texts: string[] = []
+    for (const found of result.content.matchAll(/\d+/g)) {
+      const at = Number(found[0])
+      if (at < 1 || at > offered.length) continue
+      const text = offered[at - 1]
+      // A model asked for three sometimes says "2, 2, 5".
+      if (text && !texts.includes(text)) texts.push(text)
+      if (texts.length >= Math.max(most, 1)) break
     }
+    if (!texts.length) return null
 
-    return {
-      text: offered[picked - 1],
-      // No distribution to read, and saying otherwise would be inventing one.
-      probability: 0,
-      costUsd: result.usage.costUsd
-    }
+    return { texts, costUsd: result.usage.costUsd }
   } catch {
     /*
      * No mark, and no second attempt.
