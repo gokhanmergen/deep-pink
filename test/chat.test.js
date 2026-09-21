@@ -228,8 +228,16 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
    */
   check(
     'asking for several says the count comes from the question',
-    /decided by the reader's question/.test(subject.keyPointPrompt(5)),
-    subject.keyPointPrompt(5).slice(0, 300)
+    /count the separate things they want to know/.test(subject.keyPointPrompt(5)),
+    subject.keyPointPrompt(5)
+  )
+  // Said again at the end of the list, which is the other position a model
+  // weights. Measured worth doing: it took one over-marking reply from three
+  // marks to two and changed nothing else.
+  check(
+    'and asks for the count before anything is picked',
+    /how many separate things the reader wanted to know/.test(subject.keyPointPrompt(5)),
+    subject.keyPointPrompt(5)
   )
   check(
     'and says the number is a limit rather than a target',
@@ -237,8 +245,9 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
     subject.keyPointPrompt(5)
   )
   check(
-    'and still insists one thing asked gets one mark',
-    /[Oo]ne thing with one answer gets exactly one mark/.test(subject.keyPointPrompt(5))
+    'and still insists one thing asked gets exactly one mark',
+    /mark exactly one sentence/.test(subject.keyPointPrompt(5)),
+    subject.keyPointPrompt(5)
   )
   // Not inherited from the several-sentence wording: asked for one, there is
   // no count to work out, and the instruction says which one rather than how
