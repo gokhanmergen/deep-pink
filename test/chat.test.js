@@ -186,6 +186,26 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
   // the instruction has to say that rather than leave it to be inferred. An
   // earlier wording said only "fewer is better", which is advice against
   // doing the thing the setting exists for.
+  /*
+   * How many is typed rather than chosen from a list, so it arrives as
+   * whatever somebody typed. Clamped where it is used and not only where it
+   * is entered: this number becomes the size of a fan-out of yes/no questions
+   * in one request, and a line read aloud to a model.
+   */
+  check('a typed number comes through', subject.clampKeyPoints(5) === 5)
+  check('zero and below become one', subject.clampKeyPoints(0) === 1 && subject.clampKeyPoints(-3) === 1)
+  check('a fraction rounds', subject.clampKeyPoints(2.6) === 3)
+  check('nonsense becomes one', subject.clampKeyPoints(Number.NaN) === 1)
+  check(
+    'and past the ceiling is the ceiling',
+    subject.clampKeyPoints(400) === subject.MOST_KEY_POINTS
+  )
+  check(
+    'so the instruction never asks for an absurd number',
+    subject.keyPointPrompt(400).includes(`up to ${subject.MOST_KEY_POINTS}`) &&
+      !subject.keyPointPrompt(400).includes('400')
+  )
+
   check(
     'and asks for one per question, not for fewer',
     subject.keyPointPrompt(5).includes('five questions') &&

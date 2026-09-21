@@ -175,6 +175,22 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
 export const DEFAULT_BASE_SYSTEM_PROMPT =
   'You are a helpful assistant. Be direct and concise. Use Markdown for structure, fenced code blocks with a language tag for code, and LaTeX between $…$ or $$…$$ for mathematics.'
 
+/**
+ * The most sentences a reply may have marked.
+ *
+ * Not a shape the feature breaks at — a ceiling, so a typed number cannot
+ * become a request for four hundred yes/no questions in one call, or an
+ * instruction to a model to mark half of what it wrote. Twenty is far past
+ * the number of distinct things any one reply answers.
+ */
+export const MOST_KEY_POINTS = 20
+
+/** A typed number, held to something the rest of the app can act on. */
+export function clampKeyPoints(most: number): number {
+  if (!Number.isFinite(most)) return 1
+  return Math.min(Math.max(Math.round(most), 1), MOST_KEY_POINTS)
+}
+
 export const DEFAULT_SETTINGS: Settings = {
   hasApiKey: false,
   defaultModel: 'anthropic/claude-sonnet-4.5',

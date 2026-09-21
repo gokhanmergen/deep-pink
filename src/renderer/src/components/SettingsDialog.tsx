@@ -21,7 +21,12 @@ import { ICON } from '../icons'
 import { useStore, type SettingsTab as Tab } from '../store'
 import { Overlay } from './Overlay'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
-import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '@shared/defaults'
+import {
+  DEFAULT_KEYBINDS,
+  DEFAULT_SETTINGS,
+  MOST_KEY_POINTS,
+  clampKeyPoints
+} from '@shared/defaults'
 import { formatRelative, modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 import type {
@@ -855,21 +860,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
                 <div className="field">
                   <FieldLabel path="keyPointMost" what="how many sentences">
-                    How many
+                    At most how many sentences
                   </FieldLabel>
-                  <select
+                  <DebouncedInput
                     className="input"
+                    type="number"
+                    min={1}
+                    max={MOST_KEY_POINTS}
                     value={String(settings.keyPointMost)}
-                    onChange={(event) =>
-                      void saveSettings({ keyPointMost: Number(event.target.value) })
+                    onCommit={(next) =>
+                      void saveSettings({ keyPointMost: clampKeyPoints(Number(next)) })
                     }
-                  >
-                    <option value="1">One sentence</option>
-                    <option value="2">Up to two</option>
-                    <option value="3">Up to three</option>
-                    <option value="5">Up to five</option>
-                    <option value="8">Up to eight</option>
-                  </select>
+                  />
                 </div>
 
                 {/*
@@ -880,9 +882,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   */}
                 {settings.keyPointMost > 1 && (
                   <p className="field__hint">
-                    A ceiling, not a target: a reply making one point still gets one mark.
-                    Set it to about as many things as you tend to ask at once — a reply
-                    answering five questions can then mark the answer to each.
+                    A ceiling, not a target: a reply making one point still gets one mark. Set
+                    it to about as many things as you tend to ask at once — a reply answering
+                    five questions can then mark the answer to each.
                   </p>
                 )}
 

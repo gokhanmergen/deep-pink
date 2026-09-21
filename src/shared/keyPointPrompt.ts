@@ -18,10 +18,15 @@
  * one model that went from never doing it to nearly always.
  */
 
+import { clampKeyPoints } from './defaults'
+
 /** Liberal in what it accepts: any casing, any spacing, however many. */
 const MARKER = /<!--\s*key\s*:\s*([\s\S]*?)-->/gi
 
-export function keyPointPrompt(most: number): string {
+export function keyPointPrompt(asked: number): string {
+  // Held to the same ceiling as everything else, because this one is read
+  // aloud to a model: an unclamped number becomes "up to 400 of them".
+  const most = clampKeyPoints(asked)
   const many = most > 1
 
   return `Every reply you write must end with ${
@@ -90,6 +95,6 @@ export function takeKeyPointMarkers(
     content: content.replace(MARKER, '').trimEnd(),
     // More than was asked for is the model being enthusiastic, not the reader
     // changing their mind: the setting is what decides how many are marked.
-    keyPoints: keyPoints.slice(0, Math.max(most, 1))
+    keyPoints: keyPoints.slice(0, clampKeyPoints(most))
   }
 }
