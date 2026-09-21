@@ -1,3 +1,4 @@
+import { COST_MARKERS } from '@shared/defaults'
 import type { Message } from '@shared/types'
 
 /**
@@ -45,8 +46,9 @@ export function groupIntoTurns(messages: Message[]): Block[] {
   }
 
   for (const message of messages) {
-    // Cost markers for thread naming are bookkeeping, not conversation.
-    if (message.compactedInto === 'title') continue
+    // Cost markers — naming a thread, picking its key sentence — are
+    // bookkeeping, not conversation.
+    if (message.compactedInto && isCostMarker(message.compactedInto)) continue
 
     if (message.role === 'assistant' || message.role === 'tool') {
       run.push(message)
@@ -59,4 +61,9 @@ export function groupIntoTurns(messages: Message[]): Block[] {
 
   if (run.length) flush()
   return blocks
+}
+
+/** Whether a `compacted_into` names a cost marker rather than a summary. */
+function isCostMarker(into: string): boolean {
+  return (COST_MARKERS as readonly string[]).includes(into)
 }

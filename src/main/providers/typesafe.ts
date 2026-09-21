@@ -1,3 +1,4 @@
+import type { Usage } from '@shared/types'
 import { getSecret } from '../secrets'
 import { complete } from './openrouter'
 import { loadSettings } from '../settings'
@@ -151,7 +152,80 @@ function splitOnce(text: string, at: string): [string, string] {
 export interface KeyPoint {
   /** In the order they were ranked, most important first. */
   texts: string[]
-  costUsd: number
+  /**
+   * What the request cost, in the shape the statistics already keep.
+   *
+   * A whole `Usage` rather than the one number the panel shows, because
+   * every other request the app makes is recorded this way and a cost with
+   * no tokens beside it is the one row in the table that cannot be explained.
+   * Jev reports `input_tokens`, `output_tokens` and a generation id, so
+   * there is nothing here that had to be invented.
+   */
+  model: string
+  provider: string | null
+  usage: Usage
+}
+
+/** What Jev sends back, beside the answers. */
+interface JevResponse<A> {
+  model?: string
+  provider?: string
+  id?: string
+  answers?: Record<string, A>
+  usage?: { input_tokens?: number; output_tokens?: number; cost?: number }
+}
+
+/** What one Jev call cost, in the shape the rest of the app records. */
+function spentOn(
+  body: JevResponse<unknown>,
+  started: number
+): { model: string; provider: string | null; usage: Usage } {
+  return {
+    /*
+     * The id that was asked for, not the one that came back.
+     *
+     * Jev answers dated — the call says `typesafe/jev-1.13` and the reply
+     * says `typesafe/jev-1.13-20260917` — and recording that would split the
+     * statistics into a new row every time TypeSafe redates a build, for a
+     * model this app has deliberately pinned. Every other request the app
+     * records goes in under the id it asked for, and the exact build is
+     * recoverable from the generation id below.
+     */
+    model: MODEL,
+    provider: body.provider ?? null,
+    usage: usageOf(
+      body.usage?.input_tokens ?? 0,
+      body.usage?.output_tokens ?? 0,
+      body.usage?.cost ?? 0,
+      body.id ?? null,
+      Date.now() - started
+    )
+  }
+}
+
+/** A `Usage` from the parts a one-shot request actually knows. */
+function usageOf(
+  input: number,
+  output: number,
+  costUsd: number,
+  generationId: string | null,
+  latencyMs: number
+): Usage {
+  return {
+    promptTokens: input,
+    completionTokens: output,
+    reasoningTokens: 0,
+    cachedTokens: 0,
+    totalTokens: input + output,
+    costUsd,
+    latencyMs,
+    // Nothing here streams, so there is no first token to have timed and no
+    // rate to report. Null rather than zero: zero is a measurement.
+    timeToFirstTokenMs: null,
+    reasoningMs: null,
+    tokensPerSecond: null,
+    generationId
+  }
 }
 
 interface ChoiceAnswer {
@@ -224,6 +298,7 @@ async function askEachSentence(
     criteria: COUNTS
   }
 
+  const started = Date.now()
   const response = await fetch(ENDPOINT, {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
@@ -231,10 +306,7 @@ async function askEachSentence(
   })
   if (!response.ok) return null
 
-  const body = (await response.json()) as {
-    answers?: Record<string, { noul?: number; score?: number }>
-    usage?: { cost?: number }
-  }
+  const body = (await response.json()) as JevResponse<{ noul?: number; score?: number }>
 
   const asked = Math.max(Math.round((body.answers?.how_many?.score ?? 0) + 1), 1)
 
@@ -273,7 +345,7 @@ async function askEachSentence(
     .filter((text): text is string => Boolean(text))
 
   if (!texts.length) return null
-  return { texts, costUsd: body.usage?.cost ?? 0 }
+  return { texts, ...spentOn(body, started) }
 }
 
 export async function askKeyPoint(
@@ -304,6 +376,7 @@ export async function askKeyPoint(
       sentence.length > LONGEST_OPTION ? `${sentence.slice(0, LONGEST_OPTION)}…` : sentence
   })
 
+  const started = Date.now()
   try {
     const response = await fetch(ENDPOINT, {
       method: 'POST',
@@ -325,10 +398,7 @@ export async function askKeyPoint(
     })
     if (!response.ok) return null
 
-    const body = (await response.json()) as {
-      answers?: Record<string, ChoiceAnswer>
-      usage?: { cost?: number }
-    }
+    const body = (await response.json()) as JevResponse<ChoiceAnswer>
     const answer = body.answers?.key_point
     if (!answer?.choice || answer.choice === 'none') return null
 
@@ -337,7 +407,7 @@ export async function askKeyPoint(
     if (first - second < CLEAR_ENOUGH) return null
 
     const only = offered[Number(answer.choice.slice(1))]
-    return only ? { texts: [only], costUsd: body.usage?.cost ?? 0 } : null
+    return only ? { texts: [only], ...spentOn(body, started) } : null
   } catch {
     // Offline, rate limited, or an account without the beta. The reply is
     // already on screen and complete; this was only ever going to add to it.
@@ -459,7 +529,9 @@ export async function askKeyPointViaModel(
     }
     if (!texts.length) return null
 
-    return { texts, costUsd: result.usage.costUsd }
+    // Already a full `Usage`, because this one went through the ordinary
+    // completion path like every other request the app makes.
+    return { texts, model, provider: result.provider, usage: result.usage }
   } catch {
     /*
      * No mark, and no second attempt.

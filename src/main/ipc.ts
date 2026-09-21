@@ -620,6 +620,29 @@ export function registerIpc(): void {
       // Recorded either way: null is an answer, and writing it stops the same
       // question being asked again every time the thread is opened.
       repo.setKeyPoints(messageId, found?.texts ?? [])
+
+      /*
+       * And what it cost goes where every other cost goes.
+       *
+       * This was being worked out and thrown away: both sources reported a
+       * price and the handler returned it to a window that showed it nowhere,
+       * so a feature making one paid request per reply was invisible in the
+       * statistics and missing from what a thread says it cost. Naming had
+       * the same problem and solved it this way — a hidden marker message to
+       * hang the usage off, because usage is recorded against a message and
+       * this request has none of its own.
+       */
+      const threadId = repo.getMessage(messageId)?.threadId
+      if (threadId && found?.usage.totalTokens) {
+        const marker = repo.insertMessage({
+          threadId,
+          role: 'system',
+          content: '',
+          model: found.model,
+          compactedInto: 'keyPoint'
+        })
+        repo.recordUsage(threadId, marker.id, found.model, found.provider, found.usage)
+      }
       return found
     }
   )

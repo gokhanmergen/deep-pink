@@ -184,6 +184,22 @@ export const DEFAULT_BASE_SYSTEM_PROMPT =
  * the number of distinct things any one reply answers, so in practice it is
  * never what decides: the count from the question is.
  */
+/**
+ * Messages that exist only to carry a cost.
+ *
+ * A request the app makes on your behalf — naming a thread, picking the
+ * sentence worth reading first — is paid for and so has to appear in the
+ * statistics, and usage is recorded against a message. Neither has a message
+ * of its own, so each gets an empty one with `compacted_into` set to its
+ * kind, which keeps it out of the transcript and out of every count of what
+ * was said.
+ *
+ * Listed here rather than written out at each of the four places that have
+ * to know, because the fourth was the one that got forgotten: a new kind
+ * added beside `title` showed up in the sidebar as an extra message.
+ */
+export const COST_MARKERS = ['title', 'keyPoint'] as const
+
 export const MOST_KEY_POINTS = 20
 
 /**

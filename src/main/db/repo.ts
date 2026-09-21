@@ -18,6 +18,7 @@ import type {
   ToolUsageRollup,
   Usage
 } from '@shared/types'
+import { COST_MARKERS } from '@shared/defaults'
 import { getDb } from './index'
 import * as attachments from '../attachments'
 
@@ -335,6 +336,15 @@ export function setThreadFolder(threadId: string, folderId: string | null): Thre
  * which is about everything the thread has ever contained.
  */
 const VISIBLE_MESSAGES = 'compacted_into IS NULL'
+
+/**
+ * The cost-marker kinds as a SQL list, built from the one definition of them.
+ *
+ * Interpolated rather than bound because it is a list of literals the app
+ * ships with and `IN (?)` cannot take a list. Nothing from outside reaches
+ * it — see `COST_MARKERS`.
+ */
+const MARKER_LIST = COST_MARKERS.map((kind) => `'${kind}'`).join(', ')
 
 /**
  * How long the conversation is: the number of times you said something.
@@ -1402,14 +1412,14 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
     avg_ttft: number | null
   }
 
-  // A naming marker exists only to carry its cost; it is not a message anyone
+  // A cost marker exists only to carry its price; it is not a message anyone
   // sent or saw.
   const messageCount = (
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM messages
           WHERE thread_id = ?
-            AND (compacted_into IS NULL OR compacted_into <> 'title')`
+            AND (compacted_into IS NULL OR compacted_into NOT IN (${MARKER_LIST}))`
       )
       .get(threadId) as { n: number }
   ).n
@@ -1510,7 +1520,7 @@ export function getGlobalStats(): GlobalStats {
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM messages
-          WHERE compacted_into IS NULL OR compacted_into <> 'title'`
+          WHERE compacted_into IS NULL OR compacted_into NOT IN (${MARKER_LIST})`
       )
       .get() as { n: number }
   ).n

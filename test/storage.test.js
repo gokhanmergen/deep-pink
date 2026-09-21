@@ -236,6 +236,78 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
     repo.getThreadStats(thread.id, null).costUsd
   )
 
+  /*
+   * The same bookkeeping, for the sentence worth reading first.
+   *
+   * A paid request per reply that appeared nowhere: both sources reported a
+   * price and the handler returned it to a window that showed it in no
+   * panel, so the feature was free as far as the statistics were concerned
+   * and a thread understated what it had cost. It goes in the way naming's
+   * does, and the count of what was said has to stay blind to it — which is
+   * the part that breaks quietly, because the query naming added listed its
+   * own marker by name and knew nothing of a second kind.
+   */
+  section('key-point markers, which are the same trick again')
+  const lengthBefore = repo.getThread(thread.id).messageCount
+  const statsBefore = repo.getThreadStats(thread.id, null)
+  const inkMarker = repo.insertMessage({
+    threadId: thread.id,
+    role: 'system',
+    content: '',
+    model: 'typesafe/jev-1.13',
+    compactedInto: 'keyPoint'
+  })
+  repo.recordUsage(thread.id, inkMarker.id, 'typesafe/jev-1.13', 'TypeSafe', {
+    promptTokens: 328,
+    completionTokens: 21,
+    reasoningTokens: 0,
+    cachedTokens: 0,
+    totalTokens: 349,
+    costUsd: 0.000013776,
+    latencyMs: 700,
+    timeToFirstTokenMs: null,
+    reasoningMs: null,
+    tokensPerSecond: null,
+    generationId: 'gen-dec-jev'
+  })
+
+  check('it stays out of the transcript', repo.getMessages(thread.id).length === 2)
+  check(
+    'and out of the thread’s length',
+    repo.getThread(thread.id).messageCount === lengthBefore,
+    repo.getThread(thread.id).messageCount
+  )
+  check(
+    'and out of the list’s idea of it',
+    repo.listThreads().find((t) => t.id === thread.id).messageCount === lengthBefore
+  )
+  check(
+    'and out of the statistics’ count of what was said',
+    repo.getThreadStats(thread.id, null).messageCount === statsBefore.messageCount,
+    {
+      was: statsBefore.messageCount,
+      now: repo.getThreadStats(thread.id, null).messageCount
+    }
+  )
+  // The whole point of recording it, and the thing that was missing.
+  check(
+    'but its cost is counted',
+    repo.getThreadStats(thread.id, null).costUsd > statsBefore.costUsd,
+    { was: statsBefore.costUsd, now: repo.getThreadStats(thread.id, null).costUsd }
+  )
+  // Its own row, not folded into whatever wrote the reply: the point of
+  // putting it in the statistics is being able to see what the feature costs.
+  const jevRow = repo
+    .getThreadStats(thread.id, null)
+    .byModel.find((row) => row.model === 'typesafe/jev-1.13')
+  check(
+    'and it is attributed to Jev, not to whatever wrote the reply',
+    Boolean(jevRow) && jevRow.costUsd > 0,
+    repo.getThreadStats(thread.id, null).byModel.map((r) => r.model)
+  )
+  check('and to TypeSafe as the provider', jevRow?.provider === 'TypeSafe', jevRow?.provider)
+  check('with the tokens it reported', jevRow?.totalTokens === 349, jevRow?.totalTokens)
+
   section('what tools cost')
   const toolThread = repo.createThread('Used tools')
   const toolMsg = repo.insertMessage({ threadId: toolThread.id, role: 'assistant', content: 'ok' })
