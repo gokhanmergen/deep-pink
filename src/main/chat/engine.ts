@@ -9,6 +9,7 @@ import type {
   Usage
 } from '@shared/types'
 import { takeKeyPointMarkers } from '@shared/keyPointPrompt'
+import { keyPointCeiling } from '@shared/defaults'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
 import { loadSettings } from '../settings'
@@ -846,7 +847,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
        */
       const marked =
         settings.keyPointEnabled && settings.keyPointSource === 'self'
-          ? takeKeyPointMarkers(result.content, settings.keyPointMost)
+          ? takeKeyPointMarkers(result.content, keyPointCeiling(settings.keyPointMany))
           : { content: result.content, keyPoints: [] }
 
       const stored = repo.updateMessage(assistant.id, {

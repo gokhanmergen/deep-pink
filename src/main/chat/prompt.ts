@@ -2,6 +2,7 @@ import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
 import { CHARTS_PROMPT } from '@shared/charts'
 import { DOCS_PROMPT } from '@shared/docs'
 import { keyPointPrompt } from '@shared/keyPointPrompt'
+import { keyPointCeiling } from '@shared/defaults'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
@@ -211,7 +212,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
       source: 'keyPoint',
       label: 'Key sentence',
       origin: 'Deep Pink',
-      text: keyPointPrompt(settings.keyPointMost),
+      text: keyPointPrompt(keyPointCeiling(settings.keyPointMany)),
       removable: true
     })
   }

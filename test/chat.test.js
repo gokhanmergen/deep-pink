@@ -183,12 +183,29 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
   )
   check('asking for three says so', subject.keyPointPrompt(3).includes('up to 3'))
   /*
-   * How many is typed rather than chosen from a list, so it arrives as
-   * whatever somebody typed. Clamped where it is used and not only where it
-   * is entered: this number becomes the size of a fan-out of yes/no questions
-   * in one request, and a line read aloud to a model.
+   * Two states, and what each of them means downstream.
+   *
+   * This was a typed number and is not one any more: how many sentences get
+   * marked comes from the question, so a ceiling somebody typed either sat
+   * above that count and changed nothing or sat below it and cut an answer
+   * off. What is left is the one real choice — never more than one, or one
+   * for each thing asked — and the bound behind it, which exists so that
+   * "each thing asked" cannot become a fan-out of four hundred yes/no
+   * questions in a single request.
    */
-  check('a typed number comes through', subject.clampKeyPoints(5) === 5)
+  check('only ever one means one', subject.keyPointCeiling(false) === 1)
+  check(
+    'and one per question is bounded rather than unbounded',
+    subject.keyPointCeiling(true) === subject.MOST_KEY_POINTS
+  )
+  check(
+    'the bound is far past anything a reply answers, so the question decides',
+    subject.MOST_KEY_POINTS >= 10
+  )
+
+  // Still reachable from a settings file written by an older version, or by
+  // hand, so it still has to hold whatever it is given.
+  check('a number comes through', subject.clampKeyPoints(5) === 5)
   check('zero and below become one', subject.clampKeyPoints(0) === 1 && subject.clampKeyPoints(-3) === 1)
   check('a fraction rounds', subject.clampKeyPoints(2.6) === 3)
   check('nonsense becomes one', subject.clampKeyPoints(Number.NaN) === 1)

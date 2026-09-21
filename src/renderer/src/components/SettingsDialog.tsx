@@ -21,12 +21,7 @@ import { ICON } from '../icons'
 import { useStore, type SettingsTab as Tab } from '../store'
 import { Overlay } from './Overlay'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
-import {
-  DEFAULT_KEYBINDS,
-  DEFAULT_SETTINGS,
-  MOST_KEY_POINTS,
-  clampKeyPoints
-} from '@shared/defaults'
+import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '@shared/defaults'
 import { formatRelative, modelShortName } from '../format'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 import type {
@@ -859,36 +854,39 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </div>
 
                 <div className="field">
-                  <FieldLabel path="keyPointMost" what="how many sentences">
-                    At most how many sentences
+                  <FieldLabel path="keyPointMany" what="how many sentences">
+                    How many sentences
                   </FieldLabel>
-                  <DebouncedInput
+                  {/*
+                    * Two states rather than a number, because the number
+                    * never decided anything. How many sentences get marked
+                    * comes from the question — the model is asked how many
+                    * separate things the reader wanted to know — so a typed
+                    * ceiling either sat above that and did nothing, or sat
+                    * below it and cut an answer off. Neither is a setting.
+                    * What is one is whether a question with parts may have
+                    * each part marked.
+                    */}
+                  <select
                     className="input"
-                    type="number"
-                    min={1}
-                    max={MOST_KEY_POINTS}
-                    value={String(settings.keyPointMost)}
-                    onCommit={(next) =>
-                      void saveSettings({ keyPointMost: clampKeyPoints(Number(next)) })
+                    value={settings.keyPointMany ? 'many' : 'one'}
+                    onChange={(event) =>
+                      void saveSettings({ keyPointMany: event.target.value === 'many' })
                     }
-                  />
+                  >
+                    <option value="one">Only ever one</option>
+                    <option value="many">One for each thing I asked</option>
+                  </select>
                 </div>
 
-                {/*
-                  * Worth saying because it reads like a quantity and is not
-                  * one. The count comes from the question — the model is
-                  * asked how many things were wanted — and this only stops
-                  * it. Setting it to 1 does turn it back into a quantity,
-                  * which is a real preference and why 1 is allowed.
-                  */}
-                {settings.keyPointMost > 1 && (
-                  <p className="field__hint">
-                    A ceiling, not a target. How many sentences get marked follows your
-                    question: ask one thing and one sentence is marked, ask five and the
-                    answer to each is. This only caps it, so leave room for the most you
-                    tend to ask at once.
-                  </p>
-                )}
+                <p className="field__hint">
+                  {settings.keyPointMany
+                    ? 'A reply making one point still gets exactly one mark — that is the ' +
+                      'question deciding, not a limit. Ask three things and the sentence ' +
+                      'answering each is marked.'
+                    : 'The single most important sentence, however much you asked. A reply ' +
+                      'answering three questions gets one mark, on the answer to the first.'}
+                </p>
 
                 {/*
                   * One line each, kept where the rest of the commentary in

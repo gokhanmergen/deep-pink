@@ -176,16 +176,28 @@ export const DEFAULT_BASE_SYSTEM_PROMPT =
   'You are a helpful assistant. Be direct and concise. Use Markdown for structure, fenced code blocks with a language tag for code, and LaTeX between $…$ or $$…$$ for mathematics.'
 
 /**
- * The most sentences a reply may have marked.
+ * The most sentences a reply may have marked, ever.
  *
- * Not a shape the feature breaks at — a ceiling, so a typed number cannot
- * become a request for four hundred yes/no questions in one call, or an
+ * Not a setting and not a target — a bound, so that "however many I asked
+ * for" cannot become four hundred yes/no questions in one call or an
  * instruction to a model to mark half of what it wrote. Twenty is far past
- * the number of distinct things any one reply answers.
+ * the number of distinct things any one reply answers, so in practice it is
+ * never what decides: the count from the question is.
  */
 export const MOST_KEY_POINTS = 20
 
-/** A typed number, held to something the rest of the app can act on. */
+/**
+ * The ceiling the two settings mean.
+ *
+ * One is a real limit and is meant to bite: it says mark the single most
+ * important sentence whatever was asked. The other is not a limit anybody
+ * reaches, and is only here so nothing downstream has to handle "no bound".
+ */
+export function keyPointCeiling(many: boolean): number {
+  return many ? MOST_KEY_POINTS : 1
+}
+
+/** A number from anywhere, held to something the rest of the app can act on. */
 export function clampKeyPoints(most: number): number {
   if (!Number.isFinite(most)) return 1
   return Math.min(Math.max(Math.round(most), 1), MOST_KEY_POINTS)
@@ -227,15 +239,14 @@ export const DEFAULT_SETTINGS: Settings = {
    */
   keyPointModel: 'anthropic/claude-haiku-4.5',
   /*
-   * A ceiling, and so a generous one.
+   * More than one allowed, because the question decides how many.
    *
-   * It used to be the quantity — one mark, always — and at one the model is
-   * never allowed to answer the question it is now asked, which is how many
-   * things the reader wanted to know. Five is about as many as anybody asks
-   * at once; below that the count stops following the question and starts
-   * following this. A reply making one point still gets one mark.
+   * On, because the common case for anybody who turned this on at all is a
+   * question with parts, and off means those parts go unmarked however many
+   * there were. A reply making one point still gets exactly one mark either
+   * way — that is the count doing its job, not this.
    */
-  keyPointMost: 5,
+  keyPointMany: true,
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,

@@ -28,7 +28,7 @@ import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
 import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
-import { clampKeyPoints } from '@shared/defaults'
+import { keyPointCeiling } from '@shared/defaults'
 import { loadSettings, saveSettings } from './settings'
 import { isEncryptionAvailable, setApiKey } from './secrets'
 
@@ -612,7 +612,7 @@ export function registerIpc(): void {
        * for a request whose answer is already stored.
        */
       if (settings.keyPointSource === 'self') return null
-      const most = clampKeyPoints(settings.keyPointMost)
+      const most = keyPointCeiling(settings.keyPointMany)
       const found =
         settings.keyPointSource === 'model'
           ? await askKeyPointViaModel(question, candidates, settings.keyPointModel, most)

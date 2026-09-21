@@ -582,15 +582,17 @@ export interface Settings {
   /** The chat model asked, when `keyPointSource` is `model`. */
   keyPointModel: string
   /**
-   * How many sentences may be marked at most.
+   * Whether a reply may have more than one sentence marked.
    *
-   * One is the honest default: the question "which sentence matters" has a
-   * different character from "which two or three do", and a reply with half
-   * of it marked is a reply with nothing marked. Raising it also changes what
-   * a tie means — with one allowed, two sentences neck and neck are a reason
-   * to mark neither; with two, they are both worth marking.
+   * Two states and not a number, because the number never had a job. How
+   * many get marked is decided by the question — the model is asked how many
+   * separate things the reader wanted to know, and marks the sentence that
+   * answers each — so a typed ceiling only ever did one of two things: sat
+   * above the count and changed nothing, or sat below it and cut an answer
+   * off. The only setting anybody actually wanted was between "one, always"
+   * and "however many I asked for".
    */
-  keyPointMost: number
+  keyPointMany: boolean
   web: WebSearchSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */
