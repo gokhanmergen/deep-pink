@@ -42,7 +42,18 @@ suite(
       .map((t) => t.textContent.trim())`)
     check(
       'the newer sections are marked experimental',
-      JSON.stringify(marked) === '["Web access","Charts","Documents","Sync"]',
+      JSON.stringify(marked) === '["Web access","Charts","Documents","Key point","Sync"]',
+      marked
+    )
+    // The other half of the same claim, and the half worth having: the mark
+    // means something only if the settled sections do not carry it. Named
+    // rather than derived, so a section quietly acquiring one is a failure
+    // here and not a silently wider list.
+    check(
+      'and the settled ones are not',
+      ['Account', 'Models', 'Prompts', 'Context', 'Appearance', 'Keyboard', 'Data'].every(
+        (label) => !marked.includes(label)
+      ),
       marked
     )
 

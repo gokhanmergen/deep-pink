@@ -541,10 +541,14 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
    * that throws away everything after it — including the question nobody had
    * answered.
    */
+  // Its own require, as elsewhere in here: the store bundle is one artifact
+  // and each section pulls what it needs out of it.
+  const { buildActions } = require(path.join(__dirname, '..', '.test-build', 'store.js'))
+
   const pressRegenerate = async (messages) => {
     askedFrom.length = 0
     useStore.setState({ activeThreadId: 't1', messages })
-    buildActions(state()).find((a) => a.id === 'message.regenerate').run()
+    buildActions().find((a) => a.id === 'message.regenerate').run()
     await settle(40)
     return askedFrom[0] ?? null
   }
