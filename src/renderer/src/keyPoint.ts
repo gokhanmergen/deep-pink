@@ -211,13 +211,27 @@ export function strokesFor(body: Element, sentence: string | null): Stroke[] {
   const base = body.getBoundingClientRect()
   const lines = perLine([...hit.range.getClientRects()].filter((rect) => rect.width > 1))
 
-  return lines.map((rect, at) => ({
-    left: rect.left - base.left - PAD_X,
-    top: rect.top - base.top - PAD_Y,
-    width: rect.right - rect.left + PAD_X * 2,
-    height: rect.bottom - rect.top + PAD_Y * 2,
-    delay: at * 70
-  }))
+  return lines.map((rect, at) => {
+    /*
+     * Kept inside the column, which is not a nicety.
+     *
+     * A line that starts hard against the left edge — most of them — put the
+     * panel four pixels outside the message, and a message is paint-contained
+     * by `content-visibility`, so those four pixels were clipped. What was
+     * clipped was exactly the rounded corner, which is the one part of this
+     * shape anybody notices: the panel arrived with a square top-left and a
+     * square bottom-left, like a box that had been cut off.
+     */
+    const left = Math.max(rect.left - base.left - PAD_X, 0)
+    const right = Math.min(rect.right - base.left + PAD_X, base.width)
+    return {
+      left,
+      top: rect.top - base.top - PAD_Y,
+      width: Math.max(right - left, 0),
+      height: rect.bottom - rect.top + PAD_Y * 2,
+      delay: at * 70
+    }
+  })
 }
 
 /**
