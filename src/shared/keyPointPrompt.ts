@@ -25,7 +25,9 @@ export function keyPointPrompt(most: number): string {
   const many = most > 1
 
   return `Every reply you write must end with ${
-    many ? `up to ${most} HTML comments naming its most important sentences` : 'an HTML comment naming its single most important sentence'
+    many
+      ? `an HTML comment for each of its key sentences, up to ${most} of them`
+      : 'an HTML comment naming its single most important sentence'
   }, copied out exactly:
 
 <!--key: the sentence, verbatim-->${many ? '\n<!--key: another sentence, verbatim-->' : ''}
@@ -33,7 +35,18 @@ export function keyPointPrompt(most: number): string {
 This is required, not optional. ${
     many ? 'They go' : 'It goes'
   } last, after everything else in the reply, with nothing after ${many ? 'them' : 'it'}.
-
+${
+  many
+    ? `
+- One for each distinct thing the reply answers. If the reader asked five \
+questions and you answered all five, mark five sentences — the one that answers \
+each. If the reply makes a single point, mark one.
+- Up to ${most}. If the reply answers more things than that, mark the ${most} that \
+matter most.
+- Never two sentences that say the same thing, and never an example, an aside, \
+or a sentence that only sets up the next one.`
+    : ''
+}
 - Copy each sentence exactly as you wrote it, punctuation and all. Do not shorten it, \
 reword it, or re-punctuate it.
 - Take ${
@@ -41,12 +54,7 @@ reword it, or re-punctuate it.
   } from the prose of the reply. Never from a code block, a table or a heading.
 - Never mention the comment${many ? 's' : ''}, refer to ${
     many ? 'them' : 'it'
-  }, or explain ${many ? 'them' : 'it'}. ${many ? 'They are' : 'It is'} not part of your answer.${
-    many
-      ? `\n- Fewer is better. Mark a second or third sentence only where it carries something \
-the first does not.`
-      : ''
-  }
+  }, or explain ${many ? 'them' : 'it'}. ${many ? 'They are' : 'It is'} not part of your answer.
 - The only reply that may leave ${
     many ? 'them' : 'it'
   } out is one with no prose in it at all.`

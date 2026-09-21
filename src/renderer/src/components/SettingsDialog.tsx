@@ -867,6 +867,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     <option value="1">One sentence</option>
                     <option value="2">Up to two</option>
                     <option value="3">Up to three</option>
+                    <option value="5">Up to five</option>
+                    <option value="8">Up to eight</option>
                   </select>
                 </div>
 
@@ -878,9 +880,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   */}
                 {settings.keyPointMost > 1 && (
                   <p className="field__hint">
-                    Fewer is still better — a reply with half of it marked has nothing
-                    marked. Allowing a second also means two sentences of equal weight are
-                    both marked, where asking for one would have marked neither.
+                    A ceiling, not a target: a reply making one point still gets one mark.
+                    Set it to about as many things as you tend to ask at once — a reply
+                    answering five questions can then mark the answer to each.
                   </p>
                 )}
 

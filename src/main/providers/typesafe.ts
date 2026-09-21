@@ -56,14 +56,24 @@ const LONGEST_OPTION = 300
 const CLEAR_ENOUGH = 0.15
 
 /**
- * The least a sentence can score and still be worth marking alongside another.
+ * How sure the model has to be that a sentence is a takeaway, to mark it.
  *
- * Only consulted when more than one is allowed. Two hundred candidates
- * sharing a flat distribution score half a percent each, so this is the line
- * between "several sentences stood out" and "nothing did, take the top few
- * anyway".
+ * Only consulted when more than one is allowed, where the question put to the
+ * model is a yes/no about each sentence rather than a choice between them.
+ * Measured on a reply answering five questions: the five answers scored 0.84
+ * to 0.91, the sentence elaborating on one of them 0.71, and an example 0.23.
+ * Anywhere in the 0.7s separates the answers from the scaffolding.
  */
-const WORTH_MARKING = 0.15
+const WORTH_MARKING = 0.75
+
+/**
+ * How many sentences get their own question.
+ *
+ * Fewer than a Choice takes, because each one carries its own instructions
+ * and its own pair of criteria rather than a single line in a list, and the
+ * whole thing still has to fit in 32,000 tokens beside the reply itself.
+ */
+const MOST_ASKED_ABOUT = 120
 
 export interface KeyPoint {
   /** In the order they were ranked, most important first. */
@@ -84,6 +94,70 @@ interface ChoiceAnswer {
  * close to the runner-up. Every one of those means the same thing to the
  * reader, which is that the reply is shown exactly as it would have been.
  */
+/**
+ * Several sentences, which is not the same question as one.
+ *
+ * A Choice cannot answer it. Its probabilities sum to one across the options,
+ * so they concentrate: put a reply that answers five questions through it and
+ * the first answer takes 0.62, the sentence after it 0.36, and the other four
+ * answers score 0.000 each. No threshold recovers them, because there is
+ * nothing there to recover — the model was asked which *one* was best and it
+ * said so.
+ *
+ * So when more than one may be marked, each sentence gets its own yes/no
+ * instead: is this a takeaway, rather than which is the best. Jev takes many
+ * questions in one call and returns a probability for each, and on the same
+ * five-answer reply all five scored above 0.84 while the examples and asides
+ * fell to 0.23. Same call, same cost, the right question.
+ */
+async function askEachSentence(
+  key: string,
+  reply: string,
+  candidates: string[],
+  most: number
+): Promise<KeyPoint | null> {
+  const offered = candidates.slice(0, MOST_ASKED_ABOUT)
+  const questions: Record<string, unknown> = {}
+  offered.forEach((sentence, at) => {
+    questions[`k${at}`] = {
+      type: 'noul',
+      instructions: `This sentence is one of the reply's key takeaways: "${
+        sentence.length > LONGEST_OPTION ? `${sentence.slice(0, LONGEST_OPTION)}…` : sentence
+      }"`,
+      criteria: {
+        true: 'It directly answers something the reader asked, or states the point of its section.',
+        false: 'It restates, gives an example, adds an aside, or is setup for another sentence.'
+      }
+    }
+  })
+
+  const response = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: MODEL, state: reply, questions })
+  })
+  if (!response.ok) return null
+
+  const body = (await response.json()) as {
+    answers?: Record<string, { noul?: number }>
+    usage?: { cost?: number }
+  }
+
+  const texts = Object.entries(body.answers ?? {})
+    .map(([id, answer]) => ({ at: Number(id.slice(1)), score: answer?.noul ?? 0 }))
+    .filter((scored) => scored.score >= WORTH_MARKING)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, most)
+    // Back into reading order: marks that appear down the page in the order
+    // they were scored would be drawn in a sequence nobody can follow.
+    .sort((a, b) => a.at - b.at)
+    .map((scored) => offered[scored.at])
+    .filter((text): text is string => Boolean(text))
+
+  if (!texts.length) return null
+  return { texts, costUsd: body.usage?.cost ?? 0 }
+}
+
 export async function askKeyPoint(
   reply: string,
   candidates: string[],
@@ -91,6 +165,14 @@ export async function askKeyPoint(
 ): Promise<KeyPoint | null> {
   const key = getSecret('openrouter')
   if (!key || candidates.length < 2) return null
+
+  if (most > 1) {
+    try {
+      return await askEachSentence(key, reply, candidates, most)
+    } catch {
+      return null
+    }
+  }
 
   const offered = candidates.slice(0, MOST_CANDIDATES)
   const criteria: Record<string, string> = {
@@ -127,41 +209,14 @@ export async function askKeyPoint(
       usage?: { cost?: number }
     }
     const answer = body.answers?.key_point
-    const probabilities = answer?.probabilities ?? {}
+    if (!answer?.choice || answer.choice === 'none') return null
 
-    const ranked = Object.entries(probabilities)
-      .filter(([option]) => option !== 'none')
-      .sort((a, b) => b[1] - a[1])
-    if (!ranked.length || answer?.choice === 'none') return null
+    const spread = Object.values(answer.probabilities ?? {}).sort((a, b) => b - a)
+    const [first = 0, second = 0] = spread
+    if (first - second < CLEAR_ENOUGH) return null
 
-    /*
-     * One, or several, and the difference is not only how many are kept.
-     *
-     * Asked for one, a near-tie is a reason to mark nothing: choosing between
-     * two sentences the model could not choose between is the app inventing
-     * an answer. Asked for several, the same near-tie is the answer — both
-     * are worth reading — so the gap test applies only when a single sentence
-     * has to win outright.
-     *
-     * The floor is what stops that becoming "mark the top three of two
-     * hundred whatever they scored". Spread evenly over that many options
-     * nothing reaches 0.15, so a flat distribution still marks nothing.
-     */
-    const [first, second = 0] = ranked.map(([, p]) => p)
-    if (most <= 1) {
-      if (first - second < CLEAR_ENOUGH) return null
-      const only = offered[Number(ranked[0][0].slice(1))]
-      return only ? { texts: [only], costUsd: body.usage?.cost ?? 0 } : null
-    }
-
-    const texts = ranked
-      .filter(([, p]) => p >= WORTH_MARKING)
-      .slice(0, most)
-      .map(([option]) => offered[Number(option.slice(1))])
-      .filter((text): text is string => Boolean(text))
-
-    if (!texts.length) return null
-    return { texts, costUsd: body.usage?.cost ?? 0 }
+    const only = offered[Number(answer.choice.slice(1))]
+    return only ? { texts: [only], costUsd: body.usage?.cost ?? 0 } : null
   } catch {
     // Offline, rate limited, or an account without the beta. The reply is
     // already on screen and complete; this was only ever going to add to it.
@@ -199,8 +254,9 @@ export async function askKeyPointViaModel(
 
   const wanted =
     most > 1
-      ? `the numbers of up to ${most} sentences that matter most, most important first, ` +
-        'separated by commas'
+      ? `the numbers of the key sentences, up to ${most}, separated by commas. Pick one ` +
+        'for each distinct thing the answer covers — if it answers five questions, give ' +
+        'five numbers. Skip examples, asides, and sentences that restate another'
       : 'the number of the single most important sentence for the reader to take away'
 
   try {

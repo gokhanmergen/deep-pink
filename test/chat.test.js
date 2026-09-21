@@ -182,6 +182,16 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
     subject.keyPointPrompt(1).slice(0, 80)
   )
   check('asking for three says so', subject.keyPointPrompt(3).includes('up to 3'))
+  // The point of allowing several is a reply that answers several things, so
+  // the instruction has to say that rather than leave it to be inferred. An
+  // earlier wording said only "fewer is better", which is advice against
+  // doing the thing the setting exists for.
+  check(
+    'and asks for one per question, not for fewer',
+    subject.keyPointPrompt(5).includes('five questions') &&
+      !subject.keyPointPrompt(5).includes('Fewer is better'),
+    subject.keyPointPrompt(5).slice(0, 200)
+  )
 
   section('HTML extraction')
   const text = htmlToText(
