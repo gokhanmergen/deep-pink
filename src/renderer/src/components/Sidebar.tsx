@@ -27,6 +27,7 @@ import {
 import { ICON, ICON_LG } from '../icons'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { Logo } from './Logo'
+import { ExperimentalDot } from './Experimental'
 import { ModelIcon } from './ModelIcon'
 import { buildActions, exportThread } from '../actions'
 import { formatBinding } from '../keybinds'
@@ -1310,11 +1311,16 @@ export function Sidebar(): React.JSX.Element {
         <button
           className="btn btn--ghost"
           onClick={() => setOverlay('mcp')}
-          title="MCP servers"
+          title="MCP servers — experimental"
           type="button"
         >
           <Blocks className="icon" {...ICON} />
           MCP
+          {/* The dot the settings list uses, for the same reason: this is a
+              row of three words with no room for a fourth, and what it has to
+              do here is mark the section rather than explain it. The word
+              itself is on the panel this opens. */}
+          <ExperimentalDot />
         </button>
         <button
           className="btn btn--ghost"

@@ -680,6 +680,35 @@ suite(
       ink.clipped
     )
 
+    section('MCP says it is still moving')
+    /*
+     * Marked in two weights, the way every other unsettled feature is: a dot
+     * where there is only room for one, and the word where somebody is about
+     * to switch it on. MCP has no settings tab to carry the dot — it is
+     * reached from the sidebar and opens its own panel — so both marks live
+     * somewhere the settings dialog never sees.
+     */
+    const mcpButton = await run(`(() => {
+      const b = [...document.querySelectorAll('.sidebar__footer .btn')]
+        .find((x) => x.textContent.trim().startsWith('MCP'))
+      return { found: !!b, dot: !!b?.querySelector('.tab__experimental'), title: b?.title ?? null }
+    })()`)
+    check('the sidebar button carries the mark', mcpButton.found && mcpButton.dot, mcpButton)
+    check('and says so to a pointer resting on it', /experimental/i.test(mcpButton.title ?? ''), mcpButton.title)
+
+    await run(`[...document.querySelectorAll('.sidebar__footer .btn')]
+      .find((x) => x.textContent.trim().startsWith('MCP'))?.click()`)
+    await settle(700)
+    const mcpPanel = await run(`(() => {
+      const t = document.querySelector('.panel__title')
+      return { title: t?.textContent?.trim() ?? null, chip: !!t?.querySelector('.chip--experimental') }
+    })()`)
+    check('and the panel says the word', mcpPanel.chip, mcpPanel)
+    check('beside the name of the thing', /MCP servers/.test(mcpPanel.title ?? ''), mcpPanel.title)
+
+    await run(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`)
+    await settle(400)
+
     section('the window does not wait for the renderer to be ready')
     /*
      * Two lines, guarding one measurement.

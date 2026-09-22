@@ -20,6 +20,7 @@ import {
 import { ICON } from '../icons'
 import { useStore, type SettingsTab as Tab } from '../store'
 import { Overlay } from './Overlay'
+import { Experimental } from './Experimental'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '@shared/defaults'
 import { formatRelative, modelShortName } from '../format'
@@ -79,27 +80,6 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
   }
 ]
 
-/**
- * Says a section is not as settled as the rest of the app.
- *
- * Four of them are newer than the app around them and still moving: the ones
- * that reach the network on their own, the two that let a reply decide how it
- * is drawn, and the one that copies the library to a bucket. Saying so is not
- * a disclaimer — it is the difference between a setting you can lean on and
- * one you should look at again after an update.
- *
- * Shown in two weights. In the list down the side it is a mark, because there
- * is no room for a word beside "Appearance" and because what the list is for
- * is finding the section; here in the panel it is the word, because this is
- * where somebody is about to switch the thing on.
- */
-function Experimental(): React.JSX.Element {
-  return (
-    <span className="chip chip--experimental" title="Newer than the rest, and still moving">
-      Experimental
-    </span>
-  )
-}
 
 /*
  * Putting one setting back, and only one.

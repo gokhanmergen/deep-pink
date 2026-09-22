@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { McpServerConfig, McpServerStatus } from '@shared/types'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
+import { Experimental } from './Experimental'
 import { DebouncedInput, DebouncedTextarea } from './DebouncedField'
 
 function parseArgs(input: string): string[] {
@@ -277,7 +278,11 @@ export function McpPanel({ onClose }: { onClose: () => void }): React.JSX.Elemen
 
   return (
     <Overlay
-      title="MCP servers"
+      title={
+        <>
+          MCP servers <Experimental />
+        </>
+      }
       onClose={onClose}
       wide
       footer={
