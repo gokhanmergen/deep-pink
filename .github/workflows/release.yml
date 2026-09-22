@@ -312,6 +312,13 @@ jobs:
         if: steps.found.outputs.pkg != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          # `gh` works out which repository it is talking about by asking git,
+          # and this job never checks one out — it only wants the artefacts, so
+          # cloning the source to satisfy a question about the remote would be
+          # the wrong way round. Told directly instead. Without it every
+          # command here fails with "not a git repository", which reads like a
+          # checkout is missing rather than a variable.
+          GH_REPO: ${{ github.repository }}
         run: |
           if ! gh release view arch >/dev/null 2>&1; then
             gh release create arch \
