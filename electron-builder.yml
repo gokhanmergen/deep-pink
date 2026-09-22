@@ -35,10 +35,22 @@ linux:
   # the GitHub no-reply address for the account, so no personal mailbox ends up
   # in published package metadata.
   maintainer: gokhanmergen <gokhanmergen@users.noreply.github.com>
+  # An AppImage is a squashfs mounted over FUSE, and every byte of the runtime
+  # is gunzipped on the way out of it — 346MB of it, on every launch. Measured
+  # on an Arch machine (2026-09-21), the same build reached its own first line
+  # of code in 1,444-1,810ms as an AppImage and 391-515ms extracted. It is the
+  # single largest thing between clicking the icon and seeing a window, and
+  # none of it is the app.
+  #
+  # So it is one option among several rather than the one to reach for, and
+  # every other target here is a plain directory of files. `pacman` is listed
+  # because there was no native package for the distribution this is mostly
+  # developed and used on, which left its own author on the slow path.
   target:
     - AppImage
     - deb
     - rpm
+    - pacman
     - tar.gz
   category: Network;InstantMessaging;Utility
   synopsis: Local-first desktop AI chat for OpenRouter

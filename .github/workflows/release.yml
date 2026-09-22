@@ -119,7 +119,7 @@ jobs:
 
       # No token in any of these: given one, electron-builder tries to publish
       # the artefacts itself. Publishing is the release job's work.
-      - name: Build AppImage, deb, rpm and tarball
+      - name: Build the Linux packages
         if: matrix.platform == 'linux'
         run: pnpm run dist:linux
 
@@ -137,7 +137,8 @@ jobs:
         run: |
           mkdir -p artifacts
           find release -maxdepth 1 -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+               -o -name '*.pkg.tar.zst' -o -name '*.tar.gz' \
                -o -name '*.dmg' -o -name '*.zip' \) \
             -exec cp {} artifacts/ \;
           ls -lh artifacts
@@ -188,10 +189,18 @@ jobs:
 
             | Format | Use it when |
             | --- | --- |
-            | `.AppImage` | You want a single file — `chmod +x` it and run |
             | `.deb` | Debian, Ubuntu, Mint |
             | `.rpm` | Fedora, openSUSE, RHEL |
+            | `.pkg.tar.zst` | Arch, Manjaro, EndeavourOS |
             | `.tar.gz` | You would rather unpack it yourself |
+            | `.AppImage` | You want a single file — `chmod +x` it and run |
+
+            The AppImage is last on purpose. It is a compressed filesystem
+            mounted on every launch, and unpacking the runtime costs about a
+            second before the app has run a line of its own code — measured at
+            1.4-1.8s to reach that line against 0.4-0.5s for the same build
+            installed. Convenient to carry, slow to open. Any of the others is
+            the app at full speed.
 
             **macOS**
 

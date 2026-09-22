@@ -78,9 +78,17 @@ Every action has a binding, every binding is rebindable, and `Ctrl/⌘ K` opens 
 
 Linux and macOS builds are published to the
 [releases page](https://github.com/gokhanmergen/deep-pink/releases): an
-AppImage, a `.deb`, an `.rpm` and a tarball for Linux on x86-64, and a `.dmg`
-and `.zip` for macOS on Apple Silicon — with an Intel disk image alongside them
-when that build succeeds. `SHA256SUMS.txt` covers every file.
+AppImage, a `.deb`, an `.rpm`, a `.pkg.tar.zst` for Arch and a tarball for
+Linux on x86-64, and a `.dmg` and `.zip` for macOS on Apple Silicon — with an
+Intel disk image alongside them when that build succeeds. `SHA256SUMS.txt`
+covers every file.
+
+Prefer one of the packages to the AppImage if you open the app often. An
+AppImage is a compressed filesystem mounted on each launch, and unpacking the
+runtime costs about a second before any of the app's own code runs: measured
+at 1.4-1.8s to reach that first line, against 0.4-0.5s for the same build
+installed from a package. It is the most convenient file to carry and the
+slowest one to open.
 
 Nothing is signed with a paid developer certificate. Linux may ask you to
 confirm the first launch; macOS will refuse it outright, so open the app once
@@ -201,7 +209,7 @@ hoisting quietly hides undeclared dependencies.
 pnpm dist:linux
 ```
 
-Produces AppImage, `.deb`, `.rpm` and a tarball in `release/`.
+Produces AppImage, `.deb`, `.rpm`, `.pkg.tar.zst` and a tarball in `release/`.
 
 Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
 
