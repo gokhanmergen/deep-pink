@@ -97,12 +97,18 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # `rpm` and `fakeroot` are for the packages fpm builds; `libarchive-tools`
+      # is too, and less obviously — fpm's pacman target shells out to `bsdtar`
+      # to write the package's .MTREE, and a missing one fails as exit code 127
+      # somewhere inside fpm rather than as anything that names the tool. The
+      # Arch package built cleanly on a developer's Arch machine, where
+      # libarchive is simply always there, and then failed here.
       - name: Install system libraries Electron needs
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 libsecret-1-0 \
-            rpm fakeroot xvfb
+            rpm fakeroot xvfb libarchive-tools
 
       - run: pnpm install --frozen-lockfile
 
