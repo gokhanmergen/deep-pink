@@ -627,12 +627,70 @@ function recordTitleCost(
   repo.recordUsage(threadId, marker.id, model, result.provider, result.usage)
 }
 
+/**
+ * Threads a name is being fetched for right now.
+ *
+ * Two things ask: the end of every turn, and the sweep. Without this they can
+ * ask at the same moment for the same thread, and the reader pays for two
+ * titles to get one.
+ */
+const naming = new Set<string>()
+
+/**
+ * How many times a name is worth asking for, and how long to wait between.
+ *
+ * One attempt used to be all there was, and a single failure meant the thread
+ * stayed unnamed until some later start of the app swept it up. Measured on a
+ * real library (2026-09-22): of 540 threads carrying a naming record, 33 were
+ * named more than two minutes after the conversation happened and the worst
+ * was named eighteen days later — which is eighteen days of a row that said
+ * nothing about what was in it.
+ *
+ * The model itself is not the problem: twelve title requests in a row, on the
+ * model this defaults to, answered twelve times. What fails is the moment —
+ * a network that came back a second later, a VPN reconnecting, a request
+ * still in flight when the window closed. All of which a second attempt a few
+ * seconds later survives.
+ *
+ * Three attempts and no more. This is one small request per conversation and
+ * the backoff is generous, so it cannot become a burst; the earlier lesson
+ * that a retry can make things worse was about four requests in 1.6 seconds,
+ * which this is the opposite of.
+ */
+/**
+ * Says that no name is coming, so the row can stop pretending one is.
+ *
+ * The sidebar shimmers where a name will go, and for a long time the only
+ * thing that ended the shimmer was a two-minute clock — a hundred and
+ * nineteen seconds of a finished conversation looking like one still being
+ * written, because nothing ever said the request had already failed.
+ *
+ * Only from where naming actually gives up. A caller that declined because
+ * another attempt is in flight has not given up on anything.
+ */
+function giveUp(threadId: string, emit: Emit): null {
+  if (!repo.getThread(threadId)?.title) emit({ type: 'title', threadId, title: null })
+  return null
+}
+
+const NAME_ATTEMPTS = 3
+const WAIT_BEFORE_RETRY = [2000, 6000]
+
 export async function generateTitle(threadId: string, emit: Emit): Promise<string | null> {
   const settings = loadSettings()
   if (!settings.titleGenerationEnabled) return null
 
   const thread = repo.getThread(threadId)
   if (!thread) return null
+  /*
+   * Someone is already asking. Say nothing and let them answer.
+   *
+   * Returning quietly matters more than it looks: the sidebar stops
+   * shimmering when naming reports that nothing is coming, and a second
+   * caller declining is not that — the first is still working, and the row
+   * would flicker to "Untitled" and back.
+   */
+  if (naming.has(threadId)) return null
 
   const messages = repo.getMessages(threadId).filter((m) => m.role === 'user' || m.role === 'assistant')
   if (!messages.length) return null
@@ -642,32 +700,62 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
     .map((m) => `${m.role.toUpperCase()}: ${m.content.slice(0, 1500)}`)
     .join('\n\n')
 
+  naming.add(threadId)
   try {
-    const result = await complete({
-      model: settings.titleModel,
-      messages: [
-        { role: 'system', content: settings.titlePrompt },
-        { role: 'user', content: transcript }
-      ],
-      temperature: 0.4,
-      maxTokens: 24,
-      providerRouting: settings.modelProviderRouting[settings.titleModel] ?? null,
-      attribution: settings.sendAppAttribution
-    })
+    for (let attempt = 0; attempt < NAME_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise((wake) => setTimeout(wake, WAIT_BEFORE_RETRY[attempt - 1]))
+        // Something else may have named it while this was waiting — the sweep,
+        // or the reader typing one in.
+        if (repo.getThread(threadId)?.title) return null
+      }
 
-    const title = cleanTitle(result.content)
-    if (!title) return null
+      try {
+        const result = await complete({
+          model: settings.titleModel,
+          messages: [
+            { role: 'system', content: settings.titlePrompt },
+            { role: 'user', content: transcript }
+          ],
+          temperature: 0.4,
+          maxTokens: 24,
+          providerRouting: settings.modelProviderRouting[settings.titleModel] ?? null,
+          attribution: settings.sendAppAttribution
+        })
 
-    repo.updateThread(threadId, { title })
-    // Whatever it was called before, this one read the whole exchange. A
-    // pregeneration still in flight checks for a title and will stand down.
-    provisionalTitles.delete(threadId)
-    recordTitleCost(threadId, settings.titleModel, result)
+        const title = cleanTitle(result.content)
+        // An answer that cleaned away to nothing is an answer. Asking the same
+        // model the same question again would produce the same nothing.
+        if (!title) return giveUp(threadId, emit)
 
-    emit({ type: 'title', threadId, title })
-    return title
-  } catch {
+        repo.updateThread(threadId, { title })
+        // Whatever it was called before, this one read the whole exchange. A
+        // pregeneration still in flight checks for a title and will stand down.
+        provisionalTitles.delete(threadId)
+        recordTitleCost(threadId, settings.titleModel, result)
+
+        emit({ type: 'title', threadId, title })
+        return title
+      } catch (err) {
+        /*
+         * Said out loud, which it never used to be.
+         *
+         * `catch { return null }` is how a thread could go eighteen days
+         * without a name and leave nothing behind explaining it. Naming is
+         * still a convenience and still must not disturb the conversation,
+         * but a convenience that fails silently is one nobody can fix.
+         */
+        const why = err instanceof Error ? err.message : String(err)
+        if (attempt === NAME_ATTEMPTS - 1) {
+          console.log(`Could not name a thread after ${NAME_ATTEMPTS} attempts: ${why}`)
+          return giveUp(threadId, emit)
+        }
+        console.log(`Naming a thread failed (${why}); trying again.`)
+      }
+    }
     return null
+  } finally {
+    naming.delete(threadId)
   }
 }
 
@@ -934,22 +1022,7 @@ async function nameIfUnnamed(threadId: string, emit: Emit): Promise<void> {
     // something that is about to stop existing, and it already reads as
     // "Temporary chat" wherever it appears.
     if (thread.temporary) return
-    const named = await generateTitle(threadId, emit)
-    /*
-     * And if it produced nothing, say that too.
-     *
-     * This is the half that was missing. Naming fails in ordinary ways — the
-     * small model it defaults to rate-limits, the account is out, the reply
-     * comes back empty — and every one of them left the sidebar shimmering
-     * where the name would go, because nothing had told it to stop. It
-     * stopped on a two-minute clock instead, which is a hundred and nineteen
-     * seconds of a finished conversation looking like one still being
-     * written. The request takes about a second; the answer to "is a name
-     * coming" is known then.
-     */
-    if (!named && !repo.getThread(threadId)?.title) {
-      emit({ type: 'title', threadId, title: null })
-    }
+    await generateTitle(threadId, emit)
   } catch {
     // Naming is a convenience. A failure must not disturb the conversation.
   }

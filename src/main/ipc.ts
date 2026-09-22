@@ -62,6 +62,34 @@ export async function nameUnnamedThreads(): Promise<void> {
 }
 
 /**
+ * How often the app looks for a thread it never managed to name.
+ *
+ * Five minutes, because the alternative was the next time the app started.
+ * Measured on a real library (2026-09-22): 33 threads of 540 were named more
+ * than two minutes after the conversation they describe, several of them days
+ * later and one eighteen days later — every one of those a row that said
+ * nothing until some future launch happened to sweep it up.
+ *
+ * The check itself is one indexed query that almost always comes back empty,
+ * so the cost of asking often is nothing. What makes a name go missing is a
+ * moment — a window closed while the request was in flight, a network that
+ * blinked — and the point of asking again during the session is that the
+ * reader is still looking at the row it belongs to.
+ */
+const LOOK_FOR_UNNAMED_EVERY = 5 * 60 * 1000
+
+let sweeping: ReturnType<typeof setInterval> | null = null
+
+/** Names what is unnamed now, and keeps looking while the app is open. */
+export function startNaming(): void {
+  void nameUnnamedThreads()
+  if (sweeping) return
+  sweeping = setInterval(() => void nameUnnamedThreads(), LOOK_FOR_UNNAMED_EVERY)
+  // Nothing here is worth keeping the process alive for.
+  sweeping.unref?.()
+}
+
+/**
  * Syncing on its own, which is the only way it is any use.
  *
  * A run happens shortly after anything changes, on a slow timer for whatever

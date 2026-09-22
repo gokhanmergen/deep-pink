@@ -3,7 +3,7 @@ import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
 import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
-import { nameUnnamedThreads, registerIpc, startSync } from './ipc'
+import { registerIpc, startNaming, startSync } from './ipc'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
@@ -145,8 +145,10 @@ app.whenReady().then(async () => {
   mcp.connectAll().catch(() => undefined)
 
   // Naming is one request per thread, so it happens behind the first paint and
-  // the renderer picks each one up through the event it emits.
-  void nameUnnamedThreads()
+  // the renderer picks each one up through the event it emits. It keeps
+  // looking while the app is open, rather than only now: a name lost to a
+  // closed window or a blinked network used to wait for the next start.
+  startNaming()
 
   // Sync runs behind the window too: the first thing it does is a network
   // round trip, and nothing on screen should be waiting on it.

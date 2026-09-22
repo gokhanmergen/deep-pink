@@ -706,6 +706,40 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       !matchesBinding(press('m', { ctrl: true }), 'mod+shift+m')
   )
 
+  section('a row that will never be named stops saying it is being named')
+  /*
+   * The sidebar shimmers where a name is going to appear, and for a long time
+   * the only thing that ended the shimmer was a two-minute clock. Naming fails
+   * in ordinary ways — a window closed while the request was in flight, a
+   * network that blinked — and every one of them left a finished conversation
+   * looking like one still being written, for a hundred and nineteen seconds
+   * after the answer was already known.
+   *
+   * So naming says when it has given up, and `title: null` is that. There is
+   * nothing to write: the thread keeps no name and reads as "Untitled". What
+   * it ends is the pretence.
+   */
+  emit({ type: 'title', threadId: 'gave-up', title: null })
+  check(
+    'the store remembers naming came back with nothing',
+    state().namingFinished.has('gave-up'),
+    [...state().namingFinished]
+  )
+  // Nothing to re-read: no name was written, so a refresh would be a database
+  // round trip to learn that nothing changed.
+  check('and does not go back to the database for it', !state().threads.some((t) => t.id === 'gave-up'))
+
+  // A thread that later gets a name — the sweep finds it, or it is typed in —
+  // is not held back by having once given up.
+  thread.title = 'Named on the second attempt'
+  emit({ type: 'title', threadId: 't1', title: 'Named on the second attempt' })
+  await settle(60)
+  check(
+    'and a name that does arrive still reaches the list',
+    state().threads.find((t) => t.id === 't1')?.title === 'Named on the second attempt',
+    state().threads.map((t) => t.title)
+  )
+
   section('the question a reply is marked against')
   /*
    * Which sentence of a reply matters is not a property of the reply.
