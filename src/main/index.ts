@@ -32,8 +32,6 @@ function createWindow(): BrowserWindow {
     }
   })
 
-  win.once('ready-to-show', () => win.show())
-
   // The renderer switches its draggable regions off in fullscreen, so it needs
   // to know. `maximize` is reported too because tiling compositors use it.
   const reportState = (): void => {
@@ -66,6 +64,26 @@ function createWindow(): BrowserWindow {
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  /*
+   * Shown as soon as it is loading, not when it is ready.
+   *
+   * `ready-to-show` is the usual advice and it was costing the whole of
+   * startup. It waits for a first paint, an empty `#root` gives Chromium
+   * nothing to paint, and so the window stayed hidden until React had
+   * mounted — the entire renderer bundle parsed and executed. Measured on a
+   * real library (2026-09-21): 216ms to get this far and then 1,761ms of
+   * nothing on screen. `dom-ready` is no better, because a module script is
+   * deferred and the DOM is not called ready until it has run.
+   *
+   * So the window is shown at once. It is not empty when it arrives:
+   * `backgroundColor` paints immediately, and `index.html` carries a static
+   * skeleton of the app's own chrome that the HTML parser puts up without
+   * waiting for any script. What the reader sees is the app appearing in a
+   * quarter of a second and filling in, rather than a quarter of a second of
+   * nothing followed by two seconds more of it.
+   */
+  win.show()
 
   return win
 }

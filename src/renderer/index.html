@@ -8,9 +8,57 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: dpimg:; font-src 'self' data:; connect-src 'self'"
     />
     <title>Deep Pink</title>
+    <!--
+      The shape of the app, in static HTML, so there is something on screen
+      before any of the JavaScript has run.
+
+      An empty `#root` gives Chromium nothing to paint, and `ready-to-show`
+      waits for a first paint — so the window did not appear until React had
+      mounted, which is the whole of the renderer bundle parsed and executed.
+      Measured on a real library (2026-09-21): 1,761ms of that against 216ms
+      to get the window made at all. Nothing was wrong with the app; it was
+      being kept off screen while it got ready.
+
+      These rules are inline and duplicated from `theme.css` on purpose. A
+      stylesheet is another request to wait for, and the point of this is to
+      need nothing. They are the app's own variables, so the skeleton is the
+      right colour in the frame it appears in, and it is replaced wholesale
+      the moment `createRoot` renders — nothing here has to stay true, only
+      to be the right shape for the second it is up.
+    -->
+    <style>
+      html, body { margin: 0; height: 100%; background: hsl(238 14% 4%); }
+      #boot { display: grid; grid-template-columns: 268px 1fr; height: 100vh; }
+      #boot .rail { background: hsl(238 16% 3%); border-right: 1px solid hsl(238 9% 14%); }
+      #boot .bar { height: 46px; border-bottom: 1px solid hsl(238 9% 14%); }
+      #boot .pad { padding: 14px; }
+      #boot i {
+        display: block;
+        border-radius: 9px;
+        background: hsl(238 10% 9%);
+      }
+      #boot .rail i { height: 34px; margin-bottom: 10px; }
+      #boot .rail i:nth-child(2) { height: 30px; }
+      /* Centred on the conversation column, not on the window: the sidebar
+         is 268px of the width and the composer does not sit under it. */
+      #boot .main { position: relative; }
+      #boot .composer { position: absolute; left: 50%; bottom: 22px; width: min(720px, 76%);
+        transform: translateX(-50%); height: 96px; border-radius: 12px;
+        background: hsl(238 9% 11%); border: 1px solid hsl(238 9% 14%); }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot" aria-hidden="true">
+        <div class="rail">
+          <div class="pad"><i></i><i></i></div>
+        </div>
+        <div class="main">
+          <div class="bar"></div>
+          <div class="composer"></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

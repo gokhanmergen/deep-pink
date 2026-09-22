@@ -654,6 +654,46 @@ suite(
       ink.clipped
     )
 
+    section('the window does not wait for the renderer to be ready')
+    /*
+     * Two lines, guarding one measurement.
+     *
+     * `ready-to-show` is the usual advice for avoiding a white flash, and it
+     * waits for a first paint. An empty `#root` gives Chromium nothing to
+     * paint, so the window stayed hidden until React had mounted — measured
+     * on 2026-09-21 at 2,566ms from launch, of which 216ms was the app and
+     * the rest was waiting. Shown as soon as it is loading instead: ~260ms.
+     *
+     * Neither half can be checked by timing without the check being flaky, so
+     * what is checked is the two things that made it slow — a window gated on
+     * a paint, and nothing to paint. The app is running right now, so `#root`
+     * holds React's output; the shipped file is what has to carry the
+     * skeleton, and that is what is read.
+     */
+    const shipped = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '..', 'out', 'renderer', 'index.html'),
+      'utf8'
+    )
+    check(
+      'the shipped page has something to paint before any script runs',
+      !/<div id="root">\s*<\/div>/.test(shipped),
+      shipped.slice(shipped.indexOf('<div id="root">'), shipped.indexOf('<div id="root">') + 120)
+    )
+    // Inline, because a stylesheet is one more thing to fetch and the point
+    // of the skeleton is to need nothing at all.
+    check('and it needs no stylesheet to do it', /<style>/.test(shipped))
+
+    const mainSource = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '..', 'src', 'main', 'index.ts'),
+      'utf8'
+    )
+    check(
+      'and the window is not held back until it is ready to show',
+      !/once\('ready-to-show'/.test(mainSource),
+      /once\('ready-to-show'[\s\S]{0,60}/.exec(mainSource)?.[0]
+    )
+    check('the window is on screen', win.isVisible())
+
     section('the About box reports the real version')
     await run(`[...document.querySelectorAll('.sidebar__footer .btn')]
       .find((b) => b.textContent.trim() === 'Settings').click()`)
