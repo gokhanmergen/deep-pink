@@ -370,6 +370,41 @@ suite(
     await run(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
     await settle(400)
 
+    section('attaching a repository says what it is and is not')
+    /*
+     * Two words doing different jobs, at the only moment there is to say
+     * them. "read-only" is the promise — this cannot write to your code —
+     * and "experimental" is the caveat, which the rest of the unsettled
+     * features carry too.
+     *
+     * Said rather than marked with the dot the sidebar uses for MCP, because
+     * a dot needs somewhere to explain itself and a repository has no panel
+     * of its own: it is attached from this menu and lives on the thread.
+     */
+    await run(`[...document.querySelectorAll('button')].find((b) => /Attach/.test(b.textContent))?.click()`)
+    await settle(500)
+    const attachMenu = await run(`(() => {
+      const item = [...document.querySelectorAll('.context-menu__item')]
+        .find((e) => /Code repository/.test(e.textContent ?? ''))
+      const menu = document.querySelector('.context-menu')
+      return {
+        found: !!item,
+        hint: item?.querySelector('.context-menu__hint')?.textContent?.trim() ?? null,
+        // One line, not wrapped: the hint grew and the menu has to still fit it.
+        oneLine: item ? item.getBoundingClientRect().height < 40 : false,
+        insideMenu: item && menu
+          ? item.getBoundingClientRect().width <= menu.getBoundingClientRect().width
+          : false
+      }
+    })()`)
+    check('the repository entry is there', attachMenu.found, attachMenu)
+    check('it still promises read-only', /read-only/.test(attachMenu.hint ?? ''), attachMenu.hint)
+    check('and admits to being experimental', /experimental/i.test(attachMenu.hint ?? ''), attachMenu.hint)
+    check('without wrapping the row', attachMenu.oneLine && attachMenu.insideMenu, attachMenu)
+
+    await run(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`)
+    await settle(300)
+
     section('an attached repository is read on a worker')
     const repoFixture = require('node:fs').mkdtempSync(
       require('node:path').join(require('node:os').tmpdir(), 'dp-attach-')

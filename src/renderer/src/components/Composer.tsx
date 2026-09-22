@@ -169,7 +169,17 @@ export function Composer(): React.JSX.Element {
       id: 'repo',
       label: 'Code repository…',
       icon: <FolderCode {...ICON} />,
-      hint: 'read-only',
+      /*
+       * Two words doing different jobs. "read-only" is the promise — this
+       * cannot write to your code — and "experimental" is the caveat, that
+       * the feature is newer than the app around it and still moving.
+       *
+       * Said here rather than marked with the dot the sidebar uses, because
+       * a dot needs somewhere to explain itself and this has no panel of its
+       * own: a repository is attached from this menu and lives on the thread.
+       * The moment of choosing is the only moment there is.
+       */
+      hint: 'read-only · experimental',
       onSelect: () => void attachRepo()
     }
   ]
