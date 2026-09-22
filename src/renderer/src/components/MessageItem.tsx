@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { Copy, Pencil } from 'lucide-react'
 import { ICON } from '../icons'
-import type { Attachment, Message, UiSettings } from '@shared/types'
+import type { Message, UiSettings } from '@shared/types'
 import { Markdown } from './Markdown'
 import { TextAttachment } from './TextAttachment'
+import { ImageAttachments } from './ImageAttachments'
 import { useStore } from '../store'
 import { estimateHeight } from '../messageHeight'
 
@@ -29,23 +30,9 @@ export const MessageItem = memo(function MessageItem({
 }): React.JSX.Element | null {
   const showToast = useStore((s) => s.showToast)
   const setHighlight = useStore((s) => s.setHighlight)
-  const openImageViewer = useStore((s) => s.openImageViewer)
   // The answer, not the id: only the row that is or was highlighted re-renders.
   const highlighted = useStore((s) => s.highlightMessageId === message.id)
 
-  /**
-   * The pictures the viewer opens on, in the order they were said.
-   *
-   * What is on screen, which since the transcript arrives a page at a time is
-   * no longer all of them — the viewer widens the list to the whole thread
-   * itself, once it is open. Read at the moment of the click rather than
-   * subscribed to: a row that re-rendered on each new picture would be a row
-   * re-rendering on each new picture.
-   */
-  const imagesOnScreen = (): Attachment[] =>
-    useStore
-      .getState()
-      .messages.flatMap((entry) => entry.attachments.filter((file) => file.kind === 'image'))
 
   // The answer again, not the id: a row does not wake up because some other
   // row is being edited.
@@ -216,35 +203,7 @@ export const MessageItem = memo(function MessageItem({
             </div>
           )}
 
-          {message.attachments.some((a) => a.kind === 'image') && (
-            <div className="attachments">
-              {message.attachments
-                .filter((a) => a.kind === 'image')
-                .map((image) => (
-                  <a
-                    key={image.id}
-                    className="attachment"
-                    href={image.url}
-                    onClick={(event) => {
-                      // Opens in the app's own viewer, where it can be zoomed,
-                      // saved and stepped through — handing it to the desktop's
-                      // image program is still offered, from in there.
-                      event.preventDefault()
-                      openImageViewer(imagesOnScreen(), image.id)
-                    }}
-                    title={`${image.filename} — ${Math.round(image.bytes / 1024)} KB`}
-                  >
-                    <img
-                      src={image.url}
-                      alt={image.filename}
-                      width={image.width ?? undefined}
-                      height={image.height ?? undefined}
-                      loading="lazy"
-                    />
-                  </a>
-                ))}
-            </div>
-          )}
+          <ImageAttachments attachments={message.attachments} />
 
           <div className="message__body">
             {editing ? (

@@ -28,6 +28,10 @@ export function isEmptyAssistantMessage(message: Message): boolean {
     !message.reasoningChars &&
     !message.reasoning &&
     !message.toolCalls?.length &&
+    // A reply can be a picture and nothing else, and a picture is not nothing.
+    // Models that draw answer this way routinely — the words are the caption,
+    // and there may be none.
+    !message.attachments.length &&
     !message.error &&
     message.status !== 'streaming'
   )

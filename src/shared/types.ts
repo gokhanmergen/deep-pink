@@ -403,6 +403,16 @@ export interface ModelPricing {
   internalReasoning: number
   inputCacheRead: number
   inputCacheWrite: number
+  /**
+   * What each token of a generated image costs.
+   *
+   * Per token, not per image, which is worth stating because the number looks
+   * like the latter and is three orders of magnitude away from it: one 1024px
+   * image from gemini-2.5-flash-image came back as 1,290 image tokens at
+   * $0.00003 each — four cents, measured (2026-09-22), for a request whose
+   * headline price reads as a thirtieth of a penny.
+   */
+  imageOutput: number
 }
 
 export interface OpenRouterModel {
@@ -413,6 +423,11 @@ export interface OpenRouterModel {
   pricing: ModelPricing
   supportedParameters: string[]
   inputModalities: string[]
+  /**
+   * What the model can produce. `['text']` for almost everything; a model that
+   * draws also lists `image`, and is asked for one by sending `modalities`.
+   */
+  outputModalities: string[]
   supportsTools: boolean
   supportsReasoning: boolean
   created: number
@@ -710,6 +725,14 @@ export type StreamEvent =
   | { type: 'tool-call'; messageId: string; toolCalls: ToolCall[] }
   | { type: 'tool-result'; messageId: string; result: ToolResult }
   | { type: 'tool-approval-request'; messageId: string; toolCall: ToolCall; serverName: string }
+  /**
+   * A picture the model drew, already stored and addressable.
+   *
+   * The whole `Attachment`, not a URL: it is the same row the reader's own
+   * images get, so the transcript, the viewer, export and sync all take it
+   * without being told that a model made this one.
+   */
+  | { type: 'image'; messageId: string; attachment: Attachment }
   | { type: 'usage'; messageId: string; usage: Usage }
   | { type: 'done'; messageId: string; message: Message }
   /*

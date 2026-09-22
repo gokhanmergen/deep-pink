@@ -33,6 +33,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [toolsOnly, setToolsOnly] = useState(false)
+  const [drawsOnly, setDrawsOnly] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
@@ -51,6 +52,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     const needle = query.trim().toLowerCase()
     return models
       .filter((m) => !toolsOnly || m.supportsTools)
+      .filter((m) => !drawsOnly || m.outputModalities.includes('image'))
       .filter(
         (m) =>
           !needle ||
@@ -58,9 +60,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
           m.name.toLowerCase().includes(needle)
       )
       .slice(0, 300)
-  }, [models, query, toolsOnly])
+  }, [models, query, toolsOnly, drawsOnly])
 
-  useEffect(() => setCursor(0), [query, toolsOnly])
+  useEffect(() => setCursor(0), [query, toolsOnly, drawsOnly])
 
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' })
@@ -137,6 +139,21 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
             />
             Tool-capable only
           </label>
+          {/*
+            * A filter of its own, because there are eleven of these among four
+            * hundred and forty-four models and no amount of scrolling finds
+            * them. They are not a separate kind of thing to the app — an image
+            * model is a chat model that answers with a picture — but they are
+            * a separate thing to look for.
+            */}
+          <label className="switch" style={{ fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={drawsOnly}
+              onChange={(event) => setDrawsOnly(event.target.checked)}
+            />
+            Can draw images
+          </label>
           <div style={{ flex: 1 }} />
           <span>{filtered.length} models</span>
           <button
@@ -189,6 +206,24 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
             <span className="row" style={{ gap: 6, flex: 'none' }}>
               {model.supportsTools && <span className="chip">tools</span>}
               {model.supportsReasoning && <span className="chip">reasoning</span>}
+              {model.outputModalities.includes('image') && (
+                <span
+                  className="chip chip--accent"
+                  /*
+                   * The price is on the chip because it is the one the
+                   * headline pair does not tell you and the one that
+                   * dominates. A single 1024px picture from
+                   * gemini-2.5-flash-image came back as 1,290 image tokens
+                   * (measured 2026-09-22) — four cents, on a model whose
+                   * prompt and completion prices read as a rounding error.
+                   */
+                  title={`Answers with pictures. Image output is ${pricePerMillion(
+                    model.pricing.imageOutput
+                  )} image tokens — one 1024px picture is roughly 1,300 of them.`}
+                >
+                  images {model.pricing.imageOutput ? pricePerMillion(model.pricing.imageOutput) : ''}
+                </span>
+              )}
               <span className="chip" title="Context window">
                 {formatTokens(model.contextLength)}
               </span>

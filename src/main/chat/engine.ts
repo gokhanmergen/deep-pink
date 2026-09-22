@@ -24,6 +24,7 @@ import {
 import { runWebFetch, runWebSearch } from '../tools/web'
 import { REPO_TOOL_NAMES } from '../tools/repo'
 import { ensureTree, runRepoOp } from '../tools/repoService'
+import { nativeImage } from 'electron'
 import * as attachments from '../attachments'
 import { MAX_ATTACHMENTS_PER_MESSAGE } from '../attachments'
 import { assembleContext, estimateTokens } from './prompt'
@@ -264,6 +265,94 @@ export async function modelAcceptsImages(model: string): Promise<boolean> {
     return found ? found.inputModalities.includes('image') : true
   } catch {
     return true
+  }
+}
+
+/**
+ * Whether the model can draw, and so should be asked to.
+ *
+ * Asked rather than assumed in both directions. A model that can draw does
+ * not unless `modalities` says so — the same request without it comes back
+ * describing the picture it would have made — and a model that cannot draw
+ * rejects the parameter outright rather than ignoring it. So an unknown model
+ * is treated as text-only, which is the opposite of `modelAcceptsImages`
+ * above and for the opposite reason: there, guessing wrong drops an
+ * attachment the provider would have taken; here, guessing wrong fails the
+ * whole turn.
+ */
+export async function modelDrawsImages(model: string): Promise<boolean> {
+  try {
+    const models = await listModels()
+    return models.find((m) => m.id === model)?.outputModalities.includes('image') ?? false
+  } catch {
+    return false
+  }
+}
+
+/** `data:image/png;base64,…` split into the parts the store wants. */
+function readDataUrl(url: string): { mime: string; data: string } | null {
+  const comma = url.indexOf(',')
+  if (comma < 0) return null
+  const head = url.slice(5, comma)
+  if (!head.endsWith(';base64')) return null
+  return { mime: head.slice(0, -';base64'.length), data: url.slice(comma + 1) }
+}
+
+/**
+ * Keeps a drawn picture the way the reader's own pictures are kept.
+ *
+ * Deliberately the same path: `attachments.store` writes the file, gives it a
+ * `dpimg://` address and a row against the message, and from that point
+ * nothing downstream knows or cares that a model made it. The transcript
+ * draws it, the viewer opens it, export packs it and sync carries it, all
+ * without a line of new code — which is the whole reason it is stored rather
+ * than left as a data URL in the message text.
+ */
+async function keepImage(
+  threadId: string,
+  messageId: string,
+  dataUrl: string,
+  emit: Emit
+): Promise<void> {
+  try {
+    const parsed = readDataUrl(dataUrl)
+    if (!parsed) return
+
+    /*
+     * Measured, because an image with no size never loads.
+     *
+     * The reader's own pictures are measured in the composer before they are
+     * stored, so their `<img>` carries width and height and reserves space.
+     * Stored without them a generated one is a zero-by-zero box — and a
+     * zero-by-zero box that is also `loading="lazy"` is never in the
+     * viewport, so the browser never asks for it. Measured here: the element
+     * sat with `complete: false` for as long as it was watched.
+     *
+     * `nativeImage` reads the header of anything Chromium can display, which
+     * is the same set this is allowed to store, so there is no format list
+     * here to fall behind.
+     */
+    const size = nativeImage.createFromBuffer(Buffer.from(parsed.data, 'base64')).getSize()
+
+    const stored = attachments.store(threadId, messageId, {
+      mime: parsed.mime,
+      // Named after the turn rather than given something generic, so a folder
+      // of saved pictures says which conversation each came out of.
+      filename: `generated-${messageId.slice(0, 8)}-${Date.now()}.${parsed.mime.split('/')[1] || 'png'}`,
+      data: parsed.data,
+      width: size.width || null,
+      height: size.height || null
+    })
+    emit({ type: 'image', messageId, attachment: stored })
+  } catch (err) {
+    /*
+     * A picture that could not be kept is not a turn that failed.
+     *
+     * `store` refuses an unsupported format or anything past the size limit,
+     * and the reply's words are already on screen. Said out loud because the
+     * alternative is a model that appears to have drawn nothing.
+     */
+    console.log(`Could not keep a generated image: ${err instanceof Error ? err.message : err}`)
   }
 }
 
@@ -861,6 +950,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             includeReasoning: settings.streamReasoning,
             attribution: settings.sendAppAttribution,
             webPlugin: settings.web.engine === 'openrouter' && (thread.config.webAccessEnabled ?? settings.web.enabled),
+            wantsImages: await modelDrawsImages(model),
             signal: controller.signal
           },
           {
@@ -875,6 +965,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
               if (live) live.reasoning += delta
               emit({ type: 'reasoning', messageId: assistant.id, delta })
             },
+            onImage: (dataUrl) => void keepImage(req.threadId, assistant.id, dataUrl, emit),
             onProvider: () => undefined
           }
         )
@@ -894,7 +985,14 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         lastPersisted.delete(assistant.id)
         const current = repo.getMessage(assistant.id)
         const producedNothing =
-          !current?.content && !current?.reasoning && !current?.toolCalls?.length
+          !current?.content &&
+          !current?.reasoning &&
+          !current?.toolCalls?.length &&
+          // A drawn picture is something produced, and the only thing that
+          // survives a turn where the model said nothing about it. Deleting
+          // the message here would take the attachment row with it and leave
+          // the file to be swept.
+          !current?.attachments.length
 
         if (aborted) {
           if (producedNothing) {

@@ -46,6 +46,58 @@ suite('chat — streaming, tool reconciliation, web guards', async ({ check, sec
   check('reasoning tokens are recorded', result.usage.reasoningTokens === 3)
   check('time to first token is measured', result.usage.timeToFirstTokenMs !== null)
 
+  section('a model that answers with a picture')
+  /*
+   * Measured against a real generation (2026-09-22): the whole image arrives
+   * in one chunk as `delta.images`, 948,670 characters of base64, in the
+   * first of three chunks. There is no progressive form of it to show and
+   * nothing to append to — it is done when it appears.
+   */
+  const tinyPng =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+  global.fetch = async () =>
+    sseResponse([
+      `data: {"choices":[{"delta":{"role":"assistant","content":"","images":[{"type":"image_url","image_url":{"url":"${tinyPng}"}}]}}]}`,
+      'data: {"choices":[{"finish_reason":"stop","delta":{"content":""}}],"usage":{"prompt_tokens":9,"completion_tokens":1290,"total_tokens":1299,"cost":0.0387,"completion_tokens_details":{"image_tokens":1290}}}',
+      'data: [DONE]'
+    ])
+
+  const drawn = []
+  const drew = await streamChat(
+    { model: 'test/image', messages: [], attribution: false },
+    { onImage: (url) => drawn.push(url) }
+  )
+
+  check('the picture comes out whole', drew.images.length === 1, drew.images.length)
+  check('as a data URL', drew.images[0] === tinyPng)
+  check('and reaches the caller as it lands', drawn.length === 1 && drawn[0] === tinyPng)
+  check('a reply can be a picture and no words', drew.content === '', JSON.stringify(drew.content))
+  check('what it cost is still read', drew.usage.costUsd === 0.0387, drew.usage.costUsd)
+  /*
+   * `completionTokens` counts the picture — 1,290 of them here — and none of
+   * those were written a word at a time. Reported as a speed it read as
+   * 143,333 tokens per second next to a reply that took five seconds, which
+   * is why there is no number rather than a wrong one.
+   */
+  check(
+    'but no speed is claimed for tokens that never streamed',
+    drew.usage.tokensPerSecond === null,
+    drew.usage.tokensPerSecond
+  )
+
+  // Malformed parts are the normal case for a field most models never send.
+  global.fetch = async () =>
+    sseResponse([
+      'data: {"choices":[{"delta":{"images":[{"type":"image_url"},{"image_url":{}},{"image_url":{"url":"https://example.com/not-inline.png"}}]}}]}',
+      'data: {"choices":[{"finish_reason":"stop","delta":{}}]}',
+      'data: [DONE]'
+    ])
+  const junk = await streamChat(
+    { model: 'test/image', messages: [], attribution: false },
+    { onImage: (url) => drawn.push(url) }
+  )
+  check('a part with no url, or one that is not inline, is skipped', junk.images.length === 0, junk.images)
+
   section('error reporting')
   global.fetch = async () => ({
     ok: false,

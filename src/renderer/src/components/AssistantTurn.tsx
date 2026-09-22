@@ -3,6 +3,7 @@ import { ChevronRight, Copy, FileText, GitBranch, RefreshCw } from 'lucide-react
 import { ICON } from '../icons'
 import type { Message, UiSettings, Usage } from '@shared/types'
 import { Markdown } from './Markdown'
+import { ImageAttachments } from './ImageAttachments'
 import { LongText } from './LongText'
 import { useStore } from '../store'
 import { isEmptyAssistantMessage } from '../turns'
@@ -540,7 +541,17 @@ export const AssistantTurn = memo(function AssistantTurn({
 
                 {message.content && <ReplyBody message={message} ui={ui} />}
 
-                {message.status === 'streaming' && !message.content && <span className="caret" />}
+                {/*
+                  * What the model drew, shown the way what the reader attached
+                  * is shown. Above the caret rather than below the text: for a
+                  * model that draws, the picture is the answer and the words
+                  * around it are the caption.
+                  */}
+                <ImageAttachments attachments={message.attachments} />
+
+                {message.status === 'streaming' &&
+                  !message.content &&
+                  !message.attachments.some((a) => a.kind === 'image') && <span className="caret" />}
 
                 {message.toolCalls?.some((call) => !answered.has(call.id)) ? (
                   <div className="row row--wrap" style={{ marginTop: 6 }}>

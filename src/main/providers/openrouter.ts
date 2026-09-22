@@ -54,7 +54,8 @@ function toPricing(raw: Record<string, unknown> | undefined): ModelPricing {
     webSearch: num(raw?.web_search),
     internalReasoning: num(raw?.internal_reasoning),
     inputCacheRead: num(raw?.input_cache_read),
-    inputCacheWrite: num(raw?.input_cache_write)
+    inputCacheWrite: num(raw?.input_cache_write),
+    imageOutput: num(raw?.image_output)
   }
 }
 
@@ -106,6 +107,7 @@ export async function listModels(force = false): Promise<OpenRouterModel[]> {
       pricing: toPricing(m['pricing'] as Record<string, unknown> | undefined),
       supportedParameters: supported,
       inputModalities: (architecture['input_modalities'] as string[] | undefined) ?? ['text'],
+      outputModalities: (architecture['output_modalities'] as string[] | undefined) ?? ['text'],
       supportsTools: supported.includes('tools'),
       supportsReasoning: supported.includes('reasoning') || supported.includes('include_reasoning'),
       created: num(m['created'])
@@ -210,6 +212,15 @@ export interface ChatRequest {
   signal?: AbortSignal
   /** Appends OpenRouter's `:online` web plugin to the model slug. */
   webPlugin?: boolean
+  /**
+   * Asks for pictures as well as words.
+   *
+   * A model that can draw does not draw unless told to: the same request
+   * without this comes back as text describing what it would have drawn. Only
+   * sent for models whose catalogue entry says they can, because a model that
+   * cannot rejects the parameter rather than ignoring it.
+   */
+  wantsImages?: boolean
 }
 
 export interface StreamHandlers {
@@ -217,11 +228,22 @@ export interface StreamHandlers {
   onReasoning?: (delta: string) => void
   onToolCalls?: (calls: ToolCall[]) => void
   onProvider?: (provider: string) => void
+  /**
+   * A finished picture, as a `data:` URL.
+   *
+   * Not a delta. Measured against a real generation (2026-09-22), the whole
+   * image arrives in one chunk — 948,670 characters of base64 in the first
+   * chunk of three — so there is nothing to append to and nothing to show
+   * progressively. It is done when it appears.
+   */
+  onImage?: (dataUrl: string) => void
 }
 
 export interface StreamResult {
   content: string
   reasoning: string
+  /** Any pictures the model drew, as `data:` URLs, in the order they arrived. */
+  images: string[]
   toolCalls: ToolCall[]
   finishReason: string | null
   provider: string | null
@@ -264,6 +286,9 @@ export async function streamChat(
     // Ask OpenRouter to include real accounting (including cost) in the final chunk.
     usage: { include: true }
   }
+  // Text stays in the list: these models answer with both, and asking for
+  // images alone gets a picture with nothing said about it.
+  if (req.wantsImages) body.modalities = ['image', 'text']
   if (req.temperature != null) body.temperature = req.temperature
   if (req.maxTokens != null) body.max_tokens = req.maxTokens
   if (req.tools?.length) body.tools = req.tools
@@ -294,6 +319,7 @@ export async function streamChat(
 
   let content = ''
   let reasoning = ''
+  const images: string[] = []
   let finishReason: string | null = null
   let servedBy: string | null = null
   let usage: Usage = {
@@ -353,6 +379,25 @@ export async function streamChat(
           if (choice['finish_reason']) finishReason = String(choice['finish_reason'])
 
           const delta = (choice['delta'] as Record<string, never> | undefined) ?? {}
+
+          /*
+           * A picture, whole, in one chunk.
+           *
+           * `delta.images` is an array of the same `image_url` parts a
+           * message carries going the other way, so what comes out of a model
+           * is shaped like what goes into one. Read defensively all the same:
+           * this is the one field here whose absence is normal.
+           */
+          for (const part of (delta['images'] as Record<string, unknown>[] | undefined) ?? []) {
+            const url = (part?.['image_url'] as Record<string, unknown> | undefined)?.['url']
+            if (typeof url !== 'string' || !url.startsWith('data:')) continue
+            // Not a first token. A picture does not arrive token by token, so
+            // starting the generation clock here measures the gap between the
+            // image landing and the stream closing — nine milliseconds, in
+            // which 1,290 image tokens were reported as having been written.
+            images.push(url)
+            handlers.onImage?.(url)
+          }
 
           const reasoningDelta = delta['reasoning'] as string | undefined
           if (reasoningDelta) {
@@ -418,12 +463,20 @@ export async function streamChat(
   usage.latencyMs = finishedAt - startedAt
   usage.timeToFirstTokenMs = firstTokenAt ? firstTokenAt - startedAt : null
   usage.reasoningMs = reasoningFrom === null ? null : (reasoningTo ?? finishedAt) - reasoningFrom
+  /*
+   * A rate, only where there was something to rate.
+   *
+   * `completionTokens` counts a drawn picture too — 1,290 of them for one
+   * 1024px image — and none of those were written a word at a time. Reported
+   * as a speed it read as 143,333 tokens per second beside a reply that took
+   * five seconds. There is no honest number to put there, so there is none.
+   */
   usage.tokensPerSecond =
-    generationSeconds > 0 && usage.completionTokens > 0
+    generationSeconds > 0 && usage.completionTokens > 0 && images.length === 0
       ? usage.completionTokens / generationSeconds
       : null
 
-  return { content, reasoning, toolCalls, finishReason, provider: servedBy, usage }
+  return { content, reasoning, images, toolCalls, finishReason, provider: servedBy, usage }
 }
 
 /** Non-streaming call, used for thread titles and compaction summaries. */

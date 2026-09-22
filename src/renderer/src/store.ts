@@ -1774,6 +1774,25 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       }
       break
 
+    case 'image':
+      /*
+       * A drawn picture joins the message it came from.
+       *
+       * Appended rather than replacing: a model may draw more than one, and
+       * they arrive as separate events. `done` carries the stored message
+       * with its own attachments a moment later and will agree with this —
+       * this is only so the picture appears the instant it exists rather than
+       * when the turn finishes, which for an image model is most of the wait.
+       */
+      set({
+        messages: patchMessage(state.messages, event.messageId, (m) =>
+          m.attachments.some((a) => a.id === event.attachment.id)
+            ? m
+            : { ...m, attachments: [...m.attachments, event.attachment] }
+        )
+      })
+      break
+
     case 'usage':
       set({
         messages: patchMessage(state.messages, event.messageId, (m) => ({ ...m, usage: event.usage }))
