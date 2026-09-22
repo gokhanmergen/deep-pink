@@ -138,7 +138,7 @@ jobs:
           mkdir -p artifacts
           find release -maxdepth 1 -type f \
             \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
-               -o -name '*.pkg.tar.zst' -o -name '*.tar.gz' \
+               -o -name '*.pkg.tar.*' -o -name '*.tar.gz' \
                -o -name '*.dmg' -o -name '*.zip' \) \
             -exec cp {} artifacts/ \;
           ls -lh artifacts
@@ -191,9 +191,21 @@ jobs:
             | --- | --- |
             | `.deb` | Debian, Ubuntu, Mint |
             | `.rpm` | Fedora, openSUSE, RHEL |
-            | `.pkg.tar.zst` | Arch, Manjaro, EndeavourOS |
+            | `.pkg.tar.xz` | Arch, Manjaro, EndeavourOS — or use the repo below |
             | `.tar.gz` | You would rather unpack it yourself |
             | `.AppImage` | You want a single file — `chmod +x` it and run |
+
+            **Arch, with updates.** Add to the end of `/etc/pacman.conf`, then
+            `sudo pacman -Sy deep-pink` — after which `pacman -Syu` keeps it
+            current. Unsigned: that `SigLevel` line tells pacman to install
+            whatever this URL serves without checking who built it, for this
+            repository only.
+
+            ```ini
+            [deep-pink]
+            SigLevel = Optional TrustAll
+            Server = https://github.com/gokhanmergen/deep-pink/releases/download/arch
+            ```
 
             The AppImage is last on purpose. It is a compressed filesystem
             mounted on every launch, and unpacking the runtime costs about a
@@ -224,3 +236,93 @@ jobs:
             ```bash
             xattr -dr com.apple.quarantine "/Applications/Deep Pink.app"
             ```
+
+  # ------------------------------------------------------------------
+  # The Arch repository
+  # ------------------------------------------------------------------
+  #
+  # A pacman repo is nothing but a database file and some packages behind an
+  # HTTP URL, and a GitHub release is an HTTP URL. So there is no server here
+  # and no Pages site: one release, on a tag that never changes, holding the
+  # newest package and a `deep-pink.db` describing it.
+  #
+  # What this buys is the thing a download page cannot — `pacman -Syu` picks
+  # the app up with everything else on the machine. The alternative was an
+  # updater inside the app, which for a native package means owning a
+  # download, a signature check and a privilege escalation to write into
+  # /usr, all to reimplement what the package manager already does, and
+  # fighting it for ownership of the install while doing so.
+  #
+  # Unsigned, deliberately and visibly: the `pacman.conf` stanza this needs
+  # says `SigLevel = Optional TrustAll`, which is the reader agreeing to trust
+  # whatever this URL serves. Signing means a private key living in Actions
+  # secrets, which is its own promise to keep.
+  arch-repo:
+    needs: [meta, publish]
+    if: github.ref_type == 'tag' || inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Check there is an Arch package to publish
+        id: found
+        run: |
+          pkg=$(find artifacts -maxdepth 1 -name '*.pkg.tar.*' | head -1)
+          if [ -z "$pkg" ]; then
+            echo "No Arch package in this release; nothing to add to the repo." >&2
+            echo "pkg=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
+
+      # `repo-add` is pacman's own tool and exists nowhere but Arch, so the
+      # database is built in an Arch container rather than reimplemented.
+      - name: Build the repository database
+        if: steps.found.outputs.pkg != ''
+        run: |
+          mkdir -p repo
+          cp "${{ steps.found.outputs.pkg }}" repo/
+          docker run --rm -v "$PWD/repo:/repo" -w /repo archlinux:latest \
+            bash -c 'repo-add deep-pink.db.tar.gz *.pkg.tar.*'
+          # `repo-add` leaves `deep-pink.db` as a symlink to the tarball, and
+          # a release asset cannot be a symlink — but `deep-pink.db` is the
+          # name pacman actually fetches, so it is uploaded as a real copy.
+          # Removed first: copying onto the symlink is copying a file onto
+          # itself, which `cp` refuses.
+          rm -f repo/deep-pink.db repo/deep-pink.files
+          cp repo/deep-pink.db.tar.gz repo/deep-pink.db
+          cp repo/deep-pink.files.tar.gz repo/deep-pink.files
+          ls -lh repo
+
+      # One tag, reused for ever. `--latest=false` matters: were this release
+      # to become "latest", every link and script pointing at /releases/latest
+      # would start resolving to a database file instead of the app.
+      - name: Publish it to the fixed `arch` tag
+        if: steps.found.outputs.pkg != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view arch >/dev/null 2>&1; then
+            gh release create arch \
+              --title 'Arch repository' \
+              --latest=false \
+              --notes 'A pacman repository, not a release. See the README for the stanza that points at it. Updated automatically; the assets here are always the newest version.'
+          fi
+
+          # Old packages go, so the tag holds one version rather than every
+          # version there has ever been. The database only ever describes what
+          # is here, so nothing is left pointing at a file that is gone.
+          for old in $(gh release view arch --json assets --jq '.assets[].name' | grep '\.pkg\.tar\.' || true); do
+            [ "$old" = "$(basename "${{ steps.found.outputs.pkg }}")" ] && continue
+            gh release delete-asset arch "$old" --yes || true
+          done
+
+          gh release upload arch --clobber \
+            repo/*.pkg.tar.* \
+            repo/deep-pink.db repo/deep-pink.db.tar.gz \
+            repo/deep-pink.files repo/deep-pink.files.tar.gz

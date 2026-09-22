@@ -78,7 +78,7 @@ Every action has a binding, every binding is rebindable, and `Ctrl/⌘ K` opens 
 
 Linux and macOS builds are published to the
 [releases page](https://github.com/gokhanmergen/deep-pink/releases): an
-AppImage, a `.deb`, an `.rpm`, a `.pkg.tar.zst` for Arch and a tarball for
+AppImage, a `.deb`, an `.rpm`, a `.pkg.tar.xz` for Arch and a tarball for
 Linux on x86-64, and a `.dmg` and `.zip` for macOS on Apple Silicon — with an
 Intel disk image alongside them when that build succeeds. `SHA256SUMS.txt`
 covers every file.
@@ -89,6 +89,36 @@ runtime costs about a second before any of the app's own code runs: measured
 at 1.4-1.8s to reach that first line, against 0.4-0.5s for the same build
 installed from a package. It is the most convenient file to carry and the
 slowest one to open.
+
+### Arch, with updates
+
+There is a pacman repository, so the app updates with everything else on the
+machine instead of being re-downloaded by hand. Add this to the **end** of
+`/etc/pacman.conf` — last, so a third-party repository can never shadow an
+official package:
+
+```ini
+[deep-pink]
+SigLevel = Optional TrustAll
+Server = https://github.com/gokhanmergen/deep-pink/releases/download/arch
+```
+
+```bash
+sudo pacman -Sy deep-pink
+```
+
+After that `pacman -Syu` keeps it current.
+
+`SigLevel = Optional TrustAll` is doing something real and is worth reading
+before you paste it: these packages are not GPG-signed, so that line tells
+pacman to install whatever this URL serves without checking who built it. It
+applies to this repository alone and not to the rest of your system. If that
+is not a trade you want, use the `.pkg.tar.xz` from the releases page and
+`pacman -U` it, which is the same file installed deliberately each time.
+
+The repository lives on a GitHub release under a tag that never changes, so
+there is no server behind it and nothing to go down that is not GitHub. It
+holds the newest version only.
 
 Nothing is signed with a paid developer certificate. Linux may ask you to
 confirm the first launch; macOS will refuse it outright, so open the app once
@@ -209,7 +239,7 @@ hoisting quietly hides undeclared dependencies.
 pnpm dist:linux
 ```
 
-Produces AppImage, `.deb`, `.rpm`, `.pkg.tar.zst` and a tarball in `release/`.
+Produces AppImage, `.deb`, `.rpm`, `.pkg.tar.xz` and a tarball in `release/`.
 
 Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
 

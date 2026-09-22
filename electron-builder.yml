@@ -67,6 +67,36 @@ linux:
 appImage:
   artifactName: ${productName}-${version}-${arch}.${ext}
 
+# fpm names this after the target, so it would arrive as `.pacman` — a name
+# neither `repo-add` nor `pacman -U` recognises, both of which want
+# `*.pkg.tar.*`. Spelled out rather than left to `${ext}`, and `.xz` because
+# that is the compression fpm is given by default; the name has to be true.
+pacman:
+  artifactName: ${name}-${version}-${arch}.pkg.tar.xz
+  # Spelled out because electron-builder's default list has two packages in it
+  # that Arch no longer has — `http-parser` and `libappindicator-gtk3` — and a
+  # dependency that cannot be resolved is not a warning, it is a package that
+  # refuses to install. Checked against the repositories on 2026-09-21; the
+  # rest of the list is electron-builder's, unchanged.
+  #
+  # `libsecret` is added, as it is for deb and rpm: it backs encrypted key
+  # storage, and without it the app runs but keeps the OpenRouter key as a
+  # permission-restricted file instead.
+  depends:
+    - c-ares
+    - ffmpeg
+    - gtk3
+    - libevent
+    - libvpx
+    - libxslt
+    - libxss
+    - minizip
+    - nss
+    - re2
+    - snappy
+    - libnotify
+    - libsecret
+
 deb:
   depends:
     - libgtk-3-0
