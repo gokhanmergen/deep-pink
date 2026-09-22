@@ -15,6 +15,9 @@ interface Props {
   onClose: () => void
 }
 
+/** Rows built before the panel is shown; the rest follow immediately after. */
+const FIRST_FRAME = 60
+
 function pricePerMillion(value: number): string {
   if (!value) return 'free'
   return `$${(value * 1_000_000).toFixed(2)}/M`
@@ -34,6 +37,19 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const [cursor, setCursor] = useState(0)
   const [toolsOnly, setToolsOnly] = useState(false)
   const [drawsOnly, setDrawsOnly] = useState(false)
+  /*
+   * How many rows are built for the first frame.
+   *
+   * The whole cost of opening this was building rows. Measured (2026-09-22),
+   * median of eight: three hundred rows took 106ms, fifty took 20ms — a
+   * little under half a millisecond each, and nothing else in here is worth
+   * measuring beside it.
+   *
+   * A screenful is about a dozen. Sixty is several screens of scrolling, and
+   * the rest arrive a tick later — before anyone has read the first one, and
+   * before the keyboard can walk that far.
+   */
+  const [built, setBuilt] = useState(FIRST_FRAME)
   const listRef = useRef<HTMLDivElement>(null)
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
@@ -63,6 +79,21 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   }, [models, query, toolsOnly, drawsOnly])
 
   useEffect(() => setCursor(0), [query, toolsOnly, drawsOnly])
+
+  /*
+   * The rest of the list, once the first frame is on screen.
+   *
+   * A timeout rather than an effect body, because an effect still runs before
+   * the browser paints — setting the full count there would put every row in
+   * the same frame and buy nothing. Reset whenever the filter changes, so a
+   * search is as quick to show as the first open.
+   */
+  useEffect(() => setBuilt(FIRST_FRAME), [query, toolsOnly, drawsOnly])
+  useEffect(() => {
+    if (built >= filtered.length) return
+    const soon = setTimeout(() => setBuilt(filtered.length), 0)
+    return () => clearTimeout(soon)
+  }, [built, filtered.length])
 
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' })
@@ -178,7 +209,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
               : 'No models match that search.'}
           </div>
         )}
-        {filtered.map((model, index) => (
+        {filtered.slice(0, built).map((model, index) => (
           <button
             key={model.id}
             className="cmditem"

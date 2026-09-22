@@ -2765,6 +2765,23 @@ svg.lucide {
   border-radius: var(--radius-sm);
   text-align: left;
   color: var(--text-muted);
+
+  /* The browser may skip a row it is not showing.
+   *
+   * The model picker lists three hundred of these, and the cost of opening it
+   * was almost exactly the cost of laying them all out: measured at ~100-150ms
+   * for three hundred against ~20ms for fifty (2026-09-22), which is a little
+   * under half a millisecond a row and nearly all of the wait.
+   *
+   * This is the same bargain the transcript makes for messages. Rows still
+   * exist — the keyboard walks all three hundred, the scrollbar is the right
+   * size, a search matches what is not on screen — they are simply not laid
+   * out until they are about to be seen. */
+  content-visibility: auto;
+  /* Every row is one line of text at a fixed padding, so unlike a message
+     there is nothing to guess: this is the height, and the scrollbar does not
+     move as rows are realised. */
+  contain-intrinsic-size: auto 37px;
 }
 
 .cmditem {

@@ -434,6 +434,32 @@ suite(
     check('the picker opens', picker.open === true, picker)
     check('and says it is for new threads', /new threads/.test(picker.placeholder ?? ''), picker.placeholder)
 
+    /*
+     * Every match is reachable, not just the screenful built for the first
+     * frame.
+     *
+     * Opening this cost almost exactly what it cost to build its rows —
+     * measured at 106ms for three hundred against 20ms for fifty — so the
+     * first frame now carries a screenful and the rest follow a tick later.
+     * The risk that buys is a list that never finishes arriving, and a model
+     * you cannot scroll to is a model you cannot pick.
+     */
+    const settled = await run(`(async () => {
+      await new Promise((r) => setTimeout(r, 400))
+      const rows = [...document.querySelectorAll('.cmdlist .cmditem')]
+      const counter = [...document.querySelectorAll('.panel span')]
+        .map((e) => e.textContent ?? '')
+        .find((t) => / models$/.test(t.trim()))
+      return { rows: rows.length, counter: counter?.trim() ?? null }
+    })()`)
+    check(
+      'and every model it counts is a row you can reach',
+      settled.rows > 0 && settled.counter === `${settled.rows} models`,
+      settled
+    )
+    // The reason for building in two passes at all: more rows than a screen.
+    check('which is more than the first frame builds', settled.rows > 60, settled.rows)
+
     if (picker.options > 0) {
       const chosen = await run(`(() => {
         const item = [...document.querySelectorAll('.cmdlist .cmditem')]
