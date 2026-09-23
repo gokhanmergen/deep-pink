@@ -9,7 +9,7 @@ import type {
   Usage
 } from '@shared/types'
 import { takeKeyPointMarkers } from '@shared/keyPointPrompt'
-import { LOAD_SKILL, type SkillId } from '@shared/skills'
+import { LOAD_SKILL, type Skill } from '@shared/skills'
 import { keyPointCeiling } from '@shared/defaults'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
@@ -556,7 +556,7 @@ async function executeToolCall(
   settings: Settings,
   emit: Emit,
   repoPaths: string[] = [],
-  skills: SkillId[] = []
+  skills: Skill[] = []
 ): Promise<ToolResult> {
   const startedAt = Date.now()
 

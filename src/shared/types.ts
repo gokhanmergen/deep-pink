@@ -238,6 +238,8 @@ export interface ThreadConfig {
  * System prompt transparency
  * ------------------------------------------------------------------ */
 
+import type { CustomSkill } from './skills'
+
 export type SystemPromptSource =
   | 'base'
   | 'thread'
@@ -602,6 +604,16 @@ export interface Settings {
    * a prompt that has already decided.
    */
   skillsOnDemand: boolean
+  /**
+   * Skills written here rather than shipped with the app.
+   *
+   * The two built-in ones have code behind them — a chart is drawn by a
+   * renderer that has to exist. These have nothing behind them but the text,
+   * which turns out to be most of what a skill is: house style, the shape of
+   * a commit message, the format a report has to arrive in. The instructions
+   * people paste into a system prompt and then carry on every turn forever.
+   */
+  customSkills: CustomSkill[]
   /**
    * After a reply lands, asks a decision model which sentence matters most and
    * marks it. Off by default: it is a second request per reply, and a reader

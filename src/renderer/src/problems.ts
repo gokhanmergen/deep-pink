@@ -61,12 +61,45 @@ function worthSaying(message: string): boolean {
   return true
 }
 
+/**
+ * How many failures a second is a storm rather than a report.
+ *
+ * A render that throws throws again on the next render, and the toast is
+ * itself a render — so a report that is not bounded is a report that can keep
+ * the thing it is reporting alive. Past this, the rest of the second is
+ * silent: you have been told, and being told four hundred times is being told
+ * nothing and losing the window as well.
+ */
+const AT_MOST = 3
+const PER = 1000
+
 /** Starts listening. Returns the function that stops. */
 export function watchProblems(): () => void {
+  let since = 0
+  let said = 0
+
   const say = (problem: unknown): void => {
     const message = readable(problem)
     if (!worthSaying(message)) return
-    useStore.getState().showToast(message, 'error')
+
+    const now = Date.now()
+    if (now - since > PER) {
+      since = now
+      said = 0
+    }
+    if (++said > AT_MOST) return
+
+    /*
+     * On a later task, never in this one.
+     *
+     * An error thrown while React is rendering reaches this handler with
+     * React part-way through a commit, and showing a toast is a state
+     * update — one made from inside the render phase, which React answers by
+     * scheduling another render, which throws again. Reporting a failure is
+     * not worth becoming one: by the time a timeout runs, the render that
+     * threw has unwound and the update is an ordinary one.
+     */
+    setTimeout(() => useStore.getState().showToast(message, 'error'), 0)
   }
 
   const onError = (event: ErrorEvent): void => say(event.error ?? event.message)

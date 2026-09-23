@@ -761,6 +761,61 @@ svg.lucide {
   color: var(--text);
 }
 
+/*
+ * Two entries rather than three, because the workshop is put away.
+ *
+ * Each row takes an equal share of the bar whatever the count, and at three
+ * the shares are narrow enough that left-aligned content fills them. At two
+ * they are half the sidebar each, and the same rule reads as a word pinned to
+ * the far left and a word starting abruptly at the midpoint, with the empty
+ * half of each box between them. Centred, it reads as two things side by side
+ * — which is what it is.
+ */
+.sidebar__footer:not(:has(> .btn:nth-child(3))) .btn {
+  justify-content: center;
+}
+
+/*
+ * A skill, as a thing rather than a run of settings.
+ *
+ * The panel is a column of labelled controls, and six of those in a row —
+ * switch, line, chips, disclosure, twice over, then whatever has been written
+ * — reads as one long list with no telling where one skill ends and the next
+ * begins. The surface and the edge are the sidebar's own; they say "this is
+ * one item" and nothing else.
+ */
+.skill {
+  border: 1px solid hsl(var(--tint-h) 11% 13%);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  background: hsl(var(--tint-h) 12% 7%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Switched off, it steps back — still readable, plainly not in play. */
+.skill:not([data-on]) {
+  opacity: 0.62;
+}
+
+.skill__head {
+  margin: 0;
+}
+
+.skill .field,
+.skill .disclosure {
+  margin: 0;
+}
+
+/* Instructions run long, and a skill is a card rather than a page: the body
+   scrolls inside the card instead of pushing everything below it away. */
+.skill .disclosure__content pre {
+  max-height: 260px;
+  overflow: auto;
+}
+
 .sidebar__footer .icon {
   flex: none;
   opacity: 0.9;

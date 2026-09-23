@@ -200,7 +200,29 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
       return
     }
 
-    const redraw = (): void => setStrokes(strokesFor(element, wanted))
+    /*
+     * Only when the geometry actually moved.
+     *
+     * `strokesFor` builds a fresh array of fresh objects every time it is
+     * asked, and a fresh array is a state change as far as React is
+     * concerned — so this used to re-render on every notification the
+     * observer sent, including the ones where the text had reflowed to
+     * exactly where it already was. A render inside a resize callback is a
+     * render that can be observed as a resize, and that is how an app arrives
+     * at "Maximum update depth exceeded": each pass causes the next.
+     *
+     * Compared as text because these are four numbers and a delay, and a
+     * short string is cheaper to build and compare than the deep equality
+     * check it stands in for.
+     */
+    let last = ''
+    const redraw = (): void => {
+      const next = strokesFor(element, wanted)
+      const shape = JSON.stringify(next)
+      if (shape === last) return
+      last = shape
+      setStrokes(next)
+    }
     redraw()
 
     const observer = new ResizeObserver(redraw)

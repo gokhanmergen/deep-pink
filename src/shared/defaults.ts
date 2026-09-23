@@ -267,6 +267,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chartsEnabled: false,
   docsEnabled: false,
   skillsOnDemand: true,
+  customSkills: [],
   keyPointEnabled: false,
   keyPointSource: 'jev',
   /*

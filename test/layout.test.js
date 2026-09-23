@@ -928,6 +928,48 @@ suite(
     })()`)
     const declared = require('../package.json').version
 
+    /*
+     * The footer, with and without the workshop.
+     *
+     * Every entry takes an equal share of the bar. At three the shares are
+     * narrow enough that left-aligned content fills them; at two — MCP being
+     * the first thing to go when the experimental parts are put away — each
+     * is half the sidebar, and the same rule reads as a word pinned to the far
+     * left and a word starting abruptly at the midpoint.
+     */
+    section('the sidebar footer')
+
+    const padding = `[...document.querySelectorAll('.sidebar__footer .btn')].map((b) => {
+      const box = b.getBoundingClientRect()
+      const icon = b.querySelector('svg').getBoundingClientRect()
+      const range = document.createRange()
+      range.selectNodeContents(b)
+      const text = range.getBoundingClientRect()
+      return {
+        label: b.textContent.trim(),
+        before: Math.round(icon.left - box.left),
+        after: Math.round(box.right - text.right)
+      }
+    })`
+
+    await run(`window.deepPink.settings.save({ hideExperimental: false }), true`)
+    await settle(600)
+    getWindow().webContents.reload()
+    await settle(6000)
+    const three = await run(padding)
+    check('three entries, all of them', three.length === 3, three)
+    check('sit where they always did', three.every((b) => b.before < 12), three)
+
+    await run(`window.deepPink.settings.save({ hideExperimental: true }), true`)
+    await settle(900)
+    const two = await run(padding)
+    check('two entries', two.length === 2, two)
+    check(
+      'are centred in the halves they now have',
+      two.every((b) => Math.abs(b.before - b.after) <= 1 && b.before > 12),
+      two
+    )
+
     check('About shows a version at all', typeof about === 'string' && about.length > 0, about)
     check(
       'and it matches package.json rather than a written-down one',

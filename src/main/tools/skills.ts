@@ -1,4 +1,4 @@
-import { LOAD_SKILL, SKILLS, skillById, type Skill, type SkillId } from '@shared/skills'
+import { BUILT_IN, LOAD_SKILL, builtInById, type Skill } from '@shared/skills'
 import type { ToolParam } from '../providers/openrouter'
 
 /**
@@ -38,22 +38,26 @@ export function loadSkillTool(available: readonly Skill[]): ToolParam {
 /**
  * The instructions, or an explanation of why not.
  *
- * A skill that is switched off must be refused rather than quietly returned:
- * the app will not render a `dp-chart` block when charts are off, so handing
- * over the syntax would produce an answer that looks right to the model and
- * arrives as a wall of JSON in front of the reader.
+ * Answered from the list this conversation was actually offered, so a skill
+ * that is switched off is refused rather than quietly returned: the app will
+ * not render a `dp-chart` block when charts are off, and handing over the
+ * syntax anyway produces an answer that looks right to the model and arrives
+ * as a wall of JSON in front of the reader.
  */
-export function runLoadSkill(args: Record<string, unknown>, available: readonly SkillId[]): string {
+export function runLoadSkill(args: Record<string, unknown>, available: readonly Skill[]): string {
   const asked = typeof args['skill'] === 'string' ? args['skill'] : ''
-  const skill = skillById(asked)
+  const found = available.find((skill) => skill.id === asked)
+  if (found) return found.instructions
 
-  if (!skill) {
-    const known = SKILLS.map((s) => s.id).join(', ')
-    return `There is no skill called ${JSON.stringify(asked)}. The ones that exist are: ${known}.`
-  }
-  if (!available.includes(skill.id)) {
-    return `The ${skill.name} skill is switched off for this conversation, so the app will not render one. Answer without it.`
+  // Known, but not here. Worth saying differently from a name that is simply
+  // wrong: one is a switch, the other is a mistake, and a model told "there
+  // is no such skill" about a real one will try to work around the absence.
+  if (builtInById(asked)) {
+    return `The ${asked} skill is switched off for this conversation, so the app will not render one. Answer without it.`
   }
 
-  return skill.instructions
+  const known = available.length
+    ? available.map((skill) => skill.id).join(', ')
+    : BUILT_IN.map((skill) => skill.id).join(', ')
+  return `There is no skill called ${JSON.stringify(asked)}. The ones you can ask for are: ${known}.`
 }

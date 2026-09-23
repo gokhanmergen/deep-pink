@@ -97,18 +97,46 @@ suite(
     )
 
     /*
+     * A render that throws throws again on the next render, and the toast is
+     * itself a render — so an unbounded report can keep alive the very thing
+     * it is reporting. This is what "Maximum update depth exceeded" arriving
+     * four hundred times looks like from the inside.
+     */
+    section('a failure arriving faster than it can be read')
+    const before = await run(`(${TOASTS}).length`)
+    await run(`for (let i = 0; i < 40; i++) Promise.reject(new Error('storm ' + i)); true`)
+    await settle(900)
+    const during = await run(TOASTS)
+    check(
+      'is reported a few times and then left alone',
+      during.length <= before + 3,
+      { before, now: during.length }
+    )
+    check('rather than not at all', during.some((t) => /^storm /.test(t.text)), during)
+
+    // And the gate opens again, so a failure a minute later is still told.
+    await settle(1200)
+    await run(`Promise.reject(new Error('later, and still worth saying')), true`)
+    await settle(700)
+    check(
+      'and a later one is still said',
+      await says('later, and still worth saying'),
+      await run(TOASTS)
+    )
+
+    /*
      * Chromium saying a layout pass ran twice, which happens in any app that
      * resizes something in response to a resize — here, the composer growing
      * with what is typed into it. Nothing is broken and nobody can act on it.
      */
     section('and noise that is not a failure')
-    const before = await run(`(${TOASTS}).length`)
+    const quiet = await run(`(${TOASTS}).length`)
     await run(
       `window.dispatchEvent(new ErrorEvent('error', { message: 'ResizeObserver loop completed with undelivered notifications.' })), true`
     )
     await settle(600)
-    check('is not said at all', (await run(`(${TOASTS}).length`)) === before, {
-      before,
+    check('is not said at all', (await run(`(${TOASTS}).length`)) === quiet, {
+      before: quiet,
       after: await run(`(${TOASTS}).length`)
     })
   },

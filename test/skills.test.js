@@ -20,7 +20,7 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
   const { getDb, repo, assembleContext, skillsFor, skills, skillTool, DEFAULT_SETTINGS } = subject
   getDb()
 
-  const { SKILLS, skillCatalogue, LOAD_SKILL, skillById } = skills
+  const { BUILT_IN, skillCatalogue, LOAD_SKILL, builtInById, asSkillName, whyUnusable, toSkill } = skills
   const { loadSkillTool, runLoadSkill } = skillTool
 
   const thread = repo.createThread('Skills fixture')
@@ -46,7 +46,7 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
    * The whole point of the exercise. If the catalogue costs anything like
    * what the instructions cost, there was no reason to build this.
    */
-  const chartsSkill = skillById('charts')
+  const chartsSkill = builtInById('charts')
   check(
     'the line costs a fraction of the instructions',
     catalogue.tokens * 4 < chartsSkill.instructions.length,
@@ -64,14 +64,14 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
    * model is being asked to make.
    */
   section('what the lines actually say')
-  for (const skill of SKILLS) {
+  for (const skill of BUILT_IN) {
     check(`${skill.id} says when it is worth it`, /Worth it when/.test(skill.when), skill.when)
     check(`${skill.id} says when it is not`, /Not worth it|Not when/.test(skill.when), skill.when)
   }
   check(
     'charts names the alternative it must beat',
-    /table/i.test(skillById('charts').when),
-    skillById('charts').when
+    /table/i.test(builtInById('charts').when),
+    builtInById('charts').when
   )
 
   section('both on')
@@ -144,22 +144,22 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
   check('a model nobody has heard of is assumed capable', toolNames(unheardOf).includes(LOAD_SKILL), toolNames(unheardOf))
 
   section('the tool schema')
-  const tool = loadSkillTool(SKILLS)
+  const tool = loadSkillTool(BUILT_IN)
   check('is named for what it does', tool.function.name === LOAD_SKILL)
   check('and takes an enum, not free text', Array.isArray(tool.function.parameters.properties.skill.enum))
   check(
     'listing exactly what is available',
-    JSON.stringify(loadSkillTool([skillById('charts')]).function.parameters.properties.skill.enum) === '["charts"]'
+    JSON.stringify(loadSkillTool([builtInById('charts')]).function.parameters.properties.skill.enum) === '["charts"]'
   )
 
   section('asking for one')
   check(
     'hands over the instructions',
-    runLoadSkill({ skill: 'charts' }, ['charts']).includes('dp-chart')
+    runLoadSkill({ skill: 'charts' }, [builtInById('charts')]).includes('dp-chart')
   )
   check(
     'and all of them',
-    runLoadSkill({ skill: 'charts' }, ['charts']) === skillById('charts').instructions
+    runLoadSkill({ skill: 'charts' }, [builtInById('charts')]) === builtInById('charts').instructions
   )
 
   /*
@@ -168,15 +168,100 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
    * model and arrives as a wall of JSON in front of the reader.
    */
   section('asking for one that is switched off')
-  const refused = runLoadSkill({ skill: 'charts' }, ['documents'])
+  const refused = runLoadSkill({ skill: 'charts' }, [builtInById('documents')])
   check('is refused', !refused.includes('dp-chart'), refused)
   check('and told to answer without it', /answer without it/i.test(refused), refused)
 
   section('asking for one that does not exist')
-  const unknown = runLoadSkill({ skill: 'interpretive dance' }, ['charts'])
+  const unknown = runLoadSkill({ skill: 'interpretive dance' }, [builtInById('charts')])
   check('says so', /no skill called/i.test(unknown), unknown)
   check('and says what does exist', unknown.includes('charts'), unknown)
-  check('a missing argument is the same answer', /no skill called/i.test(runLoadSkill({}, ['charts'])))
+  check('a missing argument is the same answer', /no skill called/i.test(runLoadSkill({}, [builtInById('charts')])))
+
+  /* ---------------------------------------------------------------- *
+   * Skills written in Settings
+   * ---------------------------------------------------------------- */
+
+  /*
+   * The two built-in skills are built in because each has code behind it — a
+   * chart is drawn by a renderer that has to exist. A written-here skill has
+   * nothing behind it but the text, which turns out to be most of what a
+   * skill is: house style, the shape of a commit message, the six things to
+   * check before answering about the rota.
+   */
+  section('a name is an enum value, not a sentence')
+  check('spaces and punctuation become underscores', asSkillName('Commit Message!') === 'commit_message')
+  check('runs of them collapse', asSkillName('a  --  b') === 'a_b')
+  check('and the ends are trimmed', asSkillName('  !hello!  ') === 'hello')
+  check('it is bounded', asSkillName('x'.repeat(80)).length === 32)
+  check('and something unusable comes back empty', asSkillName('???') === '')
+
+  section('what makes one unusable')
+  const written = (over) => ({ key: 'k', name: 'rota', when: 'Worth it when asked about the rota.', instructions: 'Ask Priya.', enabled: true, ...over })
+  check('a finished one is fine', whyUnusable(written(), []) === null, whyUnusable(written(), []))
+  check('no name', /needs a name/i.test(whyUnusable(written({ name: '' }), []) ?? ''))
+  check('no line', /when to use/i.test(whyUnusable(written({ when: '  ' }), []) ?? ''))
+  check('no instructions', /instructions/i.test(whyUnusable(written({ instructions: '' }), []) ?? ''))
+  check('a name a built-in already has', /built-in/i.test(whyUnusable(written({ name: 'charts' }), []) ?? ''))
+  check('the name of the tool itself', whyUnusable(written({ name: LOAD_SKILL }), []) !== null)
+  check(
+    'and a name another written one has',
+    /already has that name/i.test(
+      whyUnusable(written({ key: 'a' }), [written({ key: 'a' }), written({ key: 'b', name: 'Rota' })]) ?? ''
+    )
+  )
+
+  section('one that is finished')
+  const rota = written()
+  const withCustom = context({ chartsEnabled: true, customSkills: [rota] })
+  const listed = segment(withCustom, 'skills').text
+  check('is in the catalogue', listed.includes('`rota`'), listed)
+  check('beside the built-in ones', listed.includes('`charts`'))
+  check('with its own line', listed.includes('Worth it when asked about the rota.'))
+  check(
+    'and can be asked for',
+    runLoadSkill({ skill: 'rota' }, skillsFor(repo.getThread(thread.id), settings({ customSkills: [rota] }))) === 'Ask Priya.'
+  )
+  check(
+    'the tool offers it by name',
+    loadSkillTool([toSkill(rota)]).function.parameters.properties.skill.enum[0] === 'rota'
+  )
+  check(
+    'and its instructions are not in the prompt',
+    !withCustom.systemText.includes('Ask Priya.'),
+    withCustom.systemText
+  )
+
+  /*
+   * A line in the catalogue with nothing behind it is a round trip that
+   * returns nothing, and the model cannot tell that from a skill that simply
+   * did not help. The panel says the same thing beside the field.
+   */
+  section('one that is not finished')
+  const halfWritten = context({ customSkills: [written({ instructions: '' })] })
+  check('is not advertised', !segment(halfWritten, 'skills'), halfWritten.segments.map((s) => s.id))
+
+  section('one that is switched off')
+  const off = context({ chartsEnabled: true, customSkills: [written({ enabled: false })] })
+  check('is not advertised either', !segment(off, 'skills').text.includes('`rota`'))
+  check(
+    'and is refused if asked for anyway',
+    /no skill called/i.test(runLoadSkill({ skill: 'rota' }, [builtInById('charts')]))
+  )
+
+  section('held open rather than asked for')
+  const heldCustom = context({ customSkills: [rota], skillsOnDemand: false })
+  check('the instructions are in the prompt', heldCustom.systemText.includes('Ask Priya.'))
+  check('under its own name', segment(heldCustom, 'skill:rota')?.label === 'rota', heldCustom.segments.map((s) => s.id))
+  check('attributed to where it was written', segment(heldCustom, 'skill:rota')?.origin === 'Written in Settings')
+
+  section('the workshop put away')
+  const hiddenCustom = assembleContext(repo.getThread(thread.id), {
+    ...DEFAULT_SETTINGS,
+    hideExperimental: true,
+    customSkills: [rota]
+  })
+  check('takes the written ones with it', !segment(hiddenCustom, 'skills'), hiddenCustom.segments.map((s) => s.id))
 
   section('an empty catalogue')
   check('is nothing rather than a heading with no entries', skillCatalogue([]) === '')

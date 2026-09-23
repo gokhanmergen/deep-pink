@@ -89,7 +89,14 @@ export function Toaster(): React.JSX.Element | null {
     if (!shown.length || held) return
     const sweep = setInterval(() => {
       const now = Date.now()
-      setShown((was) => was.filter((t) => now - t.at < STAYS_FOR))
+      // The same array back when nothing has expired, which is almost every
+      // tick. A new one is a state change to React, so returning one
+      // unconditionally re-rendered the window four times a second for as
+      // long as anything was on screen.
+      setShown((was) => {
+        const left = was.filter((t) => now - t.at < STAYS_FOR)
+        return left.length === was.length ? was : left
+      })
     }, 250)
     return () => clearInterval(sweep)
   }, [shown.length, held])

@@ -29,11 +29,13 @@ import { DOCS_PROMPT } from './docs'
  * to one line, which is the point: it becomes something you leave on.
  */
 
-export type SkillId = 'charts' | 'documents'
+/** The two the app ships with, each backed by a renderer of its own. */
+export type BuiltInSkillId = 'charts' | 'documents'
 
 export interface Skill {
-  id: SkillId
-  /** What the model calls it, and what the transcript shows. */
+  /** What the model calls it. Unique across built-in and written-here alike. */
+  id: string
+  /** What the transcript shows. */
   name: string
   /**
    * When this is worth asking for, in the model's own terms.
@@ -45,9 +47,75 @@ export interface Skill {
   when: string
   /** Everything needed to actually produce one, handed over on request. */
   instructions: string
+  /** True for one written in Settings rather than shipped with the app. */
+  custom?: boolean
 }
 
-export const SKILLS: readonly Skill[] = [
+/**
+ * A skill somebody wrote themselves.
+ *
+ * The two built-in ones are built in because each needs code behind it — a
+ * chart is drawn by a renderer that has to exist, and a set of documents is a
+ * list the app builds. A written-here skill has nothing behind it but the
+ * text, which turns out to be most of what a skill is: house style, the shape
+ * of a commit message, the format a report has to arrive in, the six things
+ * to check before answering a question about the rota.
+ *
+ * Those are the instructions people paste into a system prompt and then carry
+ * on every turn forever. Here they cost a line until the model decides the
+ * question is one of those.
+ */
+export interface CustomSkill {
+  /** Stable across renames, so editing a name does not lose the row. */
+  key: string
+  /** What the model calls it: lowercase, no spaces. See `asSkillName`. */
+  name: string
+  when: string
+  instructions: string
+  enabled: boolean
+}
+
+/** The shape a name has to take to be callable: an enum value, not a sentence. */
+export function asSkillName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 32)
+}
+
+/**
+ * Why this one cannot be offered, or null if it can.
+ *
+ * Shown beside the field being typed into rather than kept for a save button,
+ * and used again at assembly time — a skill with no instructions is a tool
+ * call that returns nothing, and a name that collides with a built-in is two
+ * answers to the same question.
+ */
+export function whyUnusable(skill: CustomSkill, others: readonly CustomSkill[]): string | null {
+  const name = asSkillName(skill.name)
+  if (!name) return 'Needs a name'
+  if (name === LOAD_SKILL) return `${LOAD_SKILL} is the tool that loads these`
+  if (BUILT_IN.some((built) => built.id === name)) return `${name} is one of the built-in skills`
+  if (others.some((other) => other.key !== skill.key && asSkillName(other.name) === name)) {
+    return 'Another skill already has that name'
+  }
+  if (!skill.when.trim()) return 'Needs a line saying when to use it'
+  if (!skill.instructions.trim()) return 'Needs instructions to hand over'
+  return null
+}
+
+export function toSkill(custom: CustomSkill): Skill {
+  return {
+    id: asSkillName(custom.name),
+    name: asSkillName(custom.name),
+    when: custom.when.trim(),
+    instructions: custom.instructions.trim(),
+    custom: true
+  }
+}
+
+export const BUILT_IN: readonly Skill[] = [
   {
     id: 'charts',
     name: 'charts',
@@ -71,8 +139,11 @@ export const SKILLS: readonly Skill[] = [
   }
 ]
 
-export function skillById(id: string): Skill | undefined {
-  return SKILLS.find((skill) => skill.id === id)
+/** Kept under its old name for the places that only ever wanted the two. */
+export const SKILLS = BUILT_IN
+
+export function builtInById(id: string): Skill | undefined {
+  return BUILT_IN.find((skill) => skill.id === id)
 }
 
 /** The name of the tool that hands over a skill's instructions. */

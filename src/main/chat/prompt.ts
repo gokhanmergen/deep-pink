@@ -1,6 +1,12 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
 import { keyPointPrompt } from '@shared/keyPointPrompt'
-import { SKILLS, skillCatalogue, type SkillId } from '@shared/skills'
+import {
+  BUILT_IN,
+  skillCatalogue,
+  toSkill,
+  whyUnusable,
+  type Skill
+} from '@shared/skills'
 import { keyPointCeiling } from '@shared/defaults'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
@@ -69,12 +75,31 @@ export function activeServerIdsFor(thread: Thread): string[] | null {
  * What changed is the cost of leaving one on: a line rather than a page. See
  * `SKILLS`.
  */
-export function skillsFor(thread: Thread, settings: Settings): SkillId[] {
-  const on: Record<SkillId, boolean> = {
+export function skillsFor(thread: Thread, settings: Settings): Skill[] {
+  const on: Record<string, boolean> = {
     charts: chartsEnabledFor(thread, settings),
     documents: docsEnabledFor(thread, settings)
   }
-  return SKILLS.filter((skill) => on[skill.id]).map((skill) => skill.id)
+  const skills = BUILT_IN.filter((skill) => on[skill.id])
+
+  /*
+   * And whatever was written in Settings, if it is finished.
+   *
+   * A half-written skill is skipped rather than advertised: a line in the
+   * catalogue with no instructions behind it is a round trip that returns
+   * nothing, and the model has no way to tell that from a skill that simply
+   * did not help. The panel says the same thing beside the field, so nothing
+   * disappears without explanation.
+   */
+  if (!settings.hideExperimental) {
+    const custom = settings.customSkills ?? []
+    for (const written of custom) {
+      if (!written.enabled || whyUnusable(written, custom)) continue
+      skills.push(toSkill(written))
+    }
+  }
+
+  return skills
 }
 
 /**
@@ -155,8 +180,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
    * every skill on every turn — which is what this used to be, and is kept
    * for anybody who would rather pay the tokens than the round trip.
    */
-  const skills = skillsFor(thread, settings)
-  const available = SKILLS.filter((skill) => skills.includes(skill.id))
+  const available = skillsFor(thread, settings)
   const onDemand = settings.skillsOnDemand && askableBy(thread, settings)
 
   if (available.length && onDemand) {
@@ -171,10 +195,10 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
   } else {
     for (const skill of available) {
       push({
-        id: skill.id === 'charts' ? 'charts' : 'docs',
-        source: skill.id === 'charts' ? 'charts' : 'docs',
-        label: skill.id === 'charts' ? 'Chart syntax' : 'Multiple documents',
-        origin: 'Deep Pink',
+        id: skill.custom ? `skill:${skill.id}` : skill.id === 'charts' ? 'charts' : 'docs',
+        source: skill.custom ? 'skills' : skill.id === 'charts' ? 'charts' : 'docs',
+        label: skill.id === 'charts' ? 'Chart syntax' : skill.id === 'documents' ? 'Multiple documents' : skill.name,
+        origin: skill.custom ? 'Written in Settings' : 'Deep Pink',
         text: skill.instructions,
         removable: true
       })

@@ -20,6 +20,16 @@ function useDebouncedValue(
   flush: () => void
 } {
   const [local, setLocal] = useState(value)
+  /*
+   * The latest keystroke, readable without waiting for a render.
+   *
+   * `flush` used to close over `local`, which is a render behind whatever was
+   * just typed — so blurring in the same tick as a keystroke committed the
+   * value from before it. A human rarely manages that; tabbing quickly
+   * between fields does, and what gets written is the empty string the field
+   * held a moment ago.
+   */
+  const latest = useRef(value)
   const dirty = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const commitRef = useRef(onCommit)
@@ -29,7 +39,9 @@ function useDebouncedValue(
   // Adopt outside changes only when the user is not mid-edit, so a slow write
   // coming back cannot yank the caret.
   useEffect(() => {
-    if (!dirty.current) setLocal(value)
+    if (dirty.current) return
+    latest.current = value
+    setLocal(value)
   }, [value])
 
   useEffect(() => {
@@ -41,6 +53,7 @@ function useDebouncedValue(
   const onChange = useCallback(
     (next: string) => {
       dirty.current = true
+      latest.current = next
       setLocal(next)
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => {
@@ -58,8 +71,8 @@ function useDebouncedValue(
     }
     if (!dirty.current) return
     dirty.current = false
-    commitRef.current(local)
-  }, [local])
+    commitRef.current(latest.current)
+  }, [])
 
   return { local, onChange, flush }
 }
