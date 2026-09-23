@@ -30,14 +30,13 @@ suite(
     repo.setSetting('settings', { hideExperimental: false })
 
     /*
-     * And no real update check, because this suite injects one.
+     * And no real update check, because this suite injects its own.
      *
-     * The banner shows whatever it was told last, which is the point of it —
-     * so a background check finishing while the injected status is on screen
-     * replaces "9.9.9 is out" with the truth and the line goes. On this
-     * machine the check is slow enough that it never landed inside the test's
-     * window; on a runner with a cold resolver it does, and the assertion
-     * failed on something that is working exactly as intended.
+     * Not what broke it — that was two sections sharing a version number, and
+     * is fixed below — but a check reaching GitHub mid-suite would replace an
+     * injected status with the truth, and which of the two the window happens
+     * to be showing when a measurement is taken is not something to leave to
+     * a runner's resolver.
      */
     repo.setSetting('updates', { check: false, autoInstall: false })
 
@@ -747,10 +746,17 @@ suite(
      *
      * The copy button on the update line is the cheapest way to raise a real
      * one, so that is what these press.
+     *
+     * A release of its own, and not the one the next section injects.
+     * Dismissal is remembered against the version — saying "not this one" is
+     * the whole point of the button — so borrowing the line here and waving
+     * it away afterwards taught the window to ignore 9.9.9 for the rest of
+     * the suite, and the section below measured a line that could never
+     * appear.
      */
     win.webContents.send('updates:changed', {
       currentVersion: '0.0.1',
-      latestVersion: '9.9.9',
+      latestVersion: '9.9.8',
       releaseUrl: 'https://example.invalid/releases',
       checkedAt: Date.now(),
       installKind: 'pacman',
@@ -807,6 +813,10 @@ suite(
 
     await run(`document.querySelector('.updateline__close')?.click()`)
     await settle(300)
+    check(
+      'and waving one release away leaves the line gone',
+      await run(`!document.querySelector('.updateline')`)
+    )
 
     section('the update line takes its height out of the app, not the window')
     /*
@@ -850,7 +860,15 @@ suite(
       }
     })()`)
 
+    /*
+     * A newer one than the one just dismissed, which is the behaviour the
+     * button promises: saying "not this one" is not saying "never again".
+     */
     check('the line appears when there is a newer version', withBanner.shown, withBanner)
+    check(
+      'even though an older release was waved away a moment ago',
+      (await run(`localStorage.getItem('deep-pink:update-dismissed')`)) === '9.9.8'
+    )
     check('and names both versions', /9\.9\.9/.test(withBanner.says ?? '') && /0\.0\.1/.test(withBanner.says ?? ''), withBanner.says)
     // The whole point of knowing how it was installed.
     check('and the command for how this copy was installed', /pacman -Syu/.test(withBanner.says ?? ''), withBanner.says)
