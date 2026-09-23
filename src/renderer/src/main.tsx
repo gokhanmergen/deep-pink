@@ -1,6 +1,5 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App } from './App'
 import { installTauriBridge } from './tauriBridge'
 import './styles/theme.css'
 
@@ -10,6 +9,10 @@ async function start(): Promise<void> {
   if (!('deepPink' in window) && '__TAURI_INTERNALS__' in window) {
     await installTauriBridge()
   }
+
+  // App's store captures `window.deepPink` at module evaluation time. Import
+  // it only after the Tauri bridge has installed that API on the window.
+  const { App } = await import('./App')
 
   root.render(
     <StrictMode>
