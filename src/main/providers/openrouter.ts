@@ -96,7 +96,34 @@ export async function listModels(force = false): Promise<OpenRouterModel[]> {
   }
 
   const body = (await res.json()) as { data: Record<string, never>[] }
-  const models: OpenRouterModel[] = body.data.map((m) => {
+
+  /*
+   * The models that answer with a picture and nothing else.
+   *
+   * `/models` is a list of models that produce text. A model whose output is
+   * only an image is not on it — measured 2026-09-22, the plain list held 454
+   * and `?output_modalities=image` held 55, of which 44 appeared nowhere else.
+   * Four Microsoft ones, fifteen from Recraft, Flux, Seedream, Qwen. The app
+   * showed none of them and there was no way to ask for them, because the app
+   * never asked the question that returns them.
+   *
+   * The eleven that were already there are the ones answering with text *and*
+   * a picture, which is why the gap was invisible: image generation appeared
+   * to work, on the models that also talk.
+   *
+   * Its own request rather than a replacement, because the two lists overlap
+   * and neither contains the other. A failure here is not a failure of the
+   * catalogue: what comes back is every model that can hold a conversation,
+   * which is what almost every reader is looking for.
+   */
+  const drawing = await fetch(`${BASE}/models?output_modalities=image`)
+    .then((r) => (r.ok ? (r.json() as Promise<{ data: Record<string, never>[] }>) : null))
+    .catch(() => null)
+
+  const seen = new Set(body.data.map((m) => String(m['id'])))
+  const raw = [...body.data, ...(drawing?.data ?? []).filter((m) => !seen.has(String(m['id'])))]
+
+  const models: OpenRouterModel[] = raw.map((m) => {
     const supported = (m['supported_parameters'] as string[] | undefined) ?? []
     const architecture = (m['architecture'] as Record<string, unknown> | undefined) ?? {}
     return {
@@ -213,14 +240,18 @@ export interface ChatRequest {
   /** Appends OpenRouter's `:online` web plugin to the model slug. */
   webPlugin?: boolean
   /**
-   * Asks for pictures as well as words.
+   * What to ask the model to answer with, where that is not simply text.
    *
-   * A model that can draw does not draw unless told to: the same request
-   * without this comes back as text describing what it would have drawn. Only
-   * sent for models whose catalogue entry says they can, because a model that
-   * cannot rejects the parameter rather than ignoring it.
+   * The model's own list, passed through rather than assembled here, because
+   * getting it wrong is a 404 rather than a degraded answer. A model that
+   * draws does not draw unless asked — the same request without this comes
+   * back describing the picture it would have made — but asking an
+   * image-only model for text as well is refused outright: "No endpoints
+   * found that support the requested output modalities: image, text"
+   * (microsoft/mai-image-2.6, measured 2026-09-22). Its catalogue entry says
+   * `["image"]`, and that is what works.
    */
-  wantsImages?: boolean
+  modalities?: string[]
 }
 
 export interface StreamHandlers {
@@ -286,9 +317,7 @@ export async function streamChat(
     // Ask OpenRouter to include real accounting (including cost) in the final chunk.
     usage: { include: true }
   }
-  // Text stays in the list: these models answer with both, and asking for
-  // images alone gets a picture with nothing said about it.
-  if (req.wantsImages) body.modalities = ['image', 'text']
+  if (req.modalities?.length) body.modalities = req.modalities
   if (req.temperature != null) body.temperature = req.temperature
   if (req.maxTokens != null) body.max_tokens = req.maxTokens
   if (req.tools?.length) body.tools = req.tools

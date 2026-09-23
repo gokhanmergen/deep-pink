@@ -269,23 +269,26 @@ export async function modelAcceptsImages(model: string): Promise<boolean> {
 }
 
 /**
- * Whether the model can draw, and so should be asked to.
+ * What to ask this model to answer with, or nothing for an ordinary one.
  *
- * Asked rather than assumed in both directions. A model that can draw does
- * not unless `modalities` says so — the same request without it comes back
- * describing the picture it would have made — and a model that cannot draw
- * rejects the parameter outright rather than ignoring it. So an unknown model
- * is treated as text-only, which is the opposite of `modelAcceptsImages`
- * above and for the opposite reason: there, guessing wrong drops an
- * attachment the provider would have taken; here, guessing wrong fails the
- * whole turn.
+ * The model's own list rather than a guess, in both directions. A model that
+ * can draw does not unless `modalities` says so; a model that cannot draw
+ * rejects the parameter rather than ignoring it; and a model that draws and
+ * *only* draws rejects being asked for text alongside — "No endpoints found
+ * that support the requested output modalities: image, text" is a 404, not a
+ * worse answer. So an unknown model is asked for nothing special, which is
+ * the opposite of `modelAcceptsImages` above and for the opposite reason:
+ * there, guessing wrong drops an attachment the provider would have taken;
+ * here, guessing wrong fails the whole turn.
  */
-export async function modelDrawsImages(model: string): Promise<boolean> {
+export async function outputModalitiesFor(model: string): Promise<string[] | undefined> {
   try {
     const models = await listModels()
-    return models.find((m) => m.id === model)?.outputModalities.includes('image') ?? false
+    const found = models.find((m) => m.id === model)
+    if (!found?.outputModalities.includes('image')) return undefined
+    return found.outputModalities
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -950,7 +953,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             includeReasoning: settings.streamReasoning,
             attribution: settings.sendAppAttribution,
             webPlugin: settings.web.engine === 'openrouter' && (thread.config.webAccessEnabled ?? settings.web.enabled),
-            wantsImages: await modelDrawsImages(model),
+            modalities: await outputModalitiesFor(model),
             signal: controller.signal
           },
           {
