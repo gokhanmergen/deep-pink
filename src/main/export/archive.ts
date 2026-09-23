@@ -9,6 +9,7 @@ import type {
   Usage
 } from '@shared/types'
 import { EMPTY_THREAD_CONFIG } from '../db/repo'
+import { DEFAULT_REASONING, EFFORTS, type ReasoningConfig } from '@shared/reasoning'
 
 /**
  * The format Deep Pink writes when you export a thread to keep it, and the
@@ -115,6 +116,25 @@ export interface ArchiveReport {
 const ROLES = new Set<Role>(['system', 'user', 'assistant', 'tool'])
 const STATUSES = new Set<MessageStatus>(['complete', 'streaming', 'error', 'aborted'])
 
+/**
+ * A reasoning mode from an export, or null.
+ *
+ * Checked rather than trusted: an archive is a file on disk somebody may have
+ * edited, and an unrecognised mode reaching the request is an error from
+ * OpenRouter in the middle of a conversation rather than a bad import.
+ */
+function readReasoning(value: unknown): ReasoningConfig | null {
+  const raw = record(value)
+  if (!raw) return null
+  const mode = raw['mode']
+  const known = [...EFFORTS, 'auto', 'off', 'budget']
+  if (typeof mode !== 'string' || !known.includes(mode)) return null
+  return {
+    mode: mode as ReasoningConfig['mode'],
+    budgetTokens: num(raw['budgetTokens'], DEFAULT_REASONING.budgetTokens)
+  }
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -171,7 +191,10 @@ function toConfig(value: unknown): ThreadConfig {
     repoPaths: stringList(raw['repoPaths']),
     disabledPromptSegments: stringList(raw['disabledPromptSegments']),
     chartsEnabled: typeof raw['chartsEnabled'] === 'boolean' ? raw['chartsEnabled'] : null,
-    docsEnabled: typeof raw['docsEnabled'] === 'boolean' ? raw['docsEnabled'] : null
+    docsEnabled: typeof raw['docsEnabled'] === 'boolean' ? raw['docsEnabled'] : null,
+    // Restored only when it is the shape this app writes; an export from a
+    // build that predates reasoning modes simply follows the global default.
+    reasoning: readReasoning(raw['reasoning'])
   }
 }
 

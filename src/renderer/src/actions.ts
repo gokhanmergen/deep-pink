@@ -1,4 +1,10 @@
-import type { ExportFormat } from '@shared/types'
+import type { ExportFormat, Settings, Thread } from '@shared/types'
+import {
+  EFFORTS,
+  REASONING_LABELS,
+  resolveReasoning,
+  type ReasoningMode
+} from '@shared/reasoning'
 import { threadLabel } from './format'
 import { canBecomeTemporary, useStore } from './store'
 import { COMPOSER_ID } from './components/Composer'
@@ -43,6 +49,44 @@ export async function exportThread(threadId: string, format: ExportFormat): Prom
   } catch (err) {
     store.showToast(err instanceof Error ? err.message : String(err), 'error')
   }
+}
+
+/**
+ * One rung up or down the reasoning ladder, and no further.
+ *
+ * A cycle would be worse: the two ends of this are "not at all" and "as much
+ * as it has", and wrapping from one straight to the other means a keystroke
+ * meant to save a few seconds can quietly triple what the next turn costs.
+ *
+ * "Automatic" is where the ladder is entered from rather than a rung on it —
+ * stepping up from it starts at low, stepping down lands on none — because it
+ * is not a level, it is the absence of an instruction. A thread on a token
+ * budget is left alone: somebody who typed a number did not mean "about
+ * medium".
+ */
+function stepReasoning(
+  store: ReturnType<typeof useStore.getState>,
+  thread: Thread | null,
+  settings: Settings | null,
+  threadId: string,
+  by: 1 | -1
+): void {
+  const current = resolveReasoning(thread?.config.reasoning, settings?.reasoning)
+  if (current.mode === 'budget') {
+    store.showToast('This thread thinks to a token budget; change it in the composer')
+    return
+  }
+
+  const ladder: ReasoningMode[] = ['off', ...EFFORTS]
+  const at = current.mode === 'auto' ? (by === 1 ? 0 : 1) : ladder.indexOf(current.mode)
+  const next = ladder[Math.min(Math.max(at + by, 0), ladder.length - 1)]
+  if (next === current.mode) {
+    store.showToast(`Already ${REASONING_LABELS[next].toLowerCase()}`)
+    return
+  }
+
+  void store.updateThread(threadId, { config: { reasoning: { ...current, mode: next } } })
+  store.showToast(`Thinking: ${REASONING_LABELS[next].toLowerCase()}`)
 }
 
 /**
@@ -457,6 +501,18 @@ export function buildActions(): AppAction[] {
         void store.updateThread(id, { config: { docsEnabled: !on } })
         store.showToast(on ? 'Documents off' : 'Documents on')
       })
+    },
+    {
+      id: 'reasoning.more',
+      label: 'Think harder in this thread',
+      group: 'Capabilities',
+      run: requireThread((id) => stepReasoning(store, thread, settings, id, 1))
+    },
+    {
+      id: 'reasoning.less',
+      label: 'Think less in this thread',
+      group: 'Capabilities',
+      run: requireThread((id) => stepReasoning(store, thread, settings, id, -1))
     },
     { id: 'mcp.panel', label: 'MCP servers', group: 'Capabilities', run: () => store.setOverlay('mcp') },
     {

@@ -16,6 +16,7 @@ import {
   BarChart3,
   FileText,
   Image as ImageIcon,
+  Brain,
   Paperclip,
   SlidersHorizontal,
   Square,
@@ -25,6 +26,13 @@ import { ICON } from '../icons'
 import { ModelIcon } from './ModelIcon'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { formatBinding, matchesBinding } from '../keybinds'
+import {
+  EFFORTS,
+  REASONING_LABELS,
+  resolveReasoning,
+  shortReasoningLabel,
+  type ReasoningMode
+} from '@shared/reasoning'
 
 export const COMPOSER_ID = 'composer-input'
 
@@ -34,6 +42,7 @@ export function Composer(): React.JSX.Element {
   const [dragging, setDragging] = useState(false)
   const [attachMenu, setAttachMenu] = useState<{ x: number; y: number } | null>(null)
   const [extraMenu, setExtraMenu] = useState<{ x: number; y: number } | null>(null)
+  const [thinkMenu, setThinkMenu] = useState<{ x: number; y: number } | null>(null)
   const [repos, setRepos] = useState<AttachedRepo[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -55,6 +64,7 @@ export function Composer(): React.JSX.Element {
   const webOn = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
   const chartsOn = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
   const docsOn = thread?.config.docsEnabled ?? settings?.docsEnabled ?? false
+  const reasoning = resolveReasoning(thread?.config.reasoning, settings?.reasoning)
 
   // Web access works by giving the model tools. A model that cannot call tools
   // will simply ignore them, which looks exactly like search being broken.
@@ -304,6 +314,36 @@ export function Composer(): React.JSX.Element {
 
   const extrasOn = [webOn, chartsOn, docsOn].filter(Boolean).length
 
+  /*
+   * How hard to think, for this conversation.
+   *
+   * Beside the model rather than inside the extras menu, because it belongs
+   * to the model: it is the one setting that changes what a turn costs and
+   * how long it takes, and a thread for reading a stack trace wants a
+   * different answer from one for rewriting a paragraph. Shown only where it
+   * means something — a model that does not reason has nothing to be asked.
+   */
+  const reasoningOptions = (): ContextMenuItem[] =>
+    (['auto', 'off', ...EFFORTS, 'budget'] as ReasoningMode[]).map((mode) => ({
+      id: mode,
+      label:
+        mode === 'budget'
+          ? `${REASONING_LABELS[mode]} (${reasoning.budgetTokens.toLocaleString()})`
+          : REASONING_LABELS[mode],
+      on: reasoning.mode === mode,
+      hint: mode === 'auto' ? 'the model decides' : undefined,
+      onSelect: () => {
+        if (!activeThreadId) return
+        void updateThread(activeThreadId, {
+          config: { reasoning: { ...reasoning, mode } }
+        })
+      }
+    }))
+
+  // Unknown models are offered it: most can reason, and the catalogue is
+  // often not in yet on a first launch. See `reasoningFor` in the engine.
+  const canReason = modelInfo == null || modelInfo.supportsReasoning
+
   return (
     <div className="composer" ref={rootRef}>
       <div className="composer__inner">
@@ -483,6 +523,23 @@ export function Composer(): React.JSX.Element {
               </button>
             )}
 
+            {canReason && (
+              <button
+                className="btn"
+                data-on={reasoning.mode !== 'auto'}
+                onClick={(event) => {
+                  const r = event.currentTarget.getBoundingClientRect()
+                  setThinkMenu({ x: Math.round(r.left), y: Math.round(r.top) })
+                }}
+                title="How hard to think, for this conversation"
+                type="button"
+                disabled={!activeThreadId}
+              >
+                <Brain {...ICON} />
+                <span className="btn__label">{shortReasoningLabel(reasoning)}</span>
+              </button>
+            )}
+
             <button
               className="btn"
               onClick={() => setOverlay('models')}
@@ -526,6 +583,16 @@ export function Composer(): React.JSX.Element {
           items={attachOptions()}
           above
           onClose={() => setAttachMenu(null)}
+        />
+      )}
+
+      {thinkMenu && (
+        <ContextMenu
+          x={thinkMenu.x}
+          y={thinkMenu.y}
+          items={reasoningOptions()}
+          above
+          onClose={() => setThinkMenu(null)}
         />
       )}
 

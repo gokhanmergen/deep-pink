@@ -10,6 +10,7 @@ import type {
 } from '@shared/types'
 import { takeKeyPointMarkers } from '@shared/keyPointPrompt'
 import { LOAD_SKILL, type Skill } from '@shared/skills'
+import { reasoningParam, resolveReasoning } from '@shared/reasoning'
 import { keyPointCeiling } from '@shared/defaults'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
@@ -18,6 +19,7 @@ import { reportProblem } from '../report'
 import {
   OpenRouterError,
   complete,
+  knownModel,
   listModels,
   streamChat,
   type ChatMessageParam,
@@ -250,6 +252,29 @@ export function toChatParams(messages: Message[], allowImages = true): ChatMessa
 
 export function resolveModel(thread: Thread, settings: Settings): string {
   return thread.config.model ?? settings.defaultModel
+}
+
+/**
+ * The `reasoning` field for a turn, or null for a model that has no opinion.
+ *
+ * Nothing is sent to a model the catalogue says cannot reason. It would be
+ * ignored by most and rejected by some, and either way asking a model that
+ * does not think how hard to think is the app talking to itself. A model the
+ * catalogue has never heard of is asked anyway — the same bet the skills
+ * catalogue makes, and for the same reason: most can, and being wrong costs a
+ * parameter that gets ignored rather than a feature that silently vanishes.
+ */
+export function reasoningFor(
+  thread: Thread,
+  settings: Settings,
+  model: string
+): Record<string, unknown> | null {
+  const info = knownModel(model)
+  if (info && !info.supportsReasoning) return null
+  return reasoningParam(
+    resolveReasoning(thread.config.reasoning, settings.reasoning),
+    settings.streamReasoning
+  )
 }
 
 function resolveRouting(thread: Thread, settings: Settings, model: string) {
@@ -1073,7 +1098,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             maxTokens: thread.config.maxTokens ?? settings.maxTokens,
             tools: context.tools.length ? context.tools : undefined,
             providerRouting: routingForTurn,
-            includeReasoning: settings.streamReasoning,
+            reasoning: reasoningFor(thread, settings, model),
             attribution: settings.sendAppAttribution,
             webPlugin:
               !settings.hideExperimental &&

@@ -273,6 +273,12 @@ export interface ChatRequest {
   tools?: ToolParam[]
   providerRouting?: ProviderRouting | null
   includeReasoning?: boolean
+  /**
+   * The `reasoning` field, already shaped. Built by `reasoningParam` rather
+   * than here, because deciding how hard to think is the conversation's
+   * business and this function's job is to send what it is given.
+   */
+  reasoning?: Record<string, unknown> | null
   attribution: boolean
   signal?: AbortSignal
   /** Appends OpenRouter's `:online` web plugin to the model slug. */
@@ -376,7 +382,15 @@ export async function streamChat(
   if (req.temperature != null) body.temperature = req.temperature
   if (req.maxTokens != null) body.max_tokens = req.maxTokens
   if (req.tools?.length) body.tools = req.tools
-  if (req.includeReasoning) body.reasoning = { exclude: false }
+  /*
+   * What to ask for, and whether to be shown it.
+   *
+   * `reasoning` when the caller has worked one out, and the old boolean
+   * otherwise — the title and key-point requests go through here too, and
+   * neither of them wants an effort setting meant for the conversation.
+   */
+  if (req.reasoning) body.reasoning = req.reasoning
+  else if (req.includeReasoning) body.reasoning = { exclude: false }
 
   const provider = toProviderParam(req.providerRouting)
   if (provider) body.provider = provider

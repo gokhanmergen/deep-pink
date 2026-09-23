@@ -45,6 +45,11 @@ import {
   whyUnusable,
   type CustomSkill
 } from '@shared/skills'
+import {
+  EFFORTS,
+  REASONING_LABELS,
+  type ReasoningMode
+} from '@shared/reasoning'
 import { CHARTS_PROMPT } from '@shared/charts'
 import { DOCS_PROMPT } from '@shared/docs'
 
@@ -977,15 +982,81 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 }
               />
             </div>
+            <div className="field">
+              <FieldLabel path="reasoning" what="how hard models think">
+                How hard to think
+              </FieldLabel>
+              <select
+                className="input"
+                value={settings.reasoning.mode}
+                onChange={(event) =>
+                  void saveSettings({
+                    reasoning: {
+                      ...settings.reasoning,
+                      mode: event.target.value as ReasoningMode
+                    }
+                  })
+                }
+              >
+                {(['auto', 'off', ...EFFORTS, 'budget'] as ReasoningMode[]).map((mode) => (
+                  <option key={mode} value={mode}>
+                    {REASONING_LABELS[mode]}
+                  </option>
+                ))}
+              </select>
+              {/*
+                * One line, and the only part that is not guessable from the
+                * words: that this is the expensive end of a turn. Reasoning
+                * tokens are billed as output, and the gap between minimal and
+                * maximum on a large model is most of the cost and most of the
+                * wait.
+                */}
+              <p className="field__hint">
+                {settings.reasoning.mode === 'auto'
+                  ? 'Nothing is said, and the model and its provider decide — which they do differently, and change.'
+                  : settings.reasoning.mode === 'off'
+                    ? 'Asks models that can be told not to think at all. Cheapest and quickest, and wrong for anything that needs working out.'
+                    : 'Reasoning is billed as output. This is the setting that decides most of what a turn costs and most of how long it takes.'}
+              </p>
+            </div>
+
+            {settings.reasoning.mode === 'budget' && (
+              <div className="field">
+                <span className="field__label">Tokens to think with</span>
+                <DebouncedInput
+                  className="input"
+                  type="number"
+                  min={0}
+                  value={String(settings.reasoning.budgetTokens)}
+                  onCommit={(next: string) =>
+                    void saveSettings({
+                      reasoning: { ...settings.reasoning, budgetTokens: Number(next) || 0 }
+                    })
+                  }
+                />
+                <p className="field__hint">
+                  A budget rather than a word, for the models that would rather have one.
+                  OpenRouter translates between the two for the models that would not — and
+                  Anthropic's want at least 1,024.
+                </p>
+              </div>
+            )}
+
             <label className="switch">
               <input
                 type="checkbox"
                 checked={settings.streamReasoning}
                 onChange={(event) => void saveSettings({ streamReasoning: event.target.checked })}
               />
-              <span>Request reasoning traces when the model supports them</span>
+              <span>Show me the thinking</span>
               <Revert path="streamReasoning" what="reasoning traces" />
             </label>
+            {/* Worth saying, because the obvious reading is that switching it
+                off saves the money. It saves the reading. */}
+            <p className="field__hint">
+              Off, the trace is not sent back. It is still done and still billed — to stop paying
+              for it, ask for less of it above.
+            </p>
           </>
         )}
 

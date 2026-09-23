@@ -5,6 +5,7 @@ import type {
   UiSettings,
   WebSearchSettings
 } from './types'
+import { DEFAULT_REASONING } from './reasoning'
 
 export const DEFAULT_PROVIDER_ROUTING: ProviderRouting = {
   order: [],
@@ -149,6 +150,8 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   // Capabilities
   'web.toggle': 'mod+shift+w',
   'charts.toggle': 'mod+shift+b',
+  'reasoning.more': 'mod+shift+.',
+  'reasoning.less': 'mod+shift+,',
   /*
    * Not `mod+shift+d`, which it shipped with and which branching a thread has
    * held since long before documents existed. Two actions on one chord is
@@ -250,6 +253,7 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: 1,
   maxTokens: null,
   streamReasoning: true,
+  reasoning: DEFAULT_REASONING,
   /*
    * The parts that are still moving are out of the way until asked for.
    *

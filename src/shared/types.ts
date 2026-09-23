@@ -232,6 +232,15 @@ export interface ThreadConfig {
    * back to the global setting, exactly as charts does.
    */
   docsEnabled: boolean | null
+  /**
+   * How hard this conversation asks the model to think. Null follows the
+   * global default, as web access and charts do.
+   *
+   * Per thread because it is per question: a thread for reading a stack trace
+   * wants everything the model has, and one for turning a paragraph into
+   * three bullet points wants none of it and none of the bill.
+   */
+  reasoning: ReasoningConfig | null
 }
 
 /* ------------------------------------------------------------------ *
@@ -239,6 +248,7 @@ export interface ThreadConfig {
  * ------------------------------------------------------------------ */
 
 import type { CustomSkill } from './skills'
+import type { ReasoningConfig } from './reasoning'
 
 export type SystemPromptSource =
   | 'base'
@@ -573,7 +583,14 @@ export interface Settings {
   modelProviderRouting: Record<string, ProviderRouting>
   temperature: number
   maxTokens: number | null
+  /**
+   * Whether the trace comes back, which is not the same as whether there is
+   * one. Excluded reasoning is still done and still billed; what is saved is
+   * the reading. See `reasoningParam`.
+   */
   streamReasoning: boolean
+  /** The effort every new conversation starts at. See `ReasoningConfig`. */
+  reasoning: ReasoningConfig
   /**
    * Lets the model answer with charts. Off by default: it is a paragraph of
    * system prompt on every turn, and an app that quietly spends tokens on a

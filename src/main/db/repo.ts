@@ -114,7 +114,8 @@ export const EMPTY_THREAD_CONFIG: ThreadConfig = {
   repoPaths: [],
   disabledPromptSegments: [],
   chartsEnabled: null,
-  docsEnabled: null
+  docsEnabled: null,
+  reasoning: null
 }
 
 function jsonOrNull(value: unknown): string | null {
