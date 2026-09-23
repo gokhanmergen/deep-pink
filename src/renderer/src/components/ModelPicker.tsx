@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
 import { ModelIcon } from './ModelIcon'
+import { matchesQuery, wordsOf } from '../modelSearch'
 import { formatTokens, modelShortName } from '../format'
 
 interface Props {
@@ -65,16 +66,13 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
             : thread?.config.model ?? settings?.defaultModel
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase()
+    // Every word somewhere in the id or the name, rather than the whole
+    // phrase in a row — see `modelSearch` for what that was costing.
+    const words = wordsOf(query)
     return models
       .filter((m) => !toolsOnly || m.supportsTools)
       .filter((m) => !drawsOnly || m.outputModalities.includes('image'))
-      .filter(
-        (m) =>
-          !needle ||
-          m.id.toLowerCase().includes(needle) ||
-          m.name.toLowerCase().includes(needle)
-      )
+      .filter((m) => matchesQuery(m, words))
       .slice(0, 300)
   }, [models, query, toolsOnly, drawsOnly])
 

@@ -82,3 +82,44 @@ suite('fences — the code in a message, before it is rendered', async ({ check,
   check('nothing in prose with no fences', fencedCode('just words\nand more').length === 0)
   check('nothing in an empty message', fencedCode('').length === 0)
 })
+
+/**
+ * Finding a model by the words somebody remembers about it.
+ *
+ * The picker used to test the query as one substring against the id or the
+ * name, so the words a reader actually types found nothing. Measured against
+ * the real catalogue of 454 models (2026-09-22): "gpt image" returned no
+ * rows, and so did "openai image" and "gpt 5 image", while
+ * `openai/gpt-5-image` — name "OpenAI: GPT-5 Image" — sat in the list the
+ * whole time. Neither field is written the way anyone says it out loud.
+ */
+suite('model search — the words people actually type', async ({ check, section }) => {
+  const { matchesQuery, wordsOf } = require(path.join(__dirname, '..', '.test-build', 'store.js'))
+
+  const gptImage = { id: 'openai/gpt-5-image', name: 'OpenAI: GPT-5 Image' }
+  const gptMini = { id: 'openai/gpt-5-image-mini', name: 'OpenAI: GPT-5 Image Mini' }
+  const nano = { id: 'google/gemini-2.5-flash-image', name: 'Google: Nano Banana (Gemini 2.5 Flash Image)' }
+  const sonnet = { id: 'anthropic/claude-sonnet-4.5', name: 'Anthropic: Claude Sonnet 4.5' }
+  const finds = (model, query) => matchesQuery(model, wordsOf(query))
+
+  section('the words that used to find nothing')
+  check('two words spanning the id and the name', finds(gptImage, 'gpt image'))
+  check('the author and what it does', finds(gptImage, 'openai image'))
+  check('with the version in the middle', finds(gptImage, 'gpt 5 image'))
+  check('and in whatever order they came to mind', finds(gptImage, 'image gpt'))
+  check('a name nobody would guess from the id', finds(nano, 'nano banana'))
+
+  section('and the ones that always worked, still do')
+  check('a single word', finds(nano, 'image') && finds(sonnet, 'sonnet'))
+  check('part of a word', finds(sonnet, 'son'))
+  check('an exact id', finds(gptImage, 'openai/gpt-5-image'))
+  // Not a mistake: the id is a prefix of the other one, which is what a
+  // substring match means and what it meant before this changed.
+  check('which also matches what it is a prefix of', finds(gptMini, 'openai/gpt-5-image'))
+  check('an empty query is everything', finds(sonnet, '') && finds(sonnet, '   '))
+
+  section('and what should still find nothing')
+  check('a word that is nowhere', !finds(sonnet, 'zzz'))
+  check('one word right and one wrong', !finds(gptImage, 'gpt zzz'))
+  check('the right words on the wrong model', !finds(sonnet, 'gpt image'))
+})
