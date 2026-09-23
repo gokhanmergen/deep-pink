@@ -832,6 +832,22 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     <option value="model">A model of my choosing</option>
                     <option value="self">The model that wrote the reply</option>
                   </select>
+                  {/*
+                    * One line, and the only thing said here that is not
+                    * guessable from the three names: what each one costs. The
+                    * paragraphs this replaced explained the mechanism, which
+                    * the names already do — "a decision model", "a model of
+                    * my choosing", "the model that wrote the reply" are the
+                    * explanation, and saying it twice in prose underneath was
+                    * the settings panel talking to itself.
+                    */}
+                  <p className="field__hint">
+                    {settings.keyPointSource === 'jev'
+                      ? 'About $0.00006 a reply, to TypeSafe.'
+                      : settings.keyPointSource === 'model'
+                        ? 'A second request a reply, priced by the model you pick.'
+                        : 'No second request — a few more tokens on the one you already send.'}
+                  </p>
                 </div>
 
                 <div className="field">
@@ -860,64 +876,21 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   </select>
                 </div>
 
-                <p className="field__hint">
-                  {settings.keyPointMany
-                    ? 'A reply making one point still gets exactly one mark — that is the ' +
-                      'question deciding, not a limit. Ask three things and the sentence ' +
-                      'answering each is marked.'
-                    : 'The single most important sentence, however much you asked. A reply ' +
-                      'answering three questions gets one mark, on the answer to the first.'}
-                </p>
-
-                {/*
-                  * One line each, kept where the rest of the commentary in
-                  * here went, and for the same reason the sync panel keeps
-                  * its one line: none of these is an explanation of the
-                  * control, they are where the reply goes, what it costs, and
-                  * what each choice is worse at. None of it is guessable from
-                  * a list of three names, and one of the three sends every
-                  * reply to a second company.
-                  */}
-                {settings.keyPointSource === 'jev' && (
-                  <p className="field__hint">
-                    Sends each finished reply to Jev, from TypeSafe — not the model that
-                    wrote it. About $0.00006 a reply. Alone of the three it scores every
-                    sentence, so it can say nothing stands out, and often does.
-                  </p>
-                )}
-
                 {settings.keyPointSource === 'model' && (
-                  <>
-                    <div className="field">
-                      <FieldLabel path="keyPointModel" what="the model that picks">
-                        Model
-                      </FieldLabel>
-                      <div className="row">
-                        <button
-                          className="btn"
-                          onClick={() => setOverlay('keyPointModel', 'settings')}
-                          type="button"
-                        >
-                          {modelShortName(settings.keyPointModel)}
-                        </button>
-                      </div>
+                  <div className="field">
+                    <FieldLabel path="keyPointModel" what="the model that picks">
+                      Model
+                    </FieldLabel>
+                    <div className="row">
+                      <button
+                        className="btn"
+                        onClick={() => setOverlay('keyPointModel', 'settings')}
+                        type="button"
+                      >
+                        {modelShortName(settings.keyPointModel)}
+                      </button>
                     </div>
-                    <p className="field__hint">
-                      A second request per reply, priced by whichever model you pick. It
-                      answers with a number and nothing else, so unlike Jev there is no way
-                      to tell a confident choice from a shrug — expect it to mark something
-                      in almost every reply.
-                    </p>
-                  </>
-                )}
-
-                {settings.keyPointSource === 'self' && (
-                  <p className="field__hint">
-                    No second request and no second model: a line is added to the system
-                    prompt asking for the sentence, and the reply names its own. Costs a
-                    few tokens a turn instead, and a model that ignores the instruction
-                    simply marks nothing.
-                  </p>
+                  </div>
                 )}
               </>
             )}

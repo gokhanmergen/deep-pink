@@ -265,7 +265,12 @@ function ToolStep({
     >
       <summary className="aside__summary" title={args}>
         {result?.isError ? `${name} failed` : `Ran ${name}`}
-        {result && <span className="aside__note">{formatDuration(result.durationMs)}</span>}
+        {/* Zero is "not timed", not "instant". A search OpenRouter ran inside
+            the turn has no duration of its own to report, and "0ms" claims
+            one — that it happened in no time at all. */}
+        {result?.durationMs ? (
+          <span className="aside__note">{formatDuration(result.durationMs)}</span>
+        ) : null}
         <ChevronRight className="aside__caret" size={13} strokeWidth={2} />
       </summary>
       <div className="aside__body">

@@ -19,6 +19,7 @@ import {
   listModels,
   streamChat,
   type ChatMessageParam,
+  type Citation,
   type StreamResult
 } from '../providers/openrouter'
 import { runWebFetch, runWebSearch } from '../tools/web'
@@ -357,6 +358,72 @@ async function keepImage(
      */
     console.log(`Could not keep a generated image: ${err instanceof Error ? err.message : err}`)
   }
+}
+
+/**
+ * The pages OpenRouter's own search read, shown the way a search is shown.
+ *
+ * The `:online` plugin searches server-side. There is no tool call to watch,
+ * so a web-enabled turn produced an answer with nothing to say where it came
+ * from — the same question asked with the built-in `web_search` left a "Ran
+ * web_search" step in the transcript with the results inside it, and asked
+ * through OpenRouter left nothing at all.
+ *
+ * So the citations become one, through the same `tool` message the built-in
+ * search writes: same row, same disclosure, same name, and counted in the
+ * statistics alongside it — because it is the same thing happening, only
+ * somewhere else.
+ *
+ * It lands under the reply rather than above it, which is the one place this
+ * differs from a real tool round. There is no honest way to put it above: the
+ * reply's message already exists and is already streaming by the time
+ * OpenRouter mentions what it read.
+ */
+function keepCitations(
+  threadId: string,
+  assistantMessageId: string,
+  citations: Citation[],
+  emit: Emit
+): void {
+  if (!citations.length) return
+
+  const content = citations
+    .map((c, i) => `${i + 1}. ${c.title}\n   ${c.url}${c.snippet ? `\n   ${c.snippet}` : ''}`)
+    .join('\n\n')
+
+  const toolResult: ToolResult = {
+    // Its own id, and deliberately not one a model could have produced: no
+    // call was made, so nothing may later be matched back to one.
+    // `toChatParams` drops a result whose call it never saw, which is what
+    // should happen — the search belonged to that turn.
+    toolCallId: `openrouter-search-${assistantMessageId}`,
+    name: 'web_search',
+    content,
+    isError: false,
+    // The search happened inside a turn that was already being timed.
+    // Claiming a duration of its own would be inventing one, and the
+    // transcript now leaves the figure out rather than printing "0ms".
+    durationMs: 0
+  }
+
+  const message = repo.insertMessage({
+    threadId,
+    role: 'tool',
+    content,
+    toolResult,
+    status: 'complete'
+  })
+  repo.recordToolInvocation({
+    threadId,
+    messageId: assistantMessageId,
+    source: 'web',
+    serverId: null,
+    toolName: 'web_search',
+    isError: false,
+    durationMs: 0,
+    resultChars: content.length
+  })
+  emit({ type: 'tool-result', messageId: message.id, result: toolResult })
 }
 
 export async function contextLimitFor(model: string): Promise<number | null> {
@@ -1059,6 +1126,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         repo.recordUsage(thread.id, assistant.id, model, result.provider, result.usage)
         emit({ type: 'usage', messageId: assistant.id, usage: result.usage })
       }
+
+      keepCitations(req.threadId, assistant.id, result.citations, emit)
 
       if (!result.toolCalls.length) {
         const complete = repo.getMessage(assistant.id)

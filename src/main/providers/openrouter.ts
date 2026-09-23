@@ -76,7 +76,25 @@ function toPricing(raw: Record<string, unknown> | undefined): ModelPricing {
 let parsed: { at: number; models: OpenRouterModel[] } | null = null
 
 export async function listModels(force = false): Promise<OpenRouterModel[]> {
-  if (!force) {
+  /*
+   * A new version of the app re-reads the catalogue, once.
+   *
+   * The cache is six hours old at most, which is fine while the app's idea of
+   * a model stays still and useless the moment it changes. When this learned
+   * that models answering with a picture and nothing else are on a list of
+   * their own, every existing install kept showing the 454 it already had —
+   * a release whose entire point was 44 more models, invisible for six hours
+   * on a machine that had just been updated to get them.
+   *
+   * Keyed on the version rather than cleared on upgrade, because the question
+   * is not "has the app changed" but "was this list gathered by code that
+   * knew what to ask for". Costs one request, on the first launch after an
+   * update, and nothing on any other launch.
+   */
+  const gatheredBy = getCache<string>('models:gatheredBy', Number.MAX_SAFE_INTEGER)
+  const staleShape = gatheredBy !== __APP_VERSION__
+
+  if (!force && !staleShape) {
     const at = cacheStamp('models')
     if (at !== null && Date.now() - at <= CATALOG_TTL) {
       if (parsed && parsed.at === at) return parsed.models
@@ -143,6 +161,9 @@ export async function listModels(force = false): Promise<OpenRouterModel[]> {
 
   models.sort((a, b) => a.id.localeCompare(b.id))
   setCache('models', models)
+  // Written after the list, so a failed fetch leaves both the old catalogue
+  // and the old version in place and the next launch tries again.
+  setCache('models:gatheredBy', __APP_VERSION__)
   // The memo above follows what was just written, so a forced refresh is seen
   // by the next reader rather than being shadowed by the old parse.
   parsed = { at: cacheStamp('models') ?? Date.now(), models }
@@ -270,11 +291,28 @@ export interface StreamHandlers {
   onImage?: (dataUrl: string) => void
 }
 
+/** A page OpenRouter's own web search read, on a `:online` request. */
+export interface Citation {
+  url: string
+  title: string
+  /** What it took from the page, which is what the model actually saw. */
+  snippet: string
+}
+
 export interface StreamResult {
   content: string
   reasoning: string
   /** Any pictures the model drew, as `data:` URLs, in the order they arrived. */
   images: string[]
+  /**
+   * Pages found by OpenRouter's `:online` plugin.
+   *
+   * The plugin searches server-side, so there is no tool call to watch and
+   * nothing arrives until the reply is already being written. These are the
+   * only evidence that a search happened at all — without them a web-enabled
+   * turn is indistinguishable from one that made the answer up.
+   */
+  citations: Citation[]
   toolCalls: ToolCall[]
   finishReason: string | null
   provider: string | null
@@ -349,6 +387,8 @@ export async function streamChat(
   let content = ''
   let reasoning = ''
   const images: string[] = []
+  const citations: Citation[] = []
+  const citedUrls = new Set<string>()
   let finishReason: string | null = null
   let servedBy: string | null = null
   let usage: Usage = {
@@ -428,6 +468,26 @@ export async function streamChat(
             handlers.onImage?.(url)
           }
 
+          /*
+           * What the `:online` plugin read, as it says so.
+           *
+           * Repeated across chunks — five payloads for one search, measured
+           * 2026-09-22 — and the same page appears in more than one, so they
+           * are collected by url rather than appended.
+           */
+          for (const note of (delta['annotations'] as Record<string, unknown>[] | undefined) ?? []) {
+            if (note?.['type'] !== 'url_citation') continue
+            const cite = note['url_citation'] as Record<string, unknown> | undefined
+            const url = typeof cite?.['url'] === 'string' ? cite['url'] : null
+            if (!url || citedUrls.has(url)) continue
+            citedUrls.add(url)
+            citations.push({
+              url,
+              title: typeof cite?.['title'] === 'string' ? cite['title'] : url,
+              snippet: typeof cite?.['content'] === 'string' ? cite['content'] : ''
+            })
+          }
+
           const reasoningDelta = delta['reasoning'] as string | undefined
           if (reasoningDelta) {
             firstTokenAt ??= Date.now()
@@ -505,7 +565,7 @@ export async function streamChat(
       ? usage.completionTokens / generationSeconds
       : null
 
-  return { content, reasoning, images, toolCalls, finishReason, provider: servedBy, usage }
+  return { content, reasoning, images, citations, toolCalls, finishReason, provider: servedBy, usage }
 }
 
 /** Non-streaming call, used for thread titles and compaction summaries. */
