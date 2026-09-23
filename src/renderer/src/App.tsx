@@ -21,6 +21,7 @@ import { Logo } from './components/Logo'
 import { watchPointer } from './codeblocks'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Toaster } from './components/Toaster'
+import { Wizard, wizardSeen } from './components/Wizard'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -39,6 +40,20 @@ export function App(): React.JSX.Element {
   const ready = useStore((s) => s.ready)
   const settings = useStore((s) => s.settings)
   const overlay = useStore((s) => s.overlay)
+  const setOverlay = useStore((s) => s.setOverlay)
+
+  /*
+   * A first launch opens with the four questions.
+   *
+   * After the settings have loaded, so the first step can say whether there
+   * is already a key rather than asking for one that is on the machine. Once
+   * only, and the wizard itself remembers that — closing it by any route is
+   * an answer.
+   */
+  useEffect(() => {
+    if (!settings || wizardSeen() || window.deepPink.wizardSuppressed) return
+    setOverlay('wizard')
+  }, [Boolean(settings)])
   const sidebarVisible = useStore((s) => s.sidebarVisible)
   const openSettings = useStore((s) => s.openSettings)
   const closeOverlay = useStore((s) => s.closeOverlay)
@@ -239,6 +254,7 @@ export function App(): React.JSX.Element {
       {overlay === 'globalStats' && <GlobalStatsPanel onClose={close} />}
       {overlay === 'mcp' && <McpPanel onClose={close} />}
       {overlay === 'keybinds' && <KeybindCheatsheet onClose={close} />}
+      {overlay === 'wizard' && <Wizard onClose={close} />}
 
       <ToolApprovalDialog />
       <Dialog />

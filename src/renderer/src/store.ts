@@ -36,6 +36,8 @@ export type Overlay =
   | 'globalStats'
   | 'mcp'
   | 'keybinds'
+  /** The four questions asked on a first launch, and from Settings after. */
+  | 'wizard'
 
 /**
  * A section of the settings panel, named so other parts of the app can ask for

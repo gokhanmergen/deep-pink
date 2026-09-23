@@ -100,7 +100,19 @@ for (const file of files) {
   const run = spawnSync('pnpm', ['exec', 'electron', '--no-sandbox', join(testDir, file)], {
     cwd: root,
     stdio: 'inherit',
-    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' }
+    env: {
+      ...process.env,
+      ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      /*
+       * No setup wizard in here.
+       *
+       * It opens on a first launch, and every suite that boots the app is a
+       * first launch: a fresh user-data directory, no key, no threads. A
+       * panel over the window is not a thing these suites are testing and is
+       * a thing that would hide everything they are.
+       */
+      DEEP_PINK_NO_WIZARD: '1'
+    }
   })
   if (run.status !== 0) failed++
 }

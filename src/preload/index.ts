@@ -353,7 +353,17 @@ const api = {
     }
   },
 
-  platform: process.platform
+  platform: process.platform,
+
+  /*
+   * Whether to skip the first-launch wizard.
+   *
+   * Set by the test runner, because every suite that boots the app is a first
+   * launch — fresh profile, no key, no threads — and a panel over the window
+   * would hide the very thing being measured. Read here rather than in the
+   * renderer, which has no `process` to read it from.
+   */
+  wizardSuppressed: Boolean(process.env.DEEP_PINK_NO_WIZARD)
 }
 
 export type DeepPinkApi = typeof api

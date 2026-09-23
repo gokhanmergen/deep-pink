@@ -3583,6 +3583,88 @@ svg.lucide {
 }
 
 /* ------------------------------------------------------------------ *
+ * The setup wizard
+ *
+ * Four questions in the app's own panel, so it reads as part of Deep Pink
+ * rather than as something standing in front of it. Roomier than the settings
+ * dialog on purpose: this is read once, by somebody who has not seen any of
+ * it before, and crowding it would be the wrong economy.
+ * ------------------------------------------------------------------ */
+
+.wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 280px;
+}
+
+.wizard .section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Which of the four, in the title bar, because a wizard with no sense of its
+   own length is one you cannot decide to finish. */
+.wizard__of {
+  margin-left: 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 400;
+}
+
+.wizard__done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--t-ui);
+}
+
+.wizard__choices {
+  display: grid;
+  gap: 8px;
+}
+
+.wizard__choice {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.wizard__choice:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* The one in force, said with the accent the app uses everywhere for the
+   thing you have chosen. */
+.wizard__choice[data-chosen] {
+  border-color: var(--accent-line);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.wizard__choiceName {
+  flex: none;
+  font-weight: 500;
+}
+
+.wizard__choiceWhy {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------------ *
  * Toasts
  *
  * A stack in the corner, in the same materials as the sidebar: the elevated

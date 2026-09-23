@@ -1878,6 +1878,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <div className="section-title">Updates</div>
             <UpdateSettings />
 
+            <div className="section-title">Setting up</div>
+            <p className="field__hint">
+              The questions asked on a first launch — the key, the model, the experimental
+              features, and bringing a library with you.
+            </p>
+            <button className="btn" onClick={() => setOverlay('wizard')} type="button">
+              Run the setup again
+            </button>
+
             <div className="section-title">About</div>
             <p className="dim" style={{ fontSize: 13, lineHeight: 1.6 }}>
               Deep Pink {info?.version ?? '…'} — MIT licensed, open source.
