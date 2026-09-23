@@ -46,7 +46,7 @@
     "resources": [
       "resources/backend.cjs",
       "resources/repoWorker.js",
-      "resources/node_modules/**"
+      "resources/node_modules/"
     ]
   }
 }
