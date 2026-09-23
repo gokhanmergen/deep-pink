@@ -436,5 +436,36 @@ export const MIGRATIONS: string[] = [
    */
   ALTER TABLE messages RENAME COLUMN key_point TO key_points;
   UPDATE messages SET key_points = json_array(key_points) WHERE key_points IS NOT NULL;
+  `,
+
+  /* 23 — a conversation keeps the model it was had with */ `
+  /*
+   * Every thread that never had a model picked stored none, and so took on
+   * whatever the default was at the moment it was looked at — changing the
+   * default re-labelled all of them. The engine now pins the model on first
+   * use; this gives the threads that already exist the model their replies
+   * actually came from, the latest one, which is the one the conversation
+   * was left on.
+   *
+   * Only where there is an answer to give. A thread whose replies all failed
+   * before a model was recorded, or that has none, stays as it was and is
+   * pinned the next time something is said in it.
+   *
+   * \`updated_at\` is left alone: this is not the conversation having
+   * something said in it, and stamping it would send every old chat to the
+   * top of Today at once. Every machine runs this against the same messages
+   * and reaches the same answer, so there is nothing here for sync to carry.
+   */
+  UPDATE threads
+     SET config = json_set(
+           CASE WHEN json_valid(config) THEN config ELSE '{}' END,
+           '$.model',
+           (SELECT m.model FROM messages m
+             WHERE m.thread_id = threads.id AND m.role = 'assistant' AND m.model IS NOT NULL
+             ORDER BY m.seq DESC LIMIT 1)
+         )
+   WHERE json_extract(CASE WHEN json_valid(config) THEN config ELSE '{}' END, '$.model') IS NULL
+     AND EXISTS (SELECT 1 FROM messages m
+                  WHERE m.thread_id = threads.id AND m.role = 'assistant' AND m.model IS NOT NULL);
   `
 ]

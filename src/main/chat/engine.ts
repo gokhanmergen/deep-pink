@@ -1012,6 +1012,25 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
   abortControllers.set(thread.id, controller)
 
   try {
+    /*
+     * A conversation keeps the model it was had with.
+     *
+     * A thread nobody had picked a model for stored nothing, and meant "the
+     * default" — the default at whatever moment the question was asked. So
+     * changing the default in Settings silently re-labelled every one of
+     * those chats with the new model's name and icon, and the next message
+     * in any of them went to a model the conversation had never spoken to.
+     * The replies themselves recorded the right model; the thread claimed
+     * another.
+     *
+     * Pinned on first use rather than at creation, because an empty chat has
+     * not been had with anything yet — it should follow the default until it
+     * is, which is what the composer shows it doing.
+     */
+    if (!thread.config.model) {
+      thread = repo.updateThread(thread.id, { config: { model: settings.defaultModel } }) ?? thread
+    }
+
     if (req.regenerateFromMessageId) {
       repo.deleteMessagesAfter(thread.id, req.regenerateFromMessageId)
     } else if (req.content.trim() || req.attachments?.length) {

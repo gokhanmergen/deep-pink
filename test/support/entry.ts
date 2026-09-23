@@ -3,9 +3,10 @@
  * test files can require a single CommonJS artifact from inside Electron.
  */
 export { getDb } from '@/db/index'
+export { MIGRATIONS } from '@/db/schema'
 export * as repo from '@/db/repo'
 export { streamChat, OpenRouterError } from '@/providers/openrouter'
-export { shouldCompact, toChatParams, reasoningFor } from '@/chat/engine'
+export { shouldCompact, toChatParams, sendMessage, reasoningFor } from '@/chat/engine'
 export { assembleContext, estimateTokens, skillsFor } from '@/chat/prompt'
 export * as reasoning from '@shared/reasoning'
 export * as skills from '@shared/skills'
