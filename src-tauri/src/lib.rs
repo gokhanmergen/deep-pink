@@ -24,9 +24,16 @@ struct BackendConfig {
 }
 
 struct BackendProcess {
-    child: Mutex<CommandChild>,
+    child: Mutex<Option<CommandChild>>,
     config: BackendConfig,
     close_started: AtomicBool,
+}
+
+fn kill_backend_child(backend: &BackendProcess) {
+    let child = backend.child.lock().ok().and_then(|mut child| child.take());
+    if let Some(child) = child {
+        let _ = child.kill();
+    }
 }
 
 #[tauri::command]
@@ -136,7 +143,7 @@ fn spawn_backend(app: &AppHandle) -> Result<Arc<BackendProcess>, Box<dyn std::er
         .into());
     }
 
-    let mut command = app
+    let command = app
         .shell()
         .sidecar("deep-pink-node")?
         .arg(backend_script.to_string_lossy().as_ref())
@@ -175,7 +182,7 @@ fn spawn_backend(app: &AppHandle) -> Result<Arc<BackendProcess>, Box<dyn std::er
     });
 
     Ok(Arc::new(BackendProcess {
-        child: Mutex::new(child),
+        child: Mutex::new(Some(child)),
         config: BackendConfig {
             url: format!("http://127.0.0.1:{port}"),
             token,
@@ -219,9 +226,7 @@ pub fn run() {
                         let failed = !matches!(&result, Ok(Ok(())));
                         if failed {
                             eprintln!("Could not stop the local backend cleanly: {result:?}");
-                            if let Ok(mut child) = backend.child.lock() {
-                                let _ = child.kill();
-                            }
+                            kill_backend_child(&backend);
                         }
                         let _ = closing_window.close();
                     });
@@ -236,9 +241,7 @@ pub fn run() {
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 if let Some(state) = app.try_state::<Arc<BackendProcess>>() {
-                    if let Ok(mut child) = state.child.lock() {
-                        let _ = child.kill();
-                    }
+                    kill_backend_child(&state);
                 }
             }
         });
