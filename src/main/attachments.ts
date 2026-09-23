@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { opendir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, protocol } from 'electron'
 import type { Attachment, AttachmentKind, PendingAttachment } from '@shared/types'
@@ -298,6 +299,40 @@ export function collectOrphans(): number {
     if (known.has(name)) continue
     try {
       rmSync(join(path, name))
+      removed++
+    } catch {
+      /* leave it; it will be tried again next launch */
+    }
+  }
+  return removed
+}
+
+/**
+ * The same cleanup without holding up the event loop while walking the
+ * attachment directory. Tauri runs this after its service is ready, so a
+ * library with many saved images does not stall the first screen.
+ */
+export async function collectOrphansAsync(shouldStop?: () => boolean): Promise<number> {
+  const path = dir()
+  const known = new Set(
+    (getDb().prepare('SELECT id FROM attachments').all() as { id: string }[]).map((r) => r.id)
+  )
+  const stillKnown = getDb().prepare('SELECT 1 FROM attachments WHERE id = ?')
+
+  let removed = 0
+  const directory = await opendir(path)
+  for await (const entry of directory) {
+    if (shouldStop?.()) break
+    if (known.has(entry.name)) continue
+    // A new attachment may have been stored since the snapshot above. Store
+    // writes synchronously; this indexed check keeps a newly added file safe
+    // if the directory iterator sees it during this cleanup pass.
+    if (stillKnown.get(entry.name)) {
+      known.add(entry.name)
+      continue
+    }
+    try {
+      await rm(join(path, entry.name))
       removed++
     } catch {
       /* leave it; it will be tried again next launch */

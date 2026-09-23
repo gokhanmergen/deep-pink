@@ -1,19 +1,9 @@
-import { useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 import { useStore } from './store'
 import { buildActions } from './actions'
-import { warmHighlighter } from './highlight'
 import { matchesParsed, parseBinding } from './keybinds'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
-import { CommandPalette } from './components/CommandPalette'
-import { SearchOverlay } from './components/SearchOverlay'
-import { SettingsDialog } from './components/SettingsDialog'
-import { ModelPicker } from './components/ModelPicker'
-import { ProviderPicker } from './components/ProviderPicker'
-import { SystemPromptInspector } from './components/SystemPromptInspector'
-import { GlobalStatsPanel, ThreadStatsPanel } from './components/StatsPanels'
-import { McpPanel } from './components/McpPanel'
-import { KeybindCheatsheet } from './components/KeybindCheatsheet'
 import { ToolApprovalDialog } from './components/ToolApprovalDialog'
 import { Dialog } from './components/Dialog'
 import { ImageViewer } from './components/ImageViewer'
@@ -22,7 +12,45 @@ import { watchPointer } from './codeblocks'
 import { watchProblems } from './problems'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Toaster } from './components/Toaster'
-import { Wizard, wizardSeen } from './components/Wizard'
+import { wizardSeen } from './components/wizardState'
+
+// These panels are opened on demand. Keeping them out of the entry chunk means
+// a normal chat does not parse their forms, charts, model lists or search UI.
+const CommandPalette = lazy(() =>
+  import('./components/CommandPalette').then((module) => ({ default: module.CommandPalette }))
+)
+const SearchOverlay = lazy(() =>
+  import('./components/SearchOverlay').then((module) => ({ default: module.SearchOverlay }))
+)
+const SettingsDialog = lazy(() =>
+  import('./components/SettingsDialog').then((module) => ({ default: module.SettingsDialog }))
+)
+const ModelPicker = lazy(() =>
+  import('./components/ModelPicker').then((module) => ({ default: module.ModelPicker }))
+)
+const ProviderPicker = lazy(() =>
+  import('./components/ProviderPicker').then((module) => ({ default: module.ProviderPicker }))
+)
+const SystemPromptInspector = lazy(() =>
+  import('./components/SystemPromptInspector').then((module) => ({
+    default: module.SystemPromptInspector
+  }))
+)
+const ThreadStatsPanel = lazy(() =>
+  import('./components/StatsPanels').then((module) => ({ default: module.ThreadStatsPanel }))
+)
+const GlobalStatsPanel = lazy(() =>
+  import('./components/StatsPanels').then((module) => ({ default: module.GlobalStatsPanel }))
+)
+const McpPanel = lazy(() =>
+  import('./components/McpPanel').then((module) => ({ default: module.McpPanel }))
+)
+const KeybindCheatsheet = lazy(() =>
+  import('./components/KeybindCheatsheet').then((module) => ({ default: module.KeybindCheatsheet }))
+)
+const Wizard = lazy(() =>
+  import('./components/Wizard').then((module) => ({ default: module.Wizard }))
+)
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -146,20 +174,6 @@ export function App(): React.JSX.Element {
     document.documentElement.dataset.animations = settings.ui.animations ? 'on' : 'off'
   }, [settings])
 
-  /*
-   * Get the highlighter on its feet before a thread is opened.
-   *
-   * Loading the engine, its WebAssembly and the theme is a fixed cost paid
-   * once a session, and left alone it lands on whichever conversation the
-   * reader opens first — measured at around 140ms before the first block came
-   * back, against 150ms for sixteen blocks once it was running. Doing it here
-   * spends it while they are still reading the sidebar. See `warmHighlighter`.
-   */
-  const codeTheme = settings?.ui.codeTheme
-  useEffect(() => {
-    if (codeTheme) warmHighlighter(codeTheme)
-  }, [codeTheme])
-
   /**
    * Every binding, parsed once, in a stable order.
    *
@@ -253,21 +267,23 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
-      {overlay === 'palette' && <CommandPalette onClose={close} />}
-      {overlay === 'search' && <SearchOverlay onClose={close} />}
-      {overlay === 'settings' && <SettingsDialog onClose={close} />}
-      {overlay === 'models' && <ModelPicker mode="chat" onClose={close} />}
-      {overlay === 'defaultModel' && <ModelPicker mode="default" onClose={close} />}
-      {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}
-      {overlay === 'keyPointModel' && <ModelPicker mode="keyPoint" onClose={close} />}
-      {overlay === 'pregenTitleModel' && <ModelPicker mode="pregenTitle" onClose={close} />}
-      {overlay === 'providers' && <ProviderPicker onClose={close} />}
-      {overlay === 'prompt' && <SystemPromptInspector onClose={close} />}
-      {overlay === 'threadStats' && <ThreadStatsPanel onClose={close} />}
-      {overlay === 'globalStats' && <GlobalStatsPanel onClose={close} />}
-      {overlay === 'mcp' && <McpPanel onClose={close} />}
-      {overlay === 'keybinds' && <KeybindCheatsheet onClose={close} />}
-      {overlay === 'wizard' && <Wizard onClose={close} />}
+      <Suspense fallback={null}>
+        {overlay === 'palette' && <CommandPalette onClose={close} />}
+        {overlay === 'search' && <SearchOverlay onClose={close} />}
+        {overlay === 'settings' && <SettingsDialog onClose={close} />}
+        {overlay === 'models' && <ModelPicker mode="chat" onClose={close} />}
+        {overlay === 'defaultModel' && <ModelPicker mode="default" onClose={close} />}
+        {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}
+        {overlay === 'keyPointModel' && <ModelPicker mode="keyPoint" onClose={close} />}
+        {overlay === 'pregenTitleModel' && <ModelPicker mode="pregenTitle" onClose={close} />}
+        {overlay === 'providers' && <ProviderPicker onClose={close} />}
+        {overlay === 'prompt' && <SystemPromptInspector onClose={close} />}
+        {overlay === 'threadStats' && <ThreadStatsPanel onClose={close} />}
+        {overlay === 'globalStats' && <GlobalStatsPanel onClose={close} />}
+        {overlay === 'mcp' && <McpPanel onClose={close} />}
+        {overlay === 'keybinds' && <KeybindCheatsheet onClose={close} />}
+        {overlay === 'wizard' && <Wizard onClose={close} />}
+      </Suspense>
 
       <ToolApprovalDialog />
       <Dialog />

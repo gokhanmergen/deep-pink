@@ -26,6 +26,9 @@ const allowedOrigins = new Set(
     .map((value) => value.trim())
     .filter(Boolean)
 )
+let backgroundStartupTimer: ReturnType<typeof setTimeout> | null = null
+let attachmentCleanup: Promise<number> | null = null
+let stopAttachmentCleanup = false
 
 if (!dataDir || !Number.isInteger(port) || port < 1 || port > 65535 || token.length < 32) {
   throw new Error('Tauri did not provide a valid backend launch configuration')
@@ -104,14 +107,8 @@ async function start(): Promise<void> {
   }
   deleteEmptyThreads()
   deleteTemporaryThreads()
-  attachments.collectOrphans()
 
   registerIpc()
-
-  if (!loadSettings().hideExperimental) void mcp.connectAll().catch(() => undefined)
-  startNaming()
-  startUpdateChecks()
-  startSync()
 
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', `http://${host}:${port}`)
@@ -181,12 +178,44 @@ async function start(): Promise<void> {
   server.listen(port, host, () => {
     console.log(`Deep Pink Tauri backend ready on ${host}:${port}`)
     send('backend:ready', { version: __APP_VERSION__ })
+
+    // Network checks, background workers and attachment cleanup are useful
+    // after launch, but none is needed to draw the first screen. Start them
+    // after the renderer has had time to connect and initialize its store.
+    backgroundStartupTimer = setTimeout(() => {
+      backgroundStartupTimer = null
+      if (!loadSettings().hideExperimental) void mcp.connectAll().catch(() => undefined)
+      startNaming()
+      startUpdateChecks()
+      startSync()
+
+      // Orphan collection can scan a large attachment directory. It streams
+      // its filesystem work and yields between entries so it does not stall
+      // the service while the user is chatting.
+      attachmentCleanup = attachments
+        .collectOrphansAsync(() => stopAttachmentCleanup)
+        .then((removed) => {
+          if (removed) console.log(`Removed ${removed} orphaned attachment file(s).`)
+          return removed
+        })
+        .catch((error: unknown) => {
+          console.error('Could not collect orphaned attachment files.', error)
+          return 0
+        })
+    }, 1500)
+    backgroundStartupTimer.unref()
   })
 
   let cleanup: Promise<void> | null = null
   const shutdownResources = (): Promise<void> => {
     if (cleanup) return cleanup
     cleanup = (async () => {
+      stopAttachmentCleanup = true
+      if (backgroundStartupTimer) {
+        clearTimeout(backgroundStartupTimer)
+        backgroundStartupTimer = null
+      }
+      if (attachmentCleanup) await attachmentCleanup
       const draining = drainInvocations()
       for (const threadId of engine.generatingThreads()) engine.abortThread(threadId)
       await mcp.disconnectAll().catch(() => undefined)

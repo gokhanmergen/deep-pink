@@ -4,6 +4,7 @@ import { ICON } from '../icons'
 import { Overlay } from './Overlay'
 import { modelShortName } from '../format'
 import { useStore } from '../store'
+import { rememberWizardSeen } from './wizardState'
 
 /**
  * The four questions worth asking before the first conversation.
@@ -22,13 +23,6 @@ import { useStore } from '../store'
  * Every step is skippable and nothing here is a gate. A wizard that cannot
  * be walked past is a wizard that has to be right about what you want.
  */
-
-/** Remembered here rather than in the database: it is about this machine. */
-const SEEN = 'deep-pink:wizard-seen'
-
-export function wizardSeen(): boolean {
-  return localStorage.getItem(SEEN) === 'yes'
-}
 
 /**
  * A few models worth suggesting, rather than the four hundred in the picker.
@@ -66,10 +60,10 @@ export function Wizard({ onClose }: { onClose: () => void }): React.JSX.Element 
 
   // Whatever happens, it is not asked again. Closing by any route — finishing,
   // escaping, the X — is an answer.
-  useEffect(() => () => localStorage.setItem(SEEN, 'yes'), [])
+  useEffect(() => () => rememberWizardSeen(), [])
 
   const done = (): void => {
-    localStorage.setItem(SEEN, 'yes')
+    rememberWizardSeen()
     onClose()
   }
 
