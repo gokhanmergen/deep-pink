@@ -1,16 +1,10 @@
 /**
  * Whether there is a newer Deep Pink, and what to do about it.
  *
- * Two halves, and the split is the whole design. Windows and macOS have a
- * copy of the app that the app itself put there, so it can put a newer one
- * there. A Linux machine mostly does not: the copy came from pacman, or apt,
- * or a Nix configuration, and something else owns it. An app that overwrote
- * itself in `/opt` would be lying to the package manager that put it there,
- * and the next `pacman -Syu` would either undo it or refuse.
- *
- * So on Linux the app does not update itself. It notices, says so, and says
- * the one command that works for the way this copy was actually installed —
- * which it can tell from where it is running, without asking anybody.
+ * Updates are reported from GitHub, while the installer or package manager
+ * remains responsible for replacing the installed app. Linux package kinds
+ * can be identified well enough to suggest the matching package-manager
+ * command; Tauri builds link to the release page for a manual install.
  */
 
 /** How this copy got onto the machine, which decides what to advise. */
@@ -23,6 +17,7 @@ export type InstallKind =
   | 'tarball'
   | 'mac'
   | 'windows'
+  | 'tauri'
   | 'unknown'
 
 export interface UpdateConfig {
@@ -118,6 +113,7 @@ export function howToUpdate(kind: InstallKind): string {
       return 'Download the new tarball and unpack it over this copy.'
     case 'mac':
     case 'windows':
+    case 'tauri':
       return 'Download the installer and run it.'
     default:
       return 'Download the new version from the releases page.'

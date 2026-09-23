@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Deep Pink",
+  "version": "0.14.0",
+  "identifier": "dev.deeppink.app",
+  "build": {
+    "beforeDevCommand": "pnpm run tauri:frontend:dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm run tauri:prepare",
+    "frontendDist": "../dist/tauri"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Deep Pink",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 720,
+        "minHeight": 520,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "backgroundColor": "#0a0a0a",
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost http://127.0.0.1:* data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["appimage", "deb", "rpm", "dmg", "nsis"],
+    "macOS": {
+      "signingIdentity": "-"
+    },
+    "category": "Productivity",
+    "shortDescription": "Local-first AI chat for OpenRouter",
+    "longDescription": "A local-first desktop AI chat app for OpenRouter.",
+    "icon": [
+      "../build/icon.png",
+      "../build/icon.icns",
+      "../build/icon.ico"
+    ],
+    "externalBin": ["binaries/deep-pink-node"],
+    "resources": [
+      "resources/backend.cjs",
+      "resources/repoWorker.js",
+      "resources/node_modules/**"
+    ]
+  }
+}

@@ -86,6 +86,10 @@ export function App(): React.JSX.Element {
       const overlapping = window.deepPink.platform === 'darwin' && !fullscreen
       document.documentElement.dataset.windowDrag = overlapping ? 'on' : 'off'
       document.documentElement.dataset.trafficLights = overlapping ? 'on' : 'off'
+      for (const region of document.querySelectorAll('.sidebar__brand, .topbar')) {
+        if (overlapping) region.setAttribute('data-tauri-drag-region', '')
+        else region.removeAttribute('data-tauri-drag-region')
+      }
     }
     apply(false)
     return window.deepPink.window.onState((state) => apply(state.fullscreen))

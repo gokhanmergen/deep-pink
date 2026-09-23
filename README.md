@@ -1,8 +1,8 @@
 # Deep Pink
 
-A local-first desktop chat client for [OpenRouter](https://openrouter.ai). Your threads, statistics and settings live in a SQLite file on your own machine, and the app makes no network request you did not ask for.
+A local-first desktop chat client for [OpenRouter](https://openrouter.ai). Your threads, statistics and settings live in a SQLite file on your own machine. The app checks GitHub for releases when update checks are enabled; conversation traffic goes to OpenRouter, MCP servers you configure, and web sources only when you turn web access on.
 
-MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS and Windows.
+MIT licensed. Built with Tauri 2, Rust, React, TypeScript and a bundled Node.js service. Runs on Linux, macOS and Windows.
 
 ---
 
@@ -76,145 +76,22 @@ Every action has a binding, every binding is rebindable, and `Ctrl/⌘ K` opens 
 
 ### Download a build
 
-Linux and macOS builds are published to the
-[releases page](https://github.com/gokhanmergen/deep-pink/releases): an
-AppImage, a `.deb`, an `.rpm`, a `.pkg.tar.xz` for Arch and a tarball for
-Linux on x86-64, and a `.dmg` and `.zip` for macOS on Apple Silicon — with an
-Intel disk image alongside them when that build succeeds. `SHA256SUMS.txt`
-covers every file.
+Tauri builds for Linux, macOS and Windows are published on the
+[releases page](https://github.com/gokhanmergen/deep-pink/releases): `.deb`,
+`.rpm` and AppImage for Linux x86-64, `.dmg` installers for Apple Silicon and
+Intel Macs, and a Windows installer. `SHA256SUMS.txt` covers every file. Arch
+users can run the AppImage or build the Linux packages from source.
 
-Prefer one of the packages to the AppImage if you open the app often. An
-AppImage is a compressed filesystem mounted on each launch, and unpacking the
-runtime costs about a second before any of the app's own code runs: measured
-at 1.4-1.8s to reach that first line, against 0.4-0.5s for the same build
-installed from a package. It is the most convenient file to carry and the
-slowest one to open.
+The macOS build uses an ad-hoc signature because this project has no Apple
+Developer ID. macOS may require approval in Privacy & Security after the first
+launch attempt. Windows may show SmartScreen before installation.
 
-### Arch, with updates
+### Nix
 
-There is a pacman repository, so the app updates with everything else on the
-machine instead of being re-downloaded by hand. Add this to the **end** of
-`/etc/pacman.conf` — last, so a third-party repository can never shadow an
-official package:
-
-```ini
-[deep-pink]
-SigLevel = Optional TrustAll
-Server = https://github.com/gokhanmergen/deep-pink/releases/download/arch
-```
-
-```bash
-sudo pacman -Sy deep-pink
-```
-
-After that `pacman -Syu` keeps it current.
-
-`SigLevel = Optional TrustAll` is doing something real and is worth reading
-before you paste it: these packages are not GPG-signed, so that line tells
-pacman to install whatever this URL serves without checking who built it. It
-applies to this repository alone and not to the rest of your system. If that
-is not a trade you want, use the `.pkg.tar.xz` from the releases page and
-`pacman -U` it, which is the same file installed deliberately each time.
-
-The repository lives on a GitHub release under a tag that never changes, so
-there is no server behind it and nothing to go down that is not GitHub. It
-holds the newest version only.
-
-Nothing is signed with a paid developer certificate. Linux may ask you to
-confirm the first launch; macOS will refuse it outright, so open the app once
-with right-click → Open, or clear the quarantine flag:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Deep Pink.app"
-```
-
-The newest one is always at
-[`/releases/latest`](https://github.com/gokhanmergen/deep-pink/releases/latest),
-so an auto-updater can follow it:
-
-```bash
-curl -s https://api.github.com/repos/gokhanmergen/deep-pink/releases/latest \
-  | grep -o 'https://[^"]*\.AppImage'
-```
-
-```bash
-chmod +x 'Deep Pink-0.1.0-arm64.AppImage' && ./'Deep Pink-0.1.0-arm64.AppImage'
-```
-
-### NixOS, or anywhere with Nix
-
-This repository is a flake. To try it once, without installing anything:
-
-```bash
-nix run github:gokhanmergen/deep-pink
-```
-
-To keep it, add the flake as an input and put the package where you put your
-other packages:
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    deep-pink = {
-      url = "github:gokhanmergen/deep-pink";
-      # Worth setting: without it you build against a second copy of nixpkgs,
-      # and get a second Electron in the store to go with it.
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-  };
-
-  outputs =
-    { nixpkgs, deep-pink, ... }:
-    {
-      nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          ./configuration.nix
-          (
-            { pkgs, ... }:
-            {
-              environment.systemPackages = [
-                deep-pink.packages.${pkgs.stdenv.hostPlatform.system}.default
-              ];
-            }
-          )
-        ];
-      };
-    };
-}
-```
-
-Then `sudo nixos-rebuild switch`. Home Manager is the same line under
-`home.packages`, and there is an overlay if you would rather write
-`pkgs.deep-pink` and forget where it came from:
-
-```nix
-{ nixpkgs.overlays = [ deep-pink.overlays.default ]; }
-```
-
-x86-64 and aarch64 Linux. What gets built is this app's own bundle and the
-three libraries it uses at runtime, started with the Electron from nixpkgs
-rather than one downloaded during the build — so the browser engine on your
-machine is patched by the same thing that patches everything else on it, which
-is the whole reason to install software this way.
-
-**Give it a keyring.** The OpenRouter key is encrypted through the Secret
-Service API, so something has to be answering on it:
-
-```nix
-{ services.gnome.gnome-keyring.enable = true; }
-```
-
-Without one the app still runs, and says on the Account page that the key is
-stored as a permission-restricted file instead.
-
-**Wayland** works as described below: the launcher asks for it when
-`NIXOS_OZONE_WL` is set in your session, and stays on XWayland when it is not.
-
-Nothing else is needed — no unfree packages, no udev rules, no service. Your
-threads stay where the rest of this README says they do, in
-`~/.config/deep-pink`, and survive a rebuild or a rollback untouched.
+The flake still packages the Electron compatibility build and has not been
+ported to the Tauri sidecar. Its pinned dependency hash also needs refreshing
+for the current lockfile. Use the Tauri release packages above, or build Tauri
+from source with the prerequisites below.
 
 ### From source
 
@@ -225,54 +102,49 @@ pnpm install
 pnpm dev
 ```
 
-Node 20 or newer, and [pnpm](https://pnpm.io/installation). pnpm is used rather
-than npm because electron-builder needs a package manager it can drive to
-rebuild the native SQLite binding against Electron's ABI, and because npm's
-hoisting quietly hides undeclared dependencies.
+Node.js 22 or newer, pnpm 11, and the [Rust toolchain](https://rustup.rs/).
+Tauri also needs the platform's WebView build dependencies. On Debian and Ubuntu,
+install:
 
-`pnpm install` downloads or compiles that SQLite binding; on Linux it needs
-`build-essential` and `python3` if no prebuilt binary matches your platform.
+```bash
+sudo apt install build-essential curl file libayatana-appindicator3-dev \
+  libdbus-1-dev libgtk-3-dev libnss3 pkg-config libsecret-1-dev libssl-dev \
+  libwebkit2gtk-4.1-dev libxdo-dev libxss1 librsvg2-dev
+```
+
+macOS requires Xcode command-line tools. Windows requires Microsoft C++ Build
+Tools and the WebView2 runtime.
+
+The Tauri build bundles a matching Node.js runtime and `better-sqlite3` native
+module as a sidecar, so users do not need Node installed. `pnpm install` also
+keeps the Electron compatibility build and its existing desktop tests available.
 
 ### Build a Linux package yourself
 
 ```bash
-pnpm dist:linux
+pnpm run dist:linux
 ```
 
-Produces AppImage, `.deb`, `.rpm`, `.pkg.tar.xz` and a tarball in `release/`.
-
-Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
+Produces AppImage, `.deb` and `.rpm` packages under
+`src-tauri/target/release/bundle/`.
 
 ### Build a macOS app
 
 ```bash
-pnpm dist:mac
+pnpm run dist:mac
 ```
 
-Produces `release/Deep Pink-<version>-arm64.dmg` and a `.zip`. Drag the app to
-`/Applications` and open it.
+Produces a `.dmg` for the machine's native architecture. Drag Deep Pink to
+`/Applications` and open it. Builds are ad-hoc signed and may need approval in
+Privacy & Security on first launch.
 
-The build is **ad-hoc signed**, because this project has no Apple Developer ID.
-That is enough for Apple Silicon to run it locally, and the entitlements in
-`build/entitlements.mac.plist` let the hardened runtime load the native SQLite
-binding. macOS may still warn the first time — right-click the app and choose
-*Open*, or clear the quarantine flag:
+### Build a Windows installer
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Deep Pink.app"
+pnpm run dist:windows
 ```
 
-### Wayland
-
-Electron defaults to XWayland, which is usually fine but can render blurry on
-HiDPI and can behave oddly with tiling compositors. To run natively:
-
-```bash
-deep-pink --ozone-platform-hint=auto
-```
-
-The app itself declares no draggable window regions outside macOS, because
-Chromium's hit-testing for them misbehaves under Wayland and swallows clicks.
+Produces an NSIS installer under `src-tauri/target/release/bundle/nsis/`.
 
 ### First run
 
@@ -290,15 +162,23 @@ One SQLite file under your platform's user-data directory:
 | macOS   | `~/Library/Application Support/deep-pink/deep-pink.db` |
 | Windows | `%APPDATA%\deep-pink\deep-pink.db`                    |
 
-Settings › Data shows the exact path and can open it in your file manager.
+Settings › Data shows the exact path and can open it in your file manager. Tauri
+uses the same directory as the Electron build, so the SQLite database and
+attachments carry over. OS-encrypted API and sync keys from an Electron install
+cannot be decrypted by Tauri; enter those keys again in Settings after moving
+to Tauri. Keys written by Tauri use its own keyring encryption and also need
+to be entered again before switching back to the Electron compatibility build.
+Plaintext fallback keys, when used on a machine without a keyring, remain
+readable.
 
-The app contacts exactly three kinds of host, all of them at your instruction:
+The app contacts four kinds of host:
 
 1. **OpenRouter**, to list models and run completions.
 2. **MCP servers** you configure — local processes or URLs you supply.
 3. **The web**, only when web access is on and only for the searches and fetches the model makes. Loopback, link-local and private addresses are always refused.
+4. **GitHub**, for the release check when enabled in Settings.
 
-There is no telemetry, no crash reporting and no update check. The one thing that does identify anything is app attribution to OpenRouter — the header that puts a client on their public leaderboards. It names the app and its repository, never you, and it is on by default; Settings › Account turns it off and requests go out anonymously from then on.
+There is no telemetry or crash reporting. The one thing that does identify anything is app attribution to OpenRouter — the header that puts a client on their public leaderboards. It names the app and its repository, never you, and it is on by default; Settings › Account turns it off and requests go out anonymously from then on.
 
 ---
 
@@ -333,40 +213,44 @@ The full list, including the ones not shown here, is in the cheatsheet — and a
 ## Development
 
 ```bash
-pnpm dev         # hot-reloading dev build
-pnpm typecheck   # main, preload and renderer
-pnpm test        # storage, streaming, tool handling, layout, web guards
-pnpm build       # production bundle
+pnpm dev                 # Tauri with a hot-reloading renderer
+pnpm typecheck           # shared app, bridge and renderer types
+pnpm test                # existing Electron desktop and service suites
+pnpm build               # production Tauri build
+pnpm run dev:electron    # compatibility Electron development build
+pnpm run build:electron  # compatibility Electron production build
 ```
 
-To cut a release, bump the version and push the tag — the workflow builds the
-Linux and macOS artefacts on their own machines, refuses to publish if the
-tests fail or the tag disagrees with `package.json`, and attaches everything to
-one GitHub release:
+To cut a release, bump the version and push the tag — the workflow builds
+Linux, macOS and Windows packages on native runners, refuses to publish if the
+Electron desktop suites fail or the tag disagrees with `package.json`, and
+attaches everything to one GitHub release:
 
 ```bash
 pnpm version patch
 git push --follow-tags
 ```
 
-The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum pnpm test`.
+The existing integration suites still launch Electron to cover the compatibility runtime and its `safeStorage` path. The Tauri app uses the shared service code through a Rust-launched Node sidecar. On a headless machine, use `xvfb-run --auto-servernum pnpm test`.
 
 ### With Nix
 
 ```bash
-nix develop      # node, pnpm, Electron, libsecret and xvfb-run
+nix develop      # Node, pnpm, Electron, libsecret and xvfb-run
 pnpm install
-pnpm dev
+pnpm run dev:electron
 ```
+
+The Nix shell still supports the Electron compatibility build. Use the regular
+Rust and Tauri prerequisites above for `pnpm dev`.
 
 The shell points the `electron` package at the Electron from nixpkgs
 (`ELECTRON_OVERRIDE_DIST_PATH`), so `pnpm install` does not download a second
 copy of it.
 
-`nix/package.nix` pins the hash of every dependency in `pnpm-lock.yaml`, which
-is what lets the build run with no network at all. **Change the lockfile and
-that hash has to change with it**: set `hash = ""`, run `nix build`, and paste
-back the one the mismatch prints.
+The Nix shell is for the Electron compatibility build. `nix/package.nix` pins
+the dependency hash for `pnpm-lock.yaml`; refreshing that hash is required
+before its package can build from the updated lockfile.
 
 To change the app icon, point the generator at one square image and rebuild:
 
@@ -382,18 +266,22 @@ Pillow; the `.icns` step needs macOS.
 
 ```
 src/
-├─ main/              Electron main process
+├─ main/              shared app service and IPC handlers
 │  ├─ db/             SQLite schema, migrations, repository
 │  ├─ providers/      OpenRouter client (streaming, routing, cost)
 │  ├─ mcp/            MCP client host
 │  ├─ tools/          Built-in web search and fetch
 │  └─ chat/           System-prompt assembly, tool loop, compaction
-├─ preload/           The single contextBridge surface
-├─ renderer/          React UI
-└─ shared/            Types shared across the boundary
+├─ preload/           Shared typed app API and Electron preload adapter
+├─ renderer/          React UI and Tauri bridge
+├─ shared/            Types shared across the boundary
+└─ tauri/             Node sidecar backend and Electron API compatibility shim
+src-tauri/            Rust launcher, native plugins and desktop packaging
 ```
 
-The API key never crosses IPC, and the renderer runs with `contextIsolation` on and `nodeIntegration` off.
+The renderer has no Node.js access. Tauri injects a typed app bridge, and the
+Rust shell keeps the authenticated local service on loopback; the OpenRouter
+key stays in the backend process and never crosses that bridge.
 
 ---
 

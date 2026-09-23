@@ -1012,9 +1012,12 @@ export interface SyncState {
   lastResult: SyncResult | null
 }
 
-/** Build identity, read from Electron rather than written down. */
+/** Build identity, read from the running desktop runtime rather than hard-coded. */
 export interface AppInfo {
   version: string
+  runtime: 'Electron' | 'Tauri'
+  runtimeVersion: string
+  /** Kept for Electron-era compatibility in the About display. */
   electron: string
   chromium: string
   node: string

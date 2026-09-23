@@ -1,0 +1,9 @@
+{
+  "name": "deep-pink-tauri-backend",
+  "private": true,
+  "version": "0.14.0",
+  "description": "Node sidecar dependencies for the Deep Pink Tauri desktop app",
+  "dependencies": {
+    "better-sqlite3": "13.0.1"
+  }
+}

@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the Linux and macOS packages and attaches them to a GitHub release.
+# Builds Tauri packages for Linux, macOS and Windows and attaches them to a GitHub release.
 #
 # Two ways to run it:
 #
@@ -64,29 +64,25 @@ jobs:
   build:
     needs: meta
     runs-on: ${{ matrix.os }}
-    # One failing platform should not hide what the others would have said.
-    continue-on-error: ${{ matrix.optional || false }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # Ubuntu 22.04 provides WebKitGTK 4.1 while keeping the Linux binary
+          # baseline usable on older glibc-based distributions.
+          - os: ubuntu-22.04
             platform: linux
             arch: x64
-          # Apple Silicon, built natively. `better-sqlite3` is compiled against
-          # Electron's ABI, so each architecture is built on its own machine
-          # rather than cross-compiled.
-          - os: macos-latest
+          # Build the Node runtime and SQLite module natively for each platform.
+          - os: macos-15
             platform: mac
             arch: arm64
-          # Intel, cross-compiled from the same Apple Silicon runner because
-          # GitHub's Intel images are on their way out. Marked optional: the
-          # native rebuild is the part that can fail, and an Intel build that
-          # did not work must not hold back a release that otherwise did.
-          - os: macos-latest
+          - os: macos-15-intel
             platform: mac
             arch: x64
-            optional: true
+          - os: windows-latest
+            platform: windows
+            arch: x64
     steps:
       - uses: actions/checkout@v7
 
@@ -97,18 +93,16 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # `rpm` and `fakeroot` are for the packages fpm builds; `libarchive-tools`
-      # is too, and less obviously — fpm's pacman target shells out to `bsdtar`
-      # to write the package's .MTREE, and a missing one fails as exit code 127
-      # somewhere inside fpm rather than as anything that names the tool. The
-      # Arch package built cleanly on a developer's Arch machine, where
-      # libarchive is simply always there, and then failed here.
-      - name: Install system libraries Electron needs
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri build dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 libsecret-1-0 \
-            rpm fakeroot xvfb libarchive-tools
+          sudo apt-get install -y build-essential curl file libayatana-appindicator3-dev \
+            libasound2 libdbus-1-dev libgtk-3-dev libnotify4 libnss3 pkg-config \
+            libsecret-1-0 libsecret-1-dev libssl-dev libwebkit2gtk-4.1-dev \
+            librsvg2-dev libxdo-dev libxss1 libxtst6 rpm xvfb xdg-utils
 
       - run: pnpm install --frozen-lockfile
 
@@ -123,29 +117,25 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum pnpm test
 
-      # No token in any of these: given one, electron-builder tries to publish
-      # the artefacts itself. Publishing is the release job's work.
       - name: Build the Linux packages
         if: matrix.platform == 'linux'
         run: pnpm run dist:linux
 
-      # Ad-hoc signed, using the identity in electron-builder.yml — there is no
-      # Developer ID for this project, and Apple Silicon will not launch a
-      # binary with no signature at all.
-      - name: Build the macOS disk image and zip
+      - name: Build the macOS disk image
         if: matrix.platform == 'mac'
-        run: |
-          pnpm run build
-          pnpm exec electron-builder --mac --${{ matrix.arch }}
+        run: pnpm run dist:mac
+
+      - name: Build the Windows installer
+        if: matrix.platform == 'windows'
+        run: pnpm run dist:windows
 
       - name: Collect the artefacts
         shell: bash
         run: |
           mkdir -p artifacts
-          find release -maxdepth 1 -type f \
+          find src-tauri/target/release/bundle -type f \
             \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
-               -o -name '*.pkg.tar.*' -o -name '*.tar.gz' \
-               -o -name '*.dmg' -o -name '*.zip' \) \
+               -o -name '*.dmg' -o -name '*.exe' \) \
             -exec cp {} artifacts/ \;
           ls -lh artifacts
 
@@ -197,36 +187,20 @@ jobs:
             | --- | --- |
             | `.deb` | Debian, Ubuntu, Mint |
             | `.rpm` | Fedora, openSUSE, RHEL |
-            | `.pkg.tar.xz` | Arch, Manjaro, EndeavourOS — or use the repo below |
-            | `.tar.gz` | You would rather unpack it yourself |
-            | `.AppImage` | You want a single file — `chmod +x` it and run |
-
-            **Arch, with updates.** Add to the end of `/etc/pacman.conf`, then
-            `sudo pacman -Sy deep-pink` — after which `pacman -Syu` keeps it
-            current. Unsigned: that `SigLevel` line tells pacman to install
-            whatever this URL serves without checking who built it, for this
-            repository only.
-
-            ```ini
-            [deep-pink]
-            SigLevel = Optional TrustAll
-            Server = https://github.com/gokhanmergen/deep-pink/releases/download/arch
-            ```
-
-            The AppImage is last on purpose. It is a compressed filesystem
-            mounted on every launch, and unpacking the runtime costs about a
-            second before the app has run a line of its own code — measured at
-            1.4-1.8s to reach that line against 0.4-0.5s for the same build
-            installed. Convenient to carry, slow to open. Any of the others is
-            the app at full speed.
+            | `.AppImage` | A portable single-file install |
 
             **macOS**
 
             | Format | Use it when |
             | --- | --- |
-            | `-arm64.dmg` | Apple Silicon — M1 and later |
+            | `-aarch64.dmg` | Apple Silicon — M1 and later |
             | `-x64.dmg` | Intel Macs |
-            | `.zip` | You want the app bundle without mounting anything |
+
+            **Windows**
+
+            | Format | Use it when |
+            | --- | --- |
+            | `-setup.exe` | Windows x86-64 installer |
 
             Verify a download against `SHA256SUMS.txt`:
 
@@ -234,108 +208,4 @@ jobs:
             sha256sum -c SHA256SUMS.txt --ignore-missing
             ```
 
-            These builds are not signed with a paid developer certificate.
-            Linux may ask you to confirm the first launch. macOS will refuse it
-            outright — open it once with right-click → Open, or clear the
-            quarantine flag:
-
-            ```bash
-            xattr -dr com.apple.quarantine "/Applications/Deep Pink.app"
-            ```
-
-  # ------------------------------------------------------------------
-  # The Arch repository
-  # ------------------------------------------------------------------
-  #
-  # A pacman repo is nothing but a database file and some packages behind an
-  # HTTP URL, and a GitHub release is an HTTP URL. So there is no server here
-  # and no Pages site: one release, on a tag that never changes, holding the
-  # newest package and a `deep-pink.db` describing it.
-  #
-  # What this buys is the thing a download page cannot — `pacman -Syu` picks
-  # the app up with everything else on the machine. The alternative was an
-  # updater inside the app, which for a native package means owning a
-  # download, a signature check and a privilege escalation to write into
-  # /usr, all to reimplement what the package manager already does, and
-  # fighting it for ownership of the install while doing so.
-  #
-  # Unsigned, deliberately and visibly: the `pacman.conf` stanza this needs
-  # says `SigLevel = Optional TrustAll`, which is the reader agreeing to trust
-  # whatever this URL serves. Signing means a private key living in Actions
-  # secrets, which is its own promise to keep.
-  arch-repo:
-    needs: [meta, publish]
-    if: github.ref_type == 'tag' || inputs.publish
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v7
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Check there is an Arch package to publish
-        id: found
-        run: |
-          pkg=$(find artifacts -maxdepth 1 -name '*.pkg.tar.*' | head -1)
-          if [ -z "$pkg" ]; then
-            echo "No Arch package in this release; nothing to add to the repo." >&2
-            echo "pkg=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
-
-      # `repo-add` is pacman's own tool and exists nowhere but Arch, so the
-      # database is built in an Arch container rather than reimplemented.
-      - name: Build the repository database
-        if: steps.found.outputs.pkg != ''
-        run: |
-          mkdir -p repo
-          cp "${{ steps.found.outputs.pkg }}" repo/
-          docker run --rm -v "$PWD/repo:/repo" -w /repo archlinux:latest \
-            bash -c 'repo-add deep-pink.db.tar.gz *.pkg.tar.*'
-          # `repo-add` leaves `deep-pink.db` as a symlink to the tarball, and
-          # a release asset cannot be a symlink — but `deep-pink.db` is the
-          # name pacman actually fetches, so it is uploaded as a real copy.
-          # Removed first: copying onto the symlink is copying a file onto
-          # itself, which `cp` refuses.
-          rm -f repo/deep-pink.db repo/deep-pink.files
-          cp repo/deep-pink.db.tar.gz repo/deep-pink.db
-          cp repo/deep-pink.files.tar.gz repo/deep-pink.files
-          ls -lh repo
-
-      # One tag, reused for ever. `--latest=false` matters: were this release
-      # to become "latest", every link and script pointing at /releases/latest
-      # would start resolving to a database file instead of the app.
-      - name: Publish it to the fixed `arch` tag
-        if: steps.found.outputs.pkg != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # `gh` works out which repository it is talking about by asking git,
-          # and this job never checks one out — it only wants the artefacts, so
-          # cloning the source to satisfy a question about the remote would be
-          # the wrong way round. Told directly instead. Without it every
-          # command here fails with "not a git repository", which reads like a
-          # checkout is missing rather than a variable.
-          GH_REPO: ${{ github.repository }}
-        run: |
-          if ! gh release view arch >/dev/null 2>&1; then
-            gh release create arch \
-              --title 'Arch repository' \
-              --latest=false \
-              --notes 'A pacman repository, not a release. See the README for the stanza that points at it. Updated automatically; the assets here are always the newest version.'
-          fi
-
-          # Old packages go, so the tag holds one version rather than every
-          # version there has ever been. The database only ever describes what
-          # is here, so nothing is left pointing at a file that is gone.
-          for old in $(gh release view arch --json assets --jq '.assets[].name' | grep '\.pkg\.tar\.' || true); do
-            [ "$old" = "$(basename "${{ steps.found.outputs.pkg }}")" ] && continue
-            gh release delete-asset arch "$old" --yes || true
-          done
-
-          gh release upload arch --clobber \
-            repo/*.pkg.tar.* \
-            repo/deep-pink.db repo/deep-pink.db.tar.gz \
-            repo/deep-pink.files repo/deep-pink.files.tar.gz
+            macOS builds use ad-hoc signing and may require approval in Privacy & Security after the first launch attempt. Windows may show SmartScreen before installation. No paid developer certificates are configured.

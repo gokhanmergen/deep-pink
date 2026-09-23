@@ -62,6 +62,11 @@ interface AttachmentRow {
 }
 
 function toAttachment(row: AttachmentRow): Attachment {
+  const base = process.env.DEEP_PINK_SERVICE_URL
+  const token = process.env.DEEP_PINK_SERVICE_TOKEN
+  const url = base
+    ? `${base}/attachment/${row.id}?token=${encodeURIComponent(token ?? '')}`
+    : `${SCHEME}://attachment/${row.id}`
   return {
     id: row.id,
     messageId: row.message_id,
@@ -71,10 +76,22 @@ function toAttachment(row: AttachmentRow): Attachment {
     width: row.width,
     height: row.height,
     createdAt: row.created_at,
-    url: `${SCHEME}://attachment/${row.id}`,
+    url,
     kind: kindOf(row.mime),
     preview: row.preview ?? null
   }
+}
+
+/**
+ * An image's bytes and media type for the Tauri clipboard plugin. The
+ * Electron build keeps writing the native image from its main process.
+ */
+export function clipboardImage(id: string): { mime: string; data: string } | null {
+  const row = getDb().prepare('SELECT mime FROM attachments WHERE id = ?').get(id) as
+    | { mime: string }
+    | undefined
+  const data = readBase64(id)
+  return row && data ? { mime: row.mime, data } : null
 }
 
 /** Validates and stores one image, returning its metadata. */

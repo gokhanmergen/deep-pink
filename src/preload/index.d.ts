@@ -1,4 +1,4 @@
-import type { DeepPinkApi } from './index'
+import type { DeepPinkApi } from './api'
 
 declare global {
   interface Window {

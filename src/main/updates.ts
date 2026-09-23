@@ -10,11 +10,9 @@ import {
 /**
  * Noticing that there is a newer Deep Pink.
  *
- * One request to GitHub's releases endpoint, unauthenticated, which is the
- * same thing the README already tells people to curl. Nothing is downloaded
- * here and nothing is installed: on the platforms where the app owns its own
- * copy that is `electron-updater`'s job, and on the ones where it does not
- * there is nothing to do but say so.
+ * One unauthenticated request to GitHub's releases endpoint. This reports the
+ * latest version and links to its release page; installation stays with the
+ * package or installer that delivered this copy of the app.
  */
 
 const LATEST = 'https://api.github.com/repos/gokhanmergen/deep-pink/releases/latest'
@@ -75,6 +73,9 @@ export function saveUpdateConfig(patch: Partial<UpdateConfig>): UpdateConfig {
  * and by then the question is narrow enough for `/etc/os-release` to answer.
  */
 export function detectInstallKind(): InstallKind {
+  // The Node executable runs as a bundled Tauri sidecar, so its path says
+  // nothing about how the desktop application itself was installed.
+  if (process.env.DEEP_PINK_RUNTIME === 'tauri') return 'tauri'
   if (process.platform === 'darwin') return 'mac'
   if (process.platform === 'win32') return 'windows'
 

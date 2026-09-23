@@ -2226,7 +2226,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <>
                   <br />
                   <span className="mono">
-                    Electron {info.electron} · Chromium {info.chromium} · Node {info.node} ·{' '}
+                    {info.runtime} {info.runtimeVersion} ·{' '}
+                    {info.runtime === 'Tauri' ? 'WebView' : 'Chromium'} {info.chromium} · Node {info.node} ·{' '}
                     {info.platform}-{info.arch}
                   </span>
                 </>

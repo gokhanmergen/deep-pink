@@ -455,8 +455,13 @@ export function registerIpc(): void {
   // ship an About box claiming the wrong version.
   ipcMain.handle('app:info', () => ({
     version: __APP_VERSION__,
-    electron: process.versions.electron,
-    chromium: process.versions.chrome,
+    runtime: process.env.DEEP_PINK_RUNTIME === 'tauri' ? 'Tauri' : 'Electron',
+    runtimeVersion:
+      process.env.DEEP_PINK_RUNTIME === 'tauri'
+        ? process.env.DEEP_PINK_TAURI_VERSION ?? '2'
+        : process.versions.electron ?? 'unknown',
+    electron: process.versions.electron ?? '—',
+    chromium: process.versions.chrome ?? 'system webview',
     node: process.versions.node,
     platform: process.platform,
     arch: process.arch
@@ -747,6 +752,25 @@ export function registerIpc(): void {
     clipboard.writeImage(image)
     return true
   })
+
+  /*
+   * Native operations that the Tauri renderer performs through Tauri plugins.
+   * These keep the data side of an operation here, where attachment IDs are
+   * resolved against the database and export content is assembled, while the
+   * save picker, clipboard and OS viewer stay with the native shell.
+   */
+  ipcMain.handle('tauri:exportFile', (_e, threadId: string, format: ExportFormat) =>
+    exporter.fileFor(threadId, format, __APP_VERSION__)
+  )
+  ipcMain.handle('tauri:writeExport', (_e, path: string, contents: string) => {
+    exporter.write(path, contents)
+  })
+  ipcMain.handle('tauri:attachmentPath', (_e, id: string) => attachments.filePath(id))
+  ipcMain.handle('tauri:attachmentName', (_e, id: string) => attachments.nameOf(id))
+  ipcMain.handle('tauri:attachmentCopyTo', (_e, id: string, destination: string) =>
+    attachments.copyTo(id, destination)
+  )
+  ipcMain.handle('tauri:attachmentClipboard', (_e, id: string) => attachments.clipboardImage(id))
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
     const parsed = new URL(url)

@@ -1,0 +1,27 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Deep Pink desktop capabilities",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://*" }
+      ]
+    },
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$CONFIG/deep-pink" },
+        { "path": "$CONFIG/deep-pink/**" }
+      ]
+    },
+    "opener:allow-reveal-item-in-dir",
+    "clipboard-manager:allow-write-image"
+  ]
+}

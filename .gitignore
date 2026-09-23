@@ -13,6 +13,11 @@ npm-debug.log*
 !.env.example
 
 .test-build/
+src-tauri/binaries/
+src-tauri/resources/
+src-tauri/backend/node_modules/
+src-tauri/target/
+src-tauri/gen/
 
 # `nix build` leaves its output symlinked here.
 result
