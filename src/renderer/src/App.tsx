@@ -19,6 +19,7 @@ import { Dialog } from './components/Dialog'
 import { ImageViewer } from './components/ImageViewer'
 import { Logo } from './components/Logo'
 import { watchPointer } from './codeblocks'
+import { watchProblems } from './problems'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Toaster } from './components/Toaster'
 import { Wizard, wizardSeen } from './components/Wizard'
@@ -65,6 +66,14 @@ export function App(): React.JSX.Element {
 
   // Where the pointer is, for the shortcut that copies the code block under it.
   useEffect(() => watchPointer(), [])
+
+  /*
+   * Anything that fails says so, rather than only telling the console.
+   *
+   * Before the rest of the effects, so a failure while the app is still
+   * starting has somewhere to be reported to. See `watchProblems`.
+   */
+  useEffect(() => watchProblems(), [])
 
   // Window dragging is a macOS-windowed-mode affair only. Enabling it under a
   // Wayland compositor — or in fullscreen anywhere — breaks click targets

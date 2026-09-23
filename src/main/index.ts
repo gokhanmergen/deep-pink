@@ -7,6 +7,17 @@ import { registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
+import { reportUncaught } from './report'
+
+/*
+ * Before anything that can fail.
+ *
+ * A throw nobody caught used to be a stack trace on a stream nobody running
+ * the packaged app is reading, and an unhandled rejection is, in current
+ * Node, a process that stops there. Either way the window's account of what
+ * happened was that nothing did. See `reportProblem`.
+ */
+reportUncaught()
 
 const isDev = !app.isPackaged
 

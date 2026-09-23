@@ -246,6 +246,9 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
  * "Ran x" or "x failed", because both are how it would be said aloud, and the
  * failing one puts the word that matters where the eye already is.
  */
+/** The prefix `keepCitations` gives a search that had no call of its own. */
+const PLUGIN_SEARCH = 'openrouter-search-'
+
 /**
  * A search OpenRouter ran, put where a search belongs.
  *
@@ -255,18 +258,44 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
  * and the sources at the bottom. Read in that order it looks like an
  * afterthought rather than the thing the answer came from.
  *
- * A search with no call of its own can only have come from the plugin, and
- * can only have happened before the words. So it is drawn where a real tool
- * round would have been: after the thinking, before the reply. The stored
- * order is untouched — this is about reading, and the database is right that
- * it learned about the search last.
+ * Moving it to the front of the turn traded one wrong place for another: the
+ * thinking lives *inside* the assistant message, not as a sibling of it, so
+ * anything hoisted ahead of that message lands above the reasoning too — and
+ * a search drawn before the thought that prompted it is no more honest than
+ * one drawn after the answer it produced.
+ *
+ * So it is not reordered at all. It is taken out of the sequence and handed
+ * to the message it belongs to — the id is in its own `toolCallId` — to be
+ * drawn inside that turn, after the thinking and before the reply, exactly
+ * where a real tool round would have gone. The stored order is untouched:
+ * this is about reading, and the database is right that it learned about the
+ * search last.
  */
-function inReadingOrder(messages: Message[]): Message[] {
-  const fromPlugin = (m: Message): boolean =>
-    m.role === 'tool' && Boolean(m.toolResult?.toolCallId.startsWith('openrouter-search-'))
+function liftPluginSearches(messages: Message[]): {
+  sequence: Message[]
+  byOwner: Map<string, Message[]>
+} {
+  const byOwner = new Map<string, Message[]>()
+  const present = new Set(messages.map((m) => m.id))
 
-  if (!messages.some(fromPlugin)) return messages
-  return [...messages.filter(fromPlugin), ...messages.filter((m) => !fromPlugin(m))]
+  const owner = (m: Message): string | null => {
+    const id = m.toolResult?.toolCallId
+    if (m.role !== 'tool' || !id?.startsWith(PLUGIN_SEARCH)) return null
+    // Only if the reply it belongs to is on screen. A window that starts
+    // mid-turn would otherwise drop the search out of the transcript
+    // altogether rather than merely drawing it in the old place.
+    const assistantId = id.slice(PLUGIN_SEARCH.length)
+    return present.has(assistantId) ? assistantId : null
+  }
+
+  const sequence = messages.filter((m) => {
+    const id = owner(m)
+    if (!id) return true
+    byOwner.set(id, [...(byOwner.get(id) ?? []), m])
+    return false
+  })
+
+  return { sequence, byOwner }
 }
 
 function ToolStep({
@@ -406,6 +435,9 @@ export const AssistantTurn = memo(function AssistantTurn({
     for (const call of m.toolCalls ?? []) argumentsOf.set(call.id, call.arguments)
   }
 
+  // The rows to draw in order, and the searches that belong inside one of them.
+  const { sequence, byOwner: searchesFor } = liftPluginSearches(messages)
+
   /**
    * The figures under a finished reply, in the order they read in.
    *
@@ -536,7 +568,7 @@ export const AssistantTurn = memo(function AssistantTurn({
             </div>
           </div>
 
-          {inReadingOrder(messages).map((message) => {
+          {sequence.map((message) => {
             if (message.role === 'tool') {
               return (
                 <ToolStep
@@ -551,6 +583,13 @@ export const AssistantTurn = memo(function AssistantTurn({
             return (
               <div key={message.id} className="turn-part">
                 <ReasoningTrace message={message} openByDefault={ui.showReasoningByDefault} />
+
+                {/* What OpenRouter's own search read, in the place a tool
+                    round would have gone: after the thinking, before the
+                    reply it informed. See `liftPluginSearches`. */}
+                {searchesFor.get(message.id)?.map((search) => (
+                  <ToolStep key={search.id} message={search} />
+                ))}
 
                 {/*
                   * A rule between the thinking and the answer.

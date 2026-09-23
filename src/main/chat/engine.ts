@@ -13,6 +13,7 @@ import { keyPointCeiling } from '@shared/defaults'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
 import { loadSettings } from '../settings'
+import { reportProblem } from '../report'
 import {
   OpenRouterError,
   complete,
@@ -356,7 +357,7 @@ async function keepImage(
      * and the reply's words are already on screen. Said out loud because the
      * alternative is a model that appears to have drawn nothing.
      */
-    console.log(`Could not keep a generated image: ${err instanceof Error ? err.message : err}`)
+    reportProblem(err, 'Could not keep a generated image')
   }
 }
 
@@ -374,10 +375,11 @@ async function keepImage(
  * statistics alongside it — because it is the same thing happening, only
  * somewhere else.
  *
- * It lands under the reply rather than above it, which is the one place this
- * differs from a real tool round. There is no honest way to put it above: the
- * reply's message already exists and is already streaming by the time
- * OpenRouter mentions what it read.
+ * The row is written after the reply, because the reply already exists and is
+ * already streaming by the time OpenRouter mentions what it read. Where it is
+ * *drawn* is a separate question, answered in the renderer: the assistant
+ * message it belongs to is named in the `toolCallId`, and that is what puts
+ * the step back where a tool round would have been. See `liftPluginSearches`.
  */
 function keepCitations(
   threadId: string,
@@ -423,7 +425,7 @@ function keepCitations(
     durationMs: 0,
     resultChars: content.length
   })
-  emit({ type: 'tool-result', messageId: message.id, result: toolResult })
+  emit({ type: 'tool-result', threadId, messageId: message.id, result: toolResult })
 }
 
 export async function contextLimitFor(model: string): Promise<number | null> {
@@ -920,10 +922,13 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
          */
         const why = err instanceof Error ? err.message : String(err)
         if (attempt === NAME_ATTEMPTS - 1) {
-          console.log(`Could not name a thread after ${NAME_ATTEMPTS} attempts: ${why}`)
+          reportProblem(why, `Could not name a thread after ${NAME_ATTEMPTS} attempts`)
           lastNameFailure = `${settings.titleModel}: ${why}`
           return giveUp(threadId, emit)
         }
+        // Not reported: a retry that succeeds is not a failure the reader
+        // needs told about, and three toasts for one name would be worse than
+        // the silence this replaced. Only the giving-up above is said aloud.
         console.log(`Naming a thread failed (${why}); trying again.`)
       }
     }
@@ -1175,7 +1180,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
           toolResult,
           status: toolResult.isError ? 'error' : 'complete'
         })
-        emit({ type: 'tool-result', messageId: toolMessage.id, result: toolResult })
+        emit({ type: 'tool-result', threadId: thread.id, messageId: toolMessage.id, result: toolResult })
       }
     }
 

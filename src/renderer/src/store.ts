@@ -1776,17 +1776,25 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       break
 
     case 'tool-result':
-      if (state.activeThreadId) {
-        const threadId = state.activeThreadId
-        void readWindow(threadId, get).then((page) => {
-          if (!page) return
-          set({
-            messages: mergeStreamed(page.messages, get().messages),
-            messageWindowStart: page.startSeq,
-            hasOlderMessages: page.hasOlder
-          })
+      /*
+       * Read back rather than patched in: a tool result is a whole new row,
+       * and the window is the only thing that knows where it sits.
+       *
+       * The thread comes off the event. It used to come off `activeThreadId`,
+       * which was harmless — but the relevance check above had nothing to
+       * test, because a result's `messageId` is a row the renderer has by
+       * definition never seen. So it fell through to "not about this thread"
+       * every time, and the step only appeared once the thread was closed and
+       * opened again.
+       */
+      void readWindow(event.threadId, get).then((page) => {
+        if (!page) return
+        set({
+          messages: mergeStreamed(page.messages, get().messages),
+          messageWindowStart: page.startSeq,
+          hasOlderMessages: page.hasOlder
         })
-      }
+      })
       break
 
     case 'image':

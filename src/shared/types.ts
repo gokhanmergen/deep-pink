@@ -732,7 +732,16 @@ export type StreamEvent =
   | { type: 'reasoning'; messageId: string; delta: string }
   | { type: 'content'; messageId: string; delta: string }
   | { type: 'tool-call'; messageId: string; toolCalls: ToolCall[] }
-  | { type: 'tool-result'; messageId: string; result: ToolResult }
+  /**
+   * A tool round that finished, and the thread it finished in.
+   *
+   * `messageId` is the row just written for the result, which the renderer
+   * has by definition never seen — so it cannot be what decides whether this
+   * event is about the conversation on screen. Without the thread named here
+   * the answer was "no", every time, and the step only appeared the next time
+   * the thread was opened and read from the database.
+   */
+  | { type: 'tool-result'; threadId: string; messageId: string; result: ToolResult }
   | { type: 'tool-approval-request'; messageId: string; toolCall: ToolCall; serverName: string }
   /**
    * A picture the model drew, already stored and addressable.

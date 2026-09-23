@@ -355,6 +355,20 @@ const api = {
 
   platform: process.platform,
 
+  /**
+   * Everything that went wrong out of reach of the window.
+   *
+   * An `invoke` that rejects comes back to whoever made it. This is for the
+   * rest — a background sweep, a picture that would not store, a throw nobody
+   * caught — which until now went to a console the reader does not have open.
+   * See `reportProblem` in the main process.
+   */
+  onProblem: (listener: (message: string) => void): (() => void) => {
+    const handler = (_e: unknown, message: string): void => listener(message)
+    ipcRenderer.on('app:problem', handler)
+    return () => ipcRenderer.removeListener('app:problem', handler)
+  },
+
   /*
    * Whether to skip the first-launch wizard.
    *

@@ -33,6 +33,7 @@ import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { keyPointCeiling } from '@shared/defaults'
 import { loadSettings, saveSettings } from './settings'
 import { isEncryptionAvailable, setApiKey } from './secrets'
+import { reportProblem } from './report'
 
 const CHAT_EVENT = 'chat:event'
 const MCP_STATUS_EVENT = 'mcp:status'
@@ -59,8 +60,11 @@ export async function nameUnnamedThreads(): Promise<void> {
   try {
     const named = await engine.nameUntitledThreads(emit)
     if (named) console.log(`Named ${named} thread(s) that had gone unnamed.`)
-  } catch {
-    /* naming is a convenience; never let it take the start-up with it */
+  } catch (err) {
+    // Naming is a convenience and must never take the start-up with it — but
+    // swallowing the reason is how a sweep can fail every five minutes for a
+    // week without anybody knowing it ran at all.
+    reportProblem(err, 'Could not name the threads that had gone unnamed')
   }
 }
 
