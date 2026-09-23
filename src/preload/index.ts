@@ -152,7 +152,8 @@ const api = {
     /** Text of any reply still arriving in this thread. */
     liveStreams: (threadId: string): Promise<LiveStream[]> =>
       ipcRenderer.invoke('chat:liveStreams', threadId),
-    retitle: (threadId: string): Promise<string | null> =>
+    /** The new name, or why there is not one — see `retitle` in the engine. */
+    retitle: (threadId: string): Promise<{ title: string | null; error: string | null }> =>
       ipcRenderer.invoke('chat:retitle', threadId),
     compact: (threadId: string): Promise<{ summaryMessageId: string; freedTokens: number } | null> =>
       ipcRenderer.invoke('chat:compact', threadId),

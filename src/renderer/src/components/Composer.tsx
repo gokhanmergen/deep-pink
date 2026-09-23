@@ -158,6 +158,13 @@ export function Composer(): React.JSX.Element {
     })
   }
 
+  /*
+   * The extras all carry the experimental mark, and so does reading a
+   * repository — so with the workshop put away the extras menu has nothing
+   * left in it and the attach menu is only files.
+   */
+  const hideExperimental = settings?.hideExperimental ?? true
+
   const attachOptions = (): ContextMenuItem[] => [
     {
       id: 'files',
@@ -165,7 +172,7 @@ export function Composer(): React.JSX.Element {
       icon: <ImageIcon {...ICON} />,
       onSelect: () => fileInputRef.current?.click()
     },
-    {
+    ...(hideExperimental ? [] : [{
       id: 'repo',
       label: 'Code repository…',
       icon: <FolderCode {...ICON} />,
@@ -181,7 +188,7 @@ export function Composer(): React.JSX.Element {
        */
       hint: 'read-only · experimental',
       onSelect: () => void attachRepo()
-    }
+    }])
   ]
 
   // Reading a codebase means reading text the model treats as instructions. If
@@ -457,20 +464,24 @@ export function Composer(): React.JSX.Element {
               Attach
             </button>
 
-            <button
-              className="btn"
-              data-on={extrasOn > 0}
-              onClick={(event) => {
-                const r = event.currentTarget.getBoundingClientRect()
-                setExtraMenu({ x: Math.round(r.left), y: Math.round(r.top) })
-              }}
-              title="Web access, charts and multiple documents, for this thread"
-              type="button"
-              disabled={!activeThreadId}
-            >
-              <SlidersHorizontal {...ICON} />
-              <span className="btn__label">Extras{extrasOn ? ` · ${extrasOn}` : ''}</span>
-            </button>
+            {/* Every extra behind this button is experimental, so with them
+                put away the button opens an empty menu. It goes too. */}
+            {!hideExperimental && (
+              <button
+                className="btn"
+                data-on={extrasOn > 0}
+                onClick={(event) => {
+                  const r = event.currentTarget.getBoundingClientRect()
+                  setExtraMenu({ x: Math.round(r.left), y: Math.round(r.top) })
+                }}
+                title="Web access, charts and multiple documents, for this thread"
+                type="button"
+                disabled={!activeThreadId}
+              >
+                <SlidersHorizontal {...ICON} />
+                <span className="btn__label">Extras{extrasOn ? ` · ${extrasOn}` : ''}</span>
+              </button>
+            )}
 
             <button
               className="btn"

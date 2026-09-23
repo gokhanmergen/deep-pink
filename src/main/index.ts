@@ -141,8 +141,11 @@ app.whenReady().then(async () => {
   createWindow()
 
   // Connecting MCP servers spawns processes; do it after the window is up so
-  // a slow or broken server never delays first paint.
-  mcp.connectAll().catch(() => undefined)
+  // a slow or broken server never delays first paint. Not at all while the
+  // experimental parts are hidden: these are processes on your machine, and
+  // starting them for a feature the app is not showing is the one version of
+  // this that could surprise somebody badly.
+  if (!loadSettings().hideExperimental) mcp.connectAll().catch(() => undefined)
 
   // Naming is one request per thread, so it happens behind the first paint and
   // the renderer picks each one up through the event it emits. It keeps

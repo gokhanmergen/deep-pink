@@ -142,6 +142,9 @@ async function runSync(automatic = false): Promise<import('@shared/types').SyncR
 
 /** Whether the timer should be doing anything at all right now. */
 function syncWanted(): boolean {
+  // Hidden means off. A bucket being written to by an app that shows no sign
+  // of syncing is the worst version of this switch failing.
+  if (loadSettings().hideExperimental) return false
   const state = sync.state()
   return state.ready && state.config.enabled && !state.paused
 }
@@ -647,6 +650,10 @@ export function registerIpc(): void {
        * the second lock on the same door — a stale window would otherwise pay
        * for a request whose answer is already stored.
        */
+      // Hidden means off: a key point is a paid request, and one made by an
+      // app that no longer admits the feature exists is a charge nobody can
+      // trace back to a setting.
+      if (settings.hideExperimental) return null
       if (settings.keyPointSource === 'self') return null
       const most = keyPointCeiling(settings.keyPointMany)
       const found =

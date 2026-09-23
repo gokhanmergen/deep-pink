@@ -329,6 +329,7 @@ export function Sidebar(): React.JSX.Element {
   const activeThreadId = useStore((s) => s.activeThreadId)
   const generatingThreadIds = useStore((s) => s.generatingThreadIds)
   const namingFinished = useStore((s) => s.namingFinished)
+  const hideExperimental = useStore((s) => s.settings?.hideExperimental ?? true)
   const liveStats = useStore((s) => s.liveStats)
   const rename = useStore((s) => s.renaming)
   const startRename = useStore((s) => s.startRename)
@@ -1308,6 +1309,10 @@ export function Sidebar(): React.JSX.Element {
           <BarChart3 className="icon" {...ICON} />
           Stats
         </button>
+        {/* MCP is experimental, and the only one of these that starts
+            processes on your machine — the first to go when the workshop is
+            put away. */}
+        {!hideExperimental && (
         <button
           className="btn btn--ghost"
           onClick={() => setOverlay('mcp')}
@@ -1322,6 +1327,7 @@ export function Sidebar(): React.JSX.Element {
               itself is on the panel this opens. */}
           <ExperimentalDot />
         </button>
+        )}
         <button
           className="btn btn--ghost"
           onClick={() => openSettings()}

@@ -250,6 +250,20 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: 1,
   maxTokens: null,
   streamReasoning: true,
+  /*
+   * The parts that are still moving are out of the way until asked for.
+   *
+   * Six of these carry the experimental mark, and all six together are more
+   * of the settings panel than the settled app is. Somebody opening Deep Pink
+   * for the first time should meet a chat client, not a workshop — and the
+   * mark was only ever a warning label on a door nobody needed to open.
+   *
+   * Switched on by default, and `loadSettings` declines to switch it on for
+   * an install that was already using one of them: arriving at an app that
+   * has quietly turned off the bucket you sync to is not a clean first
+   * impression, it is a bug.
+   */
+  hideExperimental: true,
   chartsEnabled: false,
   docsEnabled: false,
   keyPointEnabled: false,

@@ -832,6 +832,19 @@ function giveUp(threadId: string, emit: Emit): null {
   return null
 }
 
+/**
+ * Why naming last failed, for whoever asked for it by hand.
+ *
+ * A name that fails on its own is a convenience that did not happen, and
+ * saying so would be interrupting. A name somebody pressed a button for is a
+ * question they asked, and "Could not generate a name" is not an answer to
+ * it — the reason is almost always something they can act on, and almost
+ * always the same one: a title model served by a single provider that is
+ * rate limiting. Told which model and what it said, the fix is thirty
+ * seconds in Settings. Told nothing, it is a mystery that recurs.
+ */
+let lastNameFailure: string | null = null
+
 const NAME_ATTEMPTS = 3
 const WAIT_BEFORE_RETRY = [2000, 6000]
 
@@ -893,6 +906,7 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
         provisionalTitles.delete(threadId)
         recordTitleCost(threadId, settings.titleModel, result)
 
+        lastNameFailure = null
         emit({ type: 'title', threadId, title })
         return title
       } catch (err) {
@@ -907,6 +921,7 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
         const why = err instanceof Error ? err.message : String(err)
         if (attempt === NAME_ATTEMPTS - 1) {
           console.log(`Could not name a thread after ${NAME_ATTEMPTS} attempts: ${why}`)
+          lastNameFailure = `${settings.titleModel}: ${why}`
           return giveUp(threadId, emit)
         }
         console.log(`Naming a thread failed (${why}); trying again.`)
@@ -1019,7 +1034,10 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             providerRouting: routingForTurn,
             includeReasoning: settings.streamReasoning,
             attribution: settings.sendAppAttribution,
-            webPlugin: settings.web.engine === 'openrouter' && (thread.config.webAccessEnabled ?? settings.web.enabled),
+            webPlugin:
+              !settings.hideExperimental &&
+              settings.web.engine === 'openrouter' &&
+              (thread.config.webAccessEnabled ?? settings.web.enabled),
             modalities: await outputModalitiesFor(model),
             signal: controller.signal
           },
@@ -1226,6 +1244,18 @@ export async function nameUntitledThreads(emit: Emit): Promise<number> {
 const TITLE_SWEEP_LIMIT = 25
 
 /** Used by the UI when the user asks for a fresh title on demand. */
-export async function retitle(threadId: string, emit: Emit): Promise<string | null> {
-  return generateTitle(threadId, emit)
+/**
+ * A name asked for deliberately, and the reason if there is not one.
+ *
+ * The only caller that wants the reason: naming that happens on its own says
+ * nothing when it fails, because a toast for something nobody asked for is an
+ * interruption. This is a button somebody pressed.
+ */
+export async function retitle(
+  threadId: string,
+  emit: Emit
+): Promise<{ title: string | null; error: string | null }> {
+  lastNameFailure = null
+  const title = await generateTitle(threadId, emit)
+  return { title, error: title ? null : lastNameFailure }
 }

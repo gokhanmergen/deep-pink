@@ -1021,9 +1021,22 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async retitleThread(id) {
-    const title = await window.deepPink.chat.retitle(id)
+    const { title, error } = await window.deepPink.chat.retitle(id)
     await get().refreshThreads()
-    get().showToast(title ? `Renamed to “${title}”` : 'Could not generate a name')
+    if (title) {
+      get().showToast(`Renamed to “${title}”`)
+      return
+    }
+    /*
+     * The reason, where there is one, because it is almost always something
+     * the reader can act on — a title model served by one provider that is
+     * rate limiting, which no amount of pressing the button again will fix.
+     * "Could not generate a name" sent them back to press it again.
+     */
+    get().showToast(
+      error ? `Could not name it — ${error}` : 'Could not generate a name',
+      'error'
+    )
   },
 
   async refreshFolders() {

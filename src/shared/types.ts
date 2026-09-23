@@ -575,6 +575,15 @@ export interface Settings {
    * system prompt on every turn, and an app that quietly spends tokens on a
    * feature nobody asked for is not one worth trusting.
    */
+  /**
+   * Keeps the unfinished parts of the app out of sight, and switched off.
+   *
+   * One switch rather than six, because the six are not really separate
+   * choices — what somebody wants is either the app or the workshop. The
+   * features keep their own settings underneath, so turning this back off
+   * returns the app to exactly how it was left.
+   */
+  hideExperimental: boolean
   chartsEnabled: boolean
   docsEnabled: boolean
   /**

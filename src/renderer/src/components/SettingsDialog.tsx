@@ -325,7 +325,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
    */
   const chosen = useStore((s) => s.settingsTab)
   const setTab = useStore((s) => s.setSettingsTab)
-  const tab: Tab = chosen ?? (settings?.hasApiKey ? 'models' : 'account')
+  const asked: Tab = chosen ?? (settings?.hasApiKey ? 'models' : 'account')
+  /*
+   * Never a tab that is no longer there.
+   *
+   * Hiding the experimental features while sitting on one of their tabs left
+   * the list without it and the panel beside it empty — a settings dialog
+   * showing nothing at all, which reads as broken rather than as a setting
+   * having been applied.
+   */
+  const hidden =
+    (settings?.hideExperimental ?? true) &&
+    TAB_GROUPS.some((g) => g.tabs.some((t) => t.id === asked && t.experimental))
+  const tab: Tab = hidden ? 'appearance' : asked
   const [apiKey, setApiKey] = useState('')
   const [dbLocation, setDbLocation] = useState('')
   const [info, setInfo] = useState<AppInfo | null>(null)
@@ -424,7 +436,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
     >
       <div className="settings-split">
         <nav className="tabs" aria-label="Settings sections">
-          {TAB_GROUPS.map((group, index) => (
+          {/*
+            * Hidden means gone from the list, not greyed out in it. A row you
+            * cannot choose is still a row you read, and the point of the
+            * switch is an app with fewer rows.
+            */}
+          {TAB_GROUPS.map((group) => ({
+            ...group,
+            tabs: group.tabs.filter((t) => !t.experimental || !settings.hideExperimental)
+          }))
+            .filter((group) => group.tabs.length > 0)
+            .map((group, index) => (
             <div className="tabs__group" key={group.title ?? `group-${index}`}>
               {group.title && <div className="tabs__label">{group.title}</div>}
               {group.tabs.map((entry) => (
@@ -1421,6 +1443,25 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
         {tab === 'appearance' && (
           <>
+            <div className="section-title">What the app shows</div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.hideExperimental}
+                onChange={(event) =>
+                  void saveSettings({ hideExperimental: event.target.checked })
+                }
+              />
+              <span>Hide experimental features</span>
+              <Revert path="hideExperimental" what="hiding the experimental features" />
+            </label>
+            <p className="field__hint">
+              Web access, charts, multiple documents, the key point, MCP servers, reading a
+              repository and syncing to a bucket. Hidden means off as well as out of sight —
+              each keeps its own settings, so turning this back off returns everything to how
+              you left it.
+            </p>
+
             <div className="section-title">Interface</div>
             <div className="field">
               <FieldLabel path="ui.accent" what="the accent colour">Accent colour</FieldLabel>

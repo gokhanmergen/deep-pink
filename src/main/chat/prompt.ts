@@ -35,11 +35,21 @@ function webEnabledFor(thread: Thread, settings: Settings): boolean {
 }
 
 /** The thread's answer if it has one, otherwise the global setting. */
+/*
+ * Hidden means off, everywhere it is asked.
+ *
+ * The switch could have been made to hide the controls only, and then a
+ * reader who had once turned charts on would keep getting them out of an app
+ * that no longer admits charts exist. A feature you cannot see and cannot
+ * turn off is worse than one you can see.
+ */
 export function chartsEnabledFor(thread: Thread, settings: Settings): boolean {
+  if (settings.hideExperimental) return false
   return thread.config.chartsEnabled ?? settings.chartsEnabled
 }
 
 export function docsEnabledFor(thread: Thread, settings: Settings): boolean {
+  if (settings.hideExperimental) return false
   return thread.config.docsEnabled ?? settings.docsEnabled
 }
 
@@ -206,7 +216,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
    * After the tools segment, which is not system text at all: `systemText`
    * below drops it, so this is genuinely the last thing the model reads.
    */
-  if (settings.keyPointEnabled && settings.keyPointSource === 'self') {
+  if (!settings.hideExperimental && settings.keyPointEnabled && settings.keyPointSource === 'self') {
     push({
       id: 'keyPoint',
       source: 'keyPoint',

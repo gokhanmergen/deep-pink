@@ -5,12 +5,35 @@ import { hasApiKey } from './secrets'
 
 const KEY = 'settings'
 
+/**
+ * Whether an install was already using something experimental.
+ *
+ * `hideExperimental` arrives switched on, which is right for somebody opening
+ * the app for the first time and wrong for everybody already here: it would
+ * reach in and turn off a bucket they sync to and a web search they rely on,
+ * for the crime of upgrading. So an install that had already switched one of
+ * these on is not hiding anything — it has seen them and decided.
+ *
+ * Read from what is stored rather than from the merged result, because the
+ * question is what somebody chose, and a default is not a choice.
+ */
+function alreadyExperimenting(stored: Partial<Settings>): boolean {
+  return Boolean(
+    stored.chartsEnabled ||
+      stored.docsEnabled ||
+      stored.keyPointEnabled ||
+      stored.web?.enabled ||
+      stored.sendAppAttribution === false
+  )
+}
+
 /** Stored settings merged over defaults, so new options appear on upgrade. */
 export function loadSettings(): Settings {
   const stored = getSetting<Partial<Settings>>(KEY, {})
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
+    hideExperimental: stored.hideExperimental ?? !alreadyExperimenting(stored),
     // Always reflect reality rather than whatever was persisted.
     hasApiKey: hasApiKey(),
     defaultProviderRouting: {
