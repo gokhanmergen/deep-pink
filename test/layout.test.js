@@ -831,7 +831,11 @@ suite(
      */
     const beforeBanner = await run(`(() => {
       const c = document.getElementById('composer-input')
-      return c ? Math.round(c.getBoundingClientRect().bottom) : null
+      const t = document.querySelector('.transcript')
+      return {
+        composerBottom: c ? Math.round(c.getBoundingClientRect().bottom) : null,
+        transcriptHeight: t ? Math.round(t.getBoundingClientRect().height) : null
+      }
     })()`)
 
     win.webContents.send('updates:changed', {
@@ -850,10 +854,15 @@ suite(
       const line = document.querySelector('.updateline')
       const c = document.getElementById('composer-input')
       const cr = c?.getBoundingClientRect()
+      const app = document.querySelector('.app')?.getBoundingClientRect()
+      const t = document.querySelector('.transcript')
       return {
         shown: !!line,
         says: line?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
         height: line ? Math.round(line.getBoundingClientRect().height) : 0,
+        lineBottom: line ? Math.round(line.getBoundingClientRect().bottom) : null,
+        appTop: app ? Math.round(app.top) : null,
+        transcriptHeight: t ? Math.round(t.getBoundingClientRect().height) : null,
         composerBottom: cr ? Math.round(cr.bottom) : null,
         viewport: window.innerHeight,
         overflows: document.body.scrollHeight > window.innerHeight + 4
@@ -875,10 +884,37 @@ suite(
 
     check('the page still does not overflow the viewport', !withBanner.overflows, withBanner)
     check('the composer is still on screen', withBanner.composerBottom <= withBanner.viewport + 1, withBanner)
+    /*
+     * Where the height comes from.
+     *
+     * This used to say the composer "moved up by exactly the line", and it
+     * never ran against a line that was actually on screen until the two
+     * sections stopped sharing a version — at which point it failed on a
+     * layout doing the right thing. The composer is anchored to the bottom of
+     * the app, and the app now starts where the line ends, so the composer
+     * does not move at all: the transcript gives up the height instead.
+     * Measured: the line 43px, the app starting at 43, the transcript 731 to
+     * 688, the composer at 837 both times.
+     *
+     * The bug this section exists for went the other way — the composer
+     * pushed down past the bottom of a window that clips — so "it did not
+     * move" is the thing worth pinning, and the other two say why.
+     */
     check(
-      'and moved up by exactly the line it made room for',
-      beforeBanner !== null &&
-        Math.abs(beforeBanner - withBanner.composerBottom - withBanner.height) <= 2,
+      'and did not move, because the line took its height from the app',
+      beforeBanner.composerBottom !== null &&
+        Math.abs(beforeBanner.composerBottom - withBanner.composerBottom) <= 2,
+      { beforeBanner, withBanner }
+    )
+    check(
+      'which starts where the line ends',
+      withBanner.lineBottom !== null && Math.abs(withBanner.appTop - withBanner.lineBottom) <= 1,
+      withBanner
+    )
+    check(
+      'and the transcript is what gave the room up',
+      beforeBanner.transcriptHeight !== null &&
+        Math.abs(beforeBanner.transcriptHeight - withBanner.transcriptHeight - withBanner.height) <= 2,
       { beforeBanner, withBanner }
     )
 
