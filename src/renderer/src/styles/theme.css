@@ -3582,7 +3582,16 @@ svg.lucide {
   background: var(--red);
 }
 
-.toast {
+/* ------------------------------------------------------------------ *
+ * Toasts
+ *
+ * A stack in the corner, in the same materials as the sidebar: the elevated
+ * surface, the hairline, the app's radius. They sit back from one another so
+ * a pile reads as a pile rather than as one tall box, and each carries the
+ * only two controls it needs — what it says, and a way to be rid of it.
+ * ------------------------------------------------------------------ */
+
+.toaster {
   position: fixed;
   /* Clear of the composer, which grows with attachments and warnings. Its
      height is published by the composer itself, so a toast can never land on
@@ -3594,28 +3603,152 @@ svg.lucide {
      confirmation of a thing you just did and already know. The corner is out of
      the way of the text and still inside the sweep of where you were looking. */
   right: var(--s5);
+  z-index: 200;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(70vw, 420px);
+  /* The stack is a surface to point at, not a wall between you and the app:
+     only the toasts themselves take the pointer. */
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 9px 10px 9px 12px;
+  font-size: var(--t-ui);
+  color: var(--text);
+  box-shadow: var(--shadow-2), var(--lift);
+  animation: toast-in var(--settle) cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Set by the stack: 0 is the newest. The ones behind step back and dim,
+     which is what makes three of these read as three rather than as one
+     paragraph with lines in it. */
+  transform: scale(calc(1 - var(--depth, 0) * 0.025));
+  opacity: calc(1 - var(--depth, 0) * 0.18);
+  transition: transform 0.16s ease, opacity 0.16s ease;
+}
+
+/* Under the pointer the pile flattens out, because that is when you are
+   reading them rather than glancing at them. */
+.toaster:hover .toast {
+  transform: none;
+  opacity: 1;
+}
+
+/* Rises in, and only from a transform the stack does not own — the resting
+   position is set per toast by `--depth`, so the entry animates opacity and
+   a nudge and then hands the transform back. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+.toast__icon {
+  flex: none;
+  display: flex;
+  color: var(--text-dim);
+}
+
+.toast__message {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+/* Said more than once. A count rather than a second copy of the sentence. */
+.toast__count {
+  flex: none;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+}
+
+.toast__close {
+  flex: none;
+  display: flex;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.toast__close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.toast[data-tone='error'] {
+  border-left-color: var(--red);
+}
+
+.toast[data-tone='error'] .toast__icon {
+  color: var(--red);
+}
+
+/*
+ * Not a toast: a standing notice.
+ *
+ * It says there is no API key, which is true until somebody fixes it rather
+ * than for four seconds — so it does not stack, count, expire or close. It
+ * borrowed the toast's class for its looks and broke the day the toast became
+ * a stack with its position on the stack rather than on itself.
+ */
+.notice {
+  position: fixed;
+  top: 18px;
+  right: var(--s5);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 70vw;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-left: 2px solid var(--accent);
   border-radius: var(--radius);
   padding: var(--s2) var(--s4);
   font-size: var(--t-ui);
+  color: var(--text);
   box-shadow: var(--shadow-2), var(--lift);
-  animation: toast-in var(--settle) cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 200;
-  max-width: 70vw;
 }
 
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
+/* The ones past the three that are drawn. Counted rather than stacked, and
+   the count is the button that clears the lot. */
+.toaster__more {
+  pointer-events: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
 }
 
-.toast[data-tone='error'] {
-  border-left-color: var(--red);
-  color: var(--red);
+.toaster__more:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 /* One answer may contain several parts — replies either side of tool work. */

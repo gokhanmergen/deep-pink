@@ -715,6 +715,76 @@ suite(
       ink.clipped
     )
 
+    section('toasts stack, count themselves, and can be sent away')
+    /*
+     * The store announces one at a time, and it used to be drawn that way:
+     * the next confirmation replaced the last one mid-sentence, nothing said
+     * twice was ever counted, and the only way to be rid of an error you had
+     * read was to wait out its timer.
+     *
+     * The copy button on the update line is the cheapest way to raise a real
+     * one, so that is what these press.
+     */
+    win.webContents.send('updates:changed', {
+      currentVersion: '0.0.1',
+      latestVersion: '9.9.9',
+      releaseUrl: 'https://example.invalid/releases',
+      checkedAt: Date.now(),
+      installKind: 'pacman',
+      canSelfInstall: false,
+      readyToInstall: false,
+      error: null
+    })
+    await settle(500)
+
+    await run(`document.querySelector('.updateline__cmd')?.click()`)
+    await settle(120)
+    await run(`document.querySelector('.updateline__cmd')?.click()`)
+    await settle(300)
+
+    const stack = await run(`(() => {
+      const box = document.querySelector('.toaster')
+      if (!box) return { shown: false }
+      const toasts = [...box.querySelectorAll('.toast')]
+      return {
+        shown: true,
+        rows: toasts.length,
+        count: toasts[0]?.querySelector('.toast__count')?.textContent ?? null,
+        closes: toasts.filter((t) => t.querySelector('.toast__close')).length
+      }
+    })()`)
+
+    // Said twice, drawn once, with the number — rather than two copies of the
+    // same sentence, or the second quietly replacing the first.
+    check('the same message twice is one row', stack.shown && stack.rows === 1, stack)
+    check('carrying the count', stack.count === '2', stack)
+    check('and a way to dismiss it', stack.closes === 1, stack)
+
+    await run(`document.querySelector('.toaster .toast__close')?.click()`)
+    await settle(300)
+    check(
+      'which empties the stack',
+      (await run(`document.querySelectorAll('.toaster .toast').length`)) === 0
+    )
+
+    /*
+     * The standing "no API key" notice is not a toast and must not be drawn
+     * as one. It shared the class until the toast became a stack, at which
+     * point it lost the positioning it was borrowing and fell into the page.
+     */
+    const notice = await run(`(() => {
+      const n = document.querySelector('.notice')
+      if (!n) return null
+      const r = n.getBoundingClientRect()
+      return { top: Math.round(r.top), fromRight: Math.round(window.innerWidth - r.right) }
+    })()`)
+    if (notice) {
+      check('the standing notice keeps its own corner', notice.top < 40 && notice.fromRight < 40, notice)
+    }
+
+    await run(`document.querySelector('.updateline__close')?.click()`)
+    await settle(300)
+
     section('the update line takes its height out of the app, not the window')
     /*
      * `#root` held one child at `height: 100%`. The update line is a second,

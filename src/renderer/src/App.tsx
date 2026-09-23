@@ -20,6 +20,7 @@ import { ImageViewer } from './components/ImageViewer'
 import { Logo } from './components/Logo'
 import { watchPointer } from './codeblocks'
 import { UpdateBanner } from './components/UpdateBanner'
+import { Toaster } from './components/Toaster'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -39,7 +40,6 @@ export function App(): React.JSX.Element {
   const settings = useStore((s) => s.settings)
   const overlay = useStore((s) => s.overlay)
   const sidebarVisible = useStore((s) => s.sidebarVisible)
-  const toast = useStore((s) => s.toast)
   const openSettings = useStore((s) => s.openSettings)
   const closeOverlay = useStore((s) => s.closeOverlay)
   const init = useStore((s) => s.init)
@@ -212,7 +212,7 @@ export function App(): React.JSX.Element {
       </div>
 
       {!settings.hasApiKey && overlay !== 'settings' && (
-        <div className="toast" style={{ bottom: 'auto', top: 18 }}>
+        <div className="notice">
           No OpenRouter API key yet —{' '}
           <button
             className="btn btn--ghost"
@@ -244,11 +244,7 @@ export function App(): React.JSX.Element {
       <Dialog />
       <ImageViewer />
 
-      {toast && (
-        <div className="toast" data-tone={toast.tone}>
-          {toast.message}
-        </div>
-      )}
+      <Toaster />
     </>
   )
 }

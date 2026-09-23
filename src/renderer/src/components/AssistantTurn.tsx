@@ -246,6 +246,29 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
  * "Ran x" or "x failed", because both are how it would be said aloud, and the
  * failing one puts the word that matters where the eye already is.
  */
+/**
+ * A search OpenRouter ran, put where a search belongs.
+ *
+ * The `:online` plugin searches before it answers, but says what it read
+ * while the answer is already streaming — so the record of it is written
+ * after the reply it informed, and the transcript showed the answer first
+ * and the sources at the bottom. Read in that order it looks like an
+ * afterthought rather than the thing the answer came from.
+ *
+ * A search with no call of its own can only have come from the plugin, and
+ * can only have happened before the words. So it is drawn where a real tool
+ * round would have been: after the thinking, before the reply. The stored
+ * order is untouched — this is about reading, and the database is right that
+ * it learned about the search last.
+ */
+function inReadingOrder(messages: Message[]): Message[] {
+  const fromPlugin = (m: Message): boolean =>
+    m.role === 'tool' && Boolean(m.toolResult?.toolCallId.startsWith('openrouter-search-'))
+
+  if (!messages.some(fromPlugin)) return messages
+  return [...messages.filter(fromPlugin), ...messages.filter((m) => !fromPlugin(m))]
+}
+
 function ToolStep({
   message,
   args
@@ -513,7 +536,7 @@ export const AssistantTurn = memo(function AssistantTurn({
             </div>
           </div>
 
-          {messages.map((message) => {
+          {inReadingOrder(messages).map((message) => {
             if (message.role === 'tool') {
               return (
                 <ToolStep

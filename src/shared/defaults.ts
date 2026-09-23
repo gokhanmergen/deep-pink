@@ -222,13 +222,26 @@ export function clampKeyPoints(most: number): number {
 export const DEFAULT_SETTINGS: Settings = {
   hasApiKey: false,
   defaultModel: 'anthropic/claude-sonnet-4.5',
-  titleModel: 'google/gemma-3-12b-it',
+  /*
+   * Named by a model with somewhere to fall back to.
+   *
+   * This was gemma-3-12b-it, which is cheap and writes a fine title and is
+   * served by exactly one provider. When that provider rate-limits — "google/
+   * gemma-3-12b-it is temporarily rate-limited upstream", measured 2026-09-22
+   * — OpenRouter has nobody to route to, so every attempt fails together and
+   * the thread keeps no name. Retrying does not help against a model that is
+   * out; the fix is a model that is served by more than one machine.
+   *
+   * gemini-2.5-flash-lite has five providers at twice the price of a title,
+   * which is a hundredth of a cent either way.
+   */
+  titleModel: 'google/gemini-2.5-flash-lite',
   titleGenerationEnabled: true,
   // Off: it is a second request for every conversation, and the name it writes
   // is replaced a moment later. Worth it to somebody who watches the list while
   // a reply arrives, which is why it is offered rather than assumed.
   titlePregenEnabled: false,
-  titlePregenModel: 'google/gemma-3-12b-it',
+  titlePregenModel: 'google/gemini-2.5-flash-lite',
   titlePrompt: DEFAULT_TITLE_PROMPT,
   baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
   includeDateTimeInPrompt: false,

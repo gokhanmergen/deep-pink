@@ -1040,10 +1040,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     </button>
                   </div>
                 )}
-                <span className="field__hint">
-                  The only thing that can decrypt this bucket. Nobody can recover it for you.
-                  Write it down.
-                </span>
               </div>
             ) : (
               <div className="field">
@@ -1606,9 +1602,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
 
         {tab === 'keys' && (
           <>
-            <p className="field__hint" style={{ marginBottom: 14 }}>
-              Click a shortcut, then press the keys you want. Escape cancels.
-            </p>
             {KEYBIND_GROUPS.map((group) => (
               <Fragment key={group.title}>
                 <div className="section-title">{group.title}</div>
