@@ -147,6 +147,14 @@ function message(overrides) {
     role: 'user',
     content: '',
     reasoning: null,
+    // The fields a row read from the database always carries. Left out, a
+    // hand-built message is a shape the app never actually sees, and a test
+    // built on one proves something about a shape that does not exist — or,
+    // as here, throws on `attachments.length` inside the transcript.
+    reasoningChars: 0,
+    hasPromptSnapshot: false,
+    keyPoints: [],
+    attachments: [],
     createdAt: 0,
     model: null,
     provider: null,

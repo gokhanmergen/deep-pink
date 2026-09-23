@@ -928,6 +928,18 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
       created: 0
     }
   ])
+  /*
+   * And the marker that says this catalogue was gathered by this build.
+   *
+   * The cache is keyed on the version that wrote it, so that a release which
+   * changes what the app asks `/models` for re-reads it once instead of
+   * living with six hours of the old shape. A cache seeded without the marker
+   * is therefore a stale one: `listModels` goes to the network, gets the real
+   * catalogue, and `test/ctx` is not in it — so the thread had no context
+   * limit and nothing ever looked full.
+   */
+  repo.setCache('models:gatheredBy', require('../package.json').version)
+
   const compactionSettings = {
     ...DEFAULT_SETTINGS,
     defaultModel: 'test/ctx',

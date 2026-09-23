@@ -11,8 +11,15 @@ const { suite, settle } = require('./support/harness')
 suite(
   'sync — setting it up',
   async ({ check, section, subject, getWindow }) => {
-    const { getDb } = subject
+    const { getDb, repo } = subject
     getDb()
+
+    /*
+     * Sync is experimental, and experimental is hidden by default — so with
+     * nothing said this suite opened Settings and looked for a section the
+     * app had put away. Seeded before the renderer asks for its settings.
+     */
+    repo.setSetting('settings', { hideExperimental: false })
 
     const win = getWindow()
     check('the window exists', Boolean(win))

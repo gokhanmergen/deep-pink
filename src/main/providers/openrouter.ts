@@ -106,7 +106,29 @@ export async function listModels(force = false): Promise<OpenRouterModel[]> {
     }
   }
 
-  const res = await fetch(`${BASE}/models`)
+  /*
+   * A refusal and a machine with no network are the same answer here.
+   *
+   * Only the first had a fallback: a non-200 returned whatever was last
+   * cached, while a `fetch` that threw — offline, DNS gone, the laptop shut —
+   * went straight past it and took the catalogue with it. Which matters most
+   * on exactly the launch that re-reads it, because the cache is keyed on the
+   * version that gathered it: the first start after an update, with no
+   * network, had a full catalogue on disk and threw instead of reading it.
+   *
+   * Everything downstream treats "no catalogue" as "this model has no
+   * capabilities" — no context limit, no reasoning, no images — so the cost of
+   * getting this wrong is an app that quietly forgets what its models can do.
+   */
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/models`)
+  } catch (err) {
+    const stale = getCache<OpenRouterModel[]>('models', Number.MAX_SAFE_INTEGER)
+    if (stale) return stale
+    throw err
+  }
+
   if (!res.ok) {
     const stale = getCache<OpenRouterModel[]>('models', Number.MAX_SAFE_INTEGER)
     if (stale) return stale

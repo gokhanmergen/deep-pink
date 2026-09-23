@@ -31,7 +31,12 @@ export function isEmptyAssistantMessage(message: Message): boolean {
     // A reply can be a picture and nothing else, and a picture is not nothing.
     // Models that draw answer this way routinely — the words are the caption,
     // and there may be none.
-    !message.attachments.length &&
+    //
+    // Optional because this is asked of messages from more than one place: a
+    // row read from the database always has the array, and a turn assembled
+    // in flight or handed in by a caller may not. Throwing here takes the
+    // whole transcript down rather than mis-drawing one reply.
+    !message.attachments?.length &&
     !message.error &&
     message.status !== 'streaming'
   )

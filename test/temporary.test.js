@@ -58,9 +58,18 @@ suite(
         // The switch reads the same either way; what it says is in the styling.
         badgeOn: document.querySelector('.temp-badge')?.dataset.on ?? null,
         title: document.querySelector('.topbar__title')?.textContent ?? null,
-        // The one raised by an action, not the standing "no API key yet"
-        // banner, which is drawn as a toast and comes first in the document.
-        toast: document.querySelector('.toast[data-tone]')?.textContent ?? null
+        /*
+         * Every toast on screen, rather than the first one.
+         *
+         * The standing "no API key yet" notice has its own class and is not
+         * one of these.
+         *
+         * There used to be one slot, so "the toast" meant the newest thing
+         * said. They are a stack now, drawn oldest-first so the newest sits
+         * nearest the pointer, and a check reading only the first was reading
+         * whatever had been said several steps earlier.
+         */
+        toasts: [...document.querySelectorAll('.toaster .toast__message')].map((t) => t.textContent)
       }))()`)
 
     section('the chat you are in becomes the temporary one')
@@ -142,8 +151,8 @@ suite(
     check('it is not drawn as temporary either', refused.temporaryRows === 0, refused)
     check(
       'and the refusal is explained rather than silent',
-      (refused.toast ?? '').includes('Only a new chat'),
-      refused.toast
+      (refused.toasts ?? []).some((t) => t.includes('Only a new chat')),
+      refused.toasts
     )
 
     section('keeping one instead')

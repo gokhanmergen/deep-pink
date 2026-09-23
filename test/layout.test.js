@@ -18,6 +18,29 @@ suite(
     const { getDb, repo } = subject
     getDb()
 
+    /*
+     * The workshop out, because most of what this suite measures is in it.
+     *
+     * Attaching a repository, the MCP button, the update line and the
+     * experimental marks themselves are all behind `hideExperimental`, which
+     * defaults to on — so with nothing said, this suite measured the geometry
+     * of four things that were not on screen. Seeded before the renderer asks
+     * for its settings, the way the chart suite does.
+     */
+    repo.setSetting('settings', { hideExperimental: false })
+
+    /*
+     * And no real update check, because this suite injects one.
+     *
+     * The banner shows whatever it was told last, which is the point of it —
+     * so a background check finishing while the injected status is on screen
+     * replaces "9.9.9 is out" with the truth and the line goes. On this
+     * machine the check is slow enough that it never landed inside the test's
+     * window; on a runner with a cold resolver it does, and the assertion
+     * failed on something that is working exactly as intended.
+     */
+    repo.setSetting('updates', { check: false, autoInstall: false })
+
     // Enough conversation that the transcript must scroll.
     const thread = repo.createThread('Layout fixture')
     for (let i = 0; i < 25; i++) {
@@ -928,6 +951,14 @@ suite(
     })()`)
     const declared = require('../package.json').version
 
+
+    check('About shows a version at all', typeof about === 'string' && about.length > 0, about)
+    check(
+      'and it matches package.json rather than a written-down one',
+      (about ?? '').includes(`Deep Pink ${declared}`),
+      { about, declared }
+    )
+
     /*
      * The footer, with and without the workshop.
      *
@@ -952,29 +983,26 @@ suite(
       }
     })`
 
-    await run(`window.deepPink.settings.save({ hideExperimental: false }), true`)
-    await settle(600)
-    getWindow().webContents.reload()
-    await settle(6000)
     const three = await run(padding)
     check('three entries, all of them', three.length === 3, three)
     check('sit where they always did', three.every((b) => b.before < 12), three)
 
+    /*
+     * Reloaded rather than merely saved. `settings.save` writes through the
+     * preload straight to the main process; the renderer's own copy is only
+     * updated by the store action the panel calls, so a window told this way
+     * keeps drawing the footer it already had.
+     */
     await run(`window.deepPink.settings.save({ hideExperimental: true }), true`)
-    await settle(900)
+    await settle(700)
+    getWindow().webContents.reload()
+    await settle(6000)
     const two = await run(padding)
     check('two entries', two.length === 2, two)
     check(
       'are centred in the halves they now have',
       two.every((b) => Math.abs(b.before - b.after) <= 1 && b.before > 12),
       two
-    )
-
-    check('About shows a version at all', typeof about === 'string' && about.length > 0, about)
-    check(
-      'and it matches package.json rather than a written-down one',
-      (about ?? '').includes(`Deep Pink ${declared}`),
-      { about, declared }
     )
   },
   { bootApp: true }
