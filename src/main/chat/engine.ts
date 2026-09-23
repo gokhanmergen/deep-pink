@@ -9,6 +9,7 @@ import type {
   Usage
 } from '@shared/types'
 import { takeKeyPointMarkers } from '@shared/keyPointPrompt'
+import { LOAD_SKILL, type SkillId } from '@shared/skills'
 import { keyPointCeiling } from '@shared/defaults'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
@@ -24,12 +25,13 @@ import {
   type StreamResult
 } from '../providers/openrouter'
 import { runWebFetch, runWebSearch } from '../tools/web'
+import { runLoadSkill } from '../tools/skills'
 import { REPO_TOOL_NAMES } from '../tools/repo'
 import { ensureTree, runRepoOp } from '../tools/repoService'
 import { nativeImage } from 'electron'
 import * as attachments from '../attachments'
 import { MAX_ATTACHMENTS_PER_MESSAGE } from '../attachments'
-import { assembleContext, estimateTokens } from './prompt'
+import { assembleContext, estimateTokens, skillsFor } from './prompt'
 
 export type Emit = (event: StreamEvent) => void
 
@@ -553,7 +555,8 @@ async function executeToolCall(
   call: ToolCall,
   settings: Settings,
   emit: Emit,
-  repoPaths: string[] = []
+  repoPaths: string[] = [],
+  skills: SkillId[] = []
 ): Promise<ToolResult> {
   const startedAt = Date.now()
 
@@ -572,7 +575,7 @@ async function executeToolCall(
 
   const fail = (
     message: string,
-    source: 'web' | 'mcp' | 'repo',
+    source: 'web' | 'mcp' | 'repo' | 'skill',
     serverId: string | null
   ): ToolResult => {
     repo.recordToolInvocation({
@@ -594,6 +597,33 @@ async function executeToolCall(
   }
 
   try {
+    /*
+     * A skill's instructions, which is a read from a constant rather than a
+     * call out to anything — but it is a tool round all the same, and it is
+     * the one the transcript most wants to show: "Ran load_skill" is the
+     * model saying out loud that it decided a chart was worth drawing.
+     */
+    if (call.name === LOAD_SKILL) {
+      const content = runLoadSkill(args, skills)
+      repo.recordToolInvocation({
+        threadId,
+        messageId: assistantMessageId,
+        source: 'skill',
+        serverId: null,
+        toolName: call.name,
+        isError: false,
+        durationMs: Date.now() - startedAt,
+        resultChars: content.length
+      })
+      return {
+        toolCallId: call.id,
+        name: call.name,
+        content,
+        isError: false,
+        durationMs: Date.now() - startedAt
+      }
+    }
+
     if (REPO_TOOL_NAMES.has(call.name)) {
       // On a worker thread: a fruitless search reads every file, and doing that
       // here would stall streaming and the window with it.
@@ -676,7 +706,13 @@ async function executeToolCall(
   } catch (err) {
     return fail(
       `Tool failed: ${err instanceof Error ? err.message : String(err)}`,
-      REPO_TOOL_NAMES.has(call.name) ? 'repo' : call.name.startsWith('web_') ? 'web' : 'mcp',
+      REPO_TOOL_NAMES.has(call.name)
+        ? 'repo'
+        : call.name === LOAD_SKILL
+          ? 'skill'
+          : call.name.startsWith('web_')
+            ? 'web'
+            : 'mcp',
       null
     )
   }
@@ -1171,7 +1207,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
           call,
           settings,
           emit,
-          thread.config.repoPaths ?? []
+          thread.config.repoPaths ?? [],
+          skillsFor(thread, settings)
         )
         const toolMessage = repo.insertMessage({
           threadId: thread.id,

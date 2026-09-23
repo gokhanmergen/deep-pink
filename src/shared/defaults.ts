@@ -266,6 +266,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideExperimental: true,
   chartsEnabled: false,
   docsEnabled: false,
+  skillsOnDemand: true,
   keyPointEnabled: false,
   keyPointSource: 'jev',
   /*

@@ -1,13 +1,14 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
-import { CHARTS_PROMPT } from '@shared/charts'
-import { DOCS_PROMPT } from '@shared/docs'
 import { keyPointPrompt } from '@shared/keyPointPrompt'
+import { SKILLS, skillCatalogue, type SkillId } from '@shared/skills'
 import { keyPointCeiling } from '@shared/defaults'
 import type { ToolParam } from '../providers/openrouter'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
 import { REPO_TOOLS, repoPromptSegment } from '../tools/repo'
 import { cachedTree } from '../tools/repoService'
+import { knownModel } from '../providers/openrouter'
+import { loadSkillTool } from '../tools/skills'
 
 /**
  * Everything that enters the model's context is assembled here, as a list of
@@ -55,6 +56,45 @@ export function docsEnabledFor(thread: Thread, settings: Settings): boolean {
 
 export function activeServerIdsFor(thread: Thread): string[] | null {
   return thread.config.enabledMcpServers
+}
+
+/**
+ * Which skills this conversation may use, in the order they are catalogued.
+ *
+ * Each still answers to its own switch — a skill is not something the model
+ * may turn on for itself, because the app only renders a `dp-chart` block
+ * when charts are on and a model handed the syntax regardless would write
+ * JSON into a reply that shows it as JSON.
+ *
+ * What changed is the cost of leaving one on: a line rather than a page. See
+ * `SKILLS`.
+ */
+export function skillsFor(thread: Thread, settings: Settings): SkillId[] {
+  const on: Record<SkillId, boolean> = {
+    charts: chartsEnabledFor(thread, settings),
+    documents: docsEnabledFor(thread, settings)
+  }
+  return SKILLS.filter((skill) => on[skill.id]).map((skill) => skill.id)
+}
+
+/**
+ * Whether this conversation's model can ask for a skill at all.
+ *
+ * Asking is a tool call, and a model that cannot call tools does not ignore
+ * the tool politely — it never sees the instructions, so charts stay
+ * undrawable in a thread where charts are switched on. That is a worse
+ * failure than the tokens on-demand loading exists to save, so the skills are
+ * simply held open for those models and nothing is lost but the judgement,
+ * which they were not going to be asked for.
+ *
+ * An unknown model — a first launch, an offline start, an id no longer in the
+ * catalogue — is treated as capable. Most models are, and being wrong this
+ * way costs a round trip the model declines to make; being wrong the other
+ * way costs the whole feature.
+ */
+function askableBy(thread: Thread, settings: Settings): boolean {
+  const info = knownModel(thread.config.model ?? settings.defaultModel)
+  return info === null || info.supportsTools
 }
 
 export function assembleContext(thread: Thread, settings: Settings): AssembledContext {
@@ -106,30 +146,39 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
     })
   }
 
-  // Ahead of the tool and web segments because it shapes how an answer is
-  // written, not what the model can go and do.
-  if (chartsEnabledFor(thread, settings)) {
-    push({
-      id: 'charts',
-      source: 'charts',
-      label: 'Chart syntax',
-      origin: 'Deep Pink',
-      text: CHARTS_PROMPT,
-      removable: true
-    })
-  }
+  /*
+   * Ahead of the tool and web segments because it shapes how an answer is
+   * written, not what the model can go and do.
+   *
+   * On demand, this is a line per skill and the model asks for the rest when
+   * it decides one applies. Held open, it is the whole instruction text for
+   * every skill on every turn — which is what this used to be, and is kept
+   * for anybody who would rather pay the tokens than the round trip.
+   */
+  const skills = skillsFor(thread, settings)
+  const available = SKILLS.filter((skill) => skills.includes(skill.id))
+  const onDemand = settings.skillsOnDemand && askableBy(thread, settings)
 
-  // Beside charts for the same reason charts sits where it does: both say what
-  // a reply may *be*, rather than what the model may go and do.
-  if (docsEnabledFor(thread, settings)) {
+  if (available.length && onDemand) {
     push({
-      id: 'docs',
-      source: 'docs',
-      label: 'Multiple documents',
+      id: 'skills',
+      source: 'skills',
+      label: `Skills (${available.length})`,
       origin: 'Deep Pink',
-      text: DOCS_PROMPT,
+      text: skillCatalogue(available),
       removable: true
     })
+  } else {
+    for (const skill of available) {
+      push({
+        id: skill.id === 'charts' ? 'charts' : 'docs',
+        source: skill.id === 'charts' ? 'charts' : 'docs',
+        label: skill.id === 'charts' ? 'Chart syntax' : 'Multiple documents',
+        origin: 'Deep Pink',
+        text: skill.instructions,
+        removable: true
+      })
+    }
   }
 
   const useWeb = webEnabledFor(thread, settings)
@@ -178,6 +227,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
   // system text, but they occupy context all the same, so they are listed and
   // can be switched off here too.
   const candidateTools: ToolParam[] = [
+    ...(available.length && onDemand ? [loadSkillTool(available)] : []),
     ...(useWeb && settings.web.engine !== 'openrouter' ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL] : []),
     ...(repos.length ? REPO_TOOLS : []),
     ...mcp.getToolParams(activeServers)

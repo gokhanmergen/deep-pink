@@ -54,6 +54,7 @@ export type SettingsTab =
   | 'models'
   | 'prompts'
   | 'web'
+  | 'skills'
   | 'charts'
   | 'docs'
   | 'keyPoint'

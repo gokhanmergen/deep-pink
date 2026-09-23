@@ -1277,7 +1277,7 @@ export function recordUsage(
 export function recordToolInvocation(input: {
   threadId: string
   messageId: string
-  source: 'mcp' | 'web' | 'repo'
+  source: 'mcp' | 'web' | 'repo' | 'skill'
   serverId: string | null
   toolName: string
   isError: boolean

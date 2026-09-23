@@ -171,6 +171,23 @@ export async function listModels(force = false): Promise<OpenRouterModel[]> {
 }
 
 /**
+ * What is already known about a model, without going and asking.
+ *
+ * The catalogue is fetched and cached, and the fetch is asynchronous — but
+ * assembling a prompt is not, and cannot become so without dragging every
+ * caller with it. This answers from the memo or from the database, and
+ * answers `null` rather than waiting when neither has it.
+ *
+ * `null` means "not known", never "not capable": a caller must decide what to
+ * do with an unanswered question, and treating silence as a "no" is how a
+ * first launch would quietly lose a feature.
+ */
+export function knownModel(id: string): OpenRouterModel | null {
+  const from = parsed?.models ?? getCache<OpenRouterModel[]>('models', Number.MAX_SAFE_INTEGER)
+  return from?.find((model) => model.id === id) ?? null
+}
+
+/**
  * The providers actually serving a model, with their individual pricing,
  * context limits and quantisation. This is what the provider picker shows.
  */

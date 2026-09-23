@@ -22,7 +22,8 @@ import {
 const SOURCE_LABEL: Record<string, string> = {
   repo: 'Attached repository',
   web: 'Web search and fetch',
-  mcp: 'MCP servers'
+  mcp: 'MCP servers',
+  skill: 'Skills loaded'
 }
 
 /** What tools pulled into the context, which is the part that costs money. */

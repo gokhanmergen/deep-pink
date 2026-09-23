@@ -13,6 +13,7 @@ import {
   Layers,
   MessageSquareText,
   Palette,
+  Sparkles,
   Cpu,
   Undo2,
   X
@@ -35,6 +36,7 @@ import type {
   SyncDirection,
   SyncScopes
 } from '@shared/types'
+import { SKILLS, skillCatalogue } from '@shared/skills'
 import { CHARTS_PROMPT } from '@shared/charts'
 import { DOCS_PROMPT } from '@shared/docs'
 
@@ -64,6 +66,7 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     title: 'Capabilities',
     tabs: [
       { id: 'web', label: 'Web access', icon: <Globe {...ICON} />, experimental: true },
+      { id: 'skills', label: 'Skills', icon: <Sparkles {...ICON} />, experimental: true },
       { id: 'charts', label: 'Charts', icon: <BarChart3 {...ICON} />, experimental: true },
       { id: 'docs', label: 'Documents', icon: <FileText {...ICON} />, experimental: true },
       { id: 'keyPoint', label: 'Key point', icon: <Highlighter {...ICON} />, experimental: true },
@@ -776,6 +779,98 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           </>
         )}
 
+        {tab === 'skills' && (
+          <>
+            <div className="section-title">
+              Skills
+              <Experimental />
+            </div>
+            <p className="field__hint">
+              Charts and documents each need a few hundred tokens of syntax before a model can
+              produce one. That text used to sit in the system prompt of every turn for as long as
+              the feature was switched on — which is why the only way to use them was to turn one
+              on when you wanted it and off when you did not. A model with a page of chart grammar
+              in front of it draws charts; with none it cannot draw one where a chart is obviously
+              right. Neither of those is the model judging the question.
+            </p>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.skillsOnDemand}
+                onChange={(event) => void saveSettings({ skillsOnDemand: event.target.checked })}
+              />
+              <span>Let the model ask for a skill when it wants one</span>
+              <Revert path="skillsOnDemand" what="how skills load" />
+            </label>
+            <p className="field__hint">
+              {settings.skillsOnDemand
+                ? 'The prompt carries one line per skill saying when it is worth having. The model calls load_skill for the rest if it decides this is one of those times, which costs a round trip and shows in the transcript as a step you can open.'
+                : 'Every switched-on skill has its full instructions in front of the model on every turn. No round trip, and no decision either.'}
+            </p>
+
+            <div className="section-title">What it can ask for</div>
+            <p className="field__hint">
+              Each still answers to its own switch — a skill the app will not render is one the
+              model is told to answer without. These are the lines it reads.
+            </p>
+            {SKILLS.map((skill) => {
+              const on = skill.id === 'charts' ? settings.chartsEnabled : settings.docsEnabled
+              return (
+                <div className="field" key={skill.id}>
+                  <span className="field__label">
+                    <code>{skill.id}</code>
+                    {!on && <span className="chip"> off</span>}
+                  </span>
+                  <p className="field__hint">{skill.when}</p>
+                  <div className="row">
+                    <button
+                      className="btn btn--ghost"
+                      onClick={() => setTab(skill.id === 'charts' ? 'charts' : 'docs')}
+                      type="button"
+                    >
+                      {on ? 'Settings for it' : 'Turn it on'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+
+            {settings.skillsOnDemand && (
+              <details className="disclosure">
+                <summary className="disclosure__summary">
+                  <span className="chip">system prompt</span>
+                  <span>
+                    What the model is told — about{' '}
+                    {Math.ceil(
+                      skillCatalogue(
+                        SKILLS.filter((skill) =>
+                          skill.id === 'charts' ? settings.chartsEnabled : settings.docsEnabled
+                        )
+                      ).length / 4
+                    ).toLocaleString()}{' '}
+                    tokens per turn, against{' '}
+                    {Math.ceil(
+                      SKILLS.filter((skill) =>
+                        skill.id === 'charts' ? settings.chartsEnabled : settings.docsEnabled
+                      ).reduce((sum, skill) => sum + skill.instructions.length, 0) / 4
+                    ).toLocaleString()}{' '}
+                    held open
+                  </span>
+                </summary>
+                <div className="disclosure__content">
+                  <pre>
+                    {skillCatalogue(
+                      SKILLS.filter((skill) =>
+                        skill.id === 'charts' ? settings.chartsEnabled : settings.docsEnabled
+                      )
+                    ) || 'Nothing — no skill is switched on.'}
+                  </pre>
+                </div>
+              </details>
+            )}
+          </>
+        )}
+
         {tab === 'charts' && (
           <>
             <div className="section-title">
@@ -810,7 +905,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <span className="chip">system prompt</span>
                 <span>
                   What the model is told — about{' '}
-                  {Math.ceil(CHARTS_PROMPT.length / 4).toLocaleString()} tokens per turn
+                  {Math.ceil(CHARTS_PROMPT.length / 4).toLocaleString()} 
+                  {settings.skillsOnDemand
+                    ? 'tokens, and only once it asks'
+                    : 'tokens per turn'}
                 </span>
               </summary>
               <div className="disclosure__content">
@@ -941,7 +1039,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <span className="chip">system prompt</span>
                 <span>
                   What the model is told — about{' '}
-                  {Math.ceil(DOCS_PROMPT.length / 4).toLocaleString()} tokens per turn
+                  {Math.ceil(DOCS_PROMPT.length / 4).toLocaleString()} 
+                  {settings.skillsOnDemand
+                    ? 'tokens, and only once it asks'
+                    : 'tokens per turn'}
                 </span>
               </summary>
               <div className="disclosure__content">

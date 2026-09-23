@@ -17,6 +17,7 @@ const SOURCE_LABEL: Record<SystemPromptSegment['source'], string> = {
   datetime: 'Built-in',
   charts: 'Charts',
   docs: 'Documents',
+  skills: 'Skills',
   keyPoint: 'Key sentence'
 }
 

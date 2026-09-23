@@ -250,6 +250,8 @@ export type SystemPromptSource =
   | 'datetime'
   | 'charts'
   | 'docs'
+  /** The catalogue of what can be asked for, when skills load on demand. */
+  | 'skills'
   | 'keyPoint'
 
 export interface SystemPromptSegment {
@@ -586,6 +588,20 @@ export interface Settings {
   hideExperimental: boolean
   chartsEnabled: boolean
   docsEnabled: boolean
+  /**
+   * Whether a skill's instructions are fetched when the model wants them, or
+   * held open in the prompt from the first turn.
+   *
+   * On, which is the default: the prompt carries a line per skill saying when
+   * it earns its keep, and the model calls `load_skill` for the rest if it
+   * decides this is one of those times. Off: every enabled skill's full
+   * instructions are in front of the model on every turn, which is how this
+   * worked before and is a page of chart grammar in front of "what time is it
+   * in Tokyo". The trade is one round trip against those tokens — and against
+   * the model being unable to judge, because a prompt full of chart syntax is
+   * a prompt that has already decided.
+   */
+  skillsOnDemand: boolean
   /**
    * After a reply lands, asks a decision model which sentence matters most and
    * marks it. Off by default: it is a second request per reply, and a reader

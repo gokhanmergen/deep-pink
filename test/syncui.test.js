@@ -42,7 +42,7 @@ suite(
       .map((t) => t.textContent.trim())`)
     check(
       'the newer sections are marked experimental',
-      JSON.stringify(marked) === '["Web access","Charts","Documents","Key point","Sync"]',
+      JSON.stringify(marked) === '["Web access","Skills","Charts","Documents","Key point","Sync"]',
       marked
     )
     // The other half of the same claim, and the half worth having: the mark
