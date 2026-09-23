@@ -19,6 +19,7 @@ import { Dialog } from './components/Dialog'
 import { ImageViewer } from './components/ImageViewer'
 import { Logo } from './components/Logo'
 import { watchPointer } from './codeblocks'
+import { UpdateBanner } from './components/UpdateBanner'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -198,6 +199,13 @@ export function App(): React.JSX.Element {
 
   return (
     <>
+      {/*
+        * Above the app rather than inside it: this is about the app itself,
+        * not about the conversation, and a line across the top is the one
+        * place that reads as such without taking a corner from anything.
+        */}
+      <UpdateBanner />
+
       <div className="app" data-sidebar={sidebarVisible ? 'visible' : 'hidden'}>
         {sidebarVisible && <Sidebar />}
         <ChatView />

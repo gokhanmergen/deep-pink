@@ -3,7 +3,7 @@ import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
 import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
-import { registerIpc, startNaming, startSync } from './ipc'
+import { registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
@@ -149,6 +149,10 @@ app.whenReady().then(async () => {
   // looking while the app is open, rather than only now: a name lost to a
   // closed window or a blinked network used to wait for the next start.
   startNaming()
+
+  // And whether there is a newer one. A network round trip, so it waits until
+  // there is a window to tell.
+  startUpdateChecks()
 
   // Sync runs behind the window too: the first thing it does is a network
   // round trip, and nothing on screen should be waiting on it.

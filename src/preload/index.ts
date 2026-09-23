@@ -32,6 +32,7 @@ import type {
   ThreadStats,
   ThreadTotals
 } from '@shared/types'
+import type { UpdateConfig, UpdateStatus } from '@shared/updates'
 
 const api = {
   settings: {
@@ -262,6 +263,25 @@ const api = {
      */
     author: (modelId: string): Promise<string | null> =>
       ipcRenderer.invoke('icons:author', modelId)
+  },
+
+  /**
+   * Whether there is a newer Deep Pink, and what this copy can do about it.
+   *
+   * `onChanged` rather than polling: the first check happens behind the first
+   * paint, so the answer arrives after the window does.
+   */
+  updates: {
+    status: (): Promise<UpdateStatus> => ipcRenderer.invoke('updates:status'),
+    check: (): Promise<UpdateStatus> => ipcRenderer.invoke('updates:check'),
+    config: (): Promise<UpdateConfig> => ipcRenderer.invoke('updates:config'),
+    save: (patch: Partial<UpdateConfig>): Promise<UpdateConfig> =>
+      ipcRenderer.invoke('updates:save', patch),
+    onChanged: (fn: (status: UpdateStatus) => void): (() => void) => {
+      const handler = (_e: unknown, status: UpdateStatus): void => fn(status)
+      ipcRenderer.on('updates:changed', handler)
+      return () => ipcRenderer.removeListener('updates:changed', handler)
+    }
   },
 
   sync: {

@@ -352,10 +352,29 @@ button {
  * Shell
  * ------------------------------------------------------------------ */
 
+/*
+ * A column, so anything above the app takes its height out of the app's
+ * rather than out of the window's.
+ *
+ * `#root` used to hold one child at `height: 100%`. The update line is a
+ * second, and without this the two of them come to more than the viewport —
+ * which `body` clips, so the composer goes off the bottom and cannot be
+ * clicked. That is the bug this whole suite of layout checks exists for, and
+ * it is one sibling away at all times.
+ */
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-width, 268px) 1fr;
-  height: 100%;
+  /* Whatever is left, and `min-height: 0` so the transcript inside it can
+     scroll rather than growing the page — a flex child defaults to
+     `min-height: auto`, which is the same trap in a different place. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* With the sidebar hidden it is not rendered at all, so the grid must drop to a
@@ -4559,6 +4578,60 @@ svg.lucide {
  * row above the footer: what it is doing, or when it last did it, and a bar
  * while it is working. Red only when it has actually stopped.
  * ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ *
+ * The update line
+ *
+ * Across the top, because it is about the app rather than the conversation.
+ * Amber like everything else that is asking to be looked at rather than
+ * warning — nothing is wrong, there is simply a newer one.
+ * ------------------------------------------------------------------ */
+
+.updateline {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  background: var(--amber-dim);
+  border-bottom: 1px solid var(--amber-line);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.updateline__what {
+  flex: none;
+}
+
+/* The first thing to give way when the window is narrow: the command below is
+   the useful half, and this sentence is the part you can infer. */
+.updateline__how {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.updateline__cmd {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: copy;
+}
+
+.updateline__cmd:hover {
+  border-color: var(--accent-line);
+}
+
+.updateline__close {
+  margin-left: auto;
+  flex: none;
+}
 
 .syncline {
   display: block;

@@ -8,6 +8,7 @@ export { matchesBinding, parseBinding, formatBinding } from '@renderer/keybinds'
 export { landingPoint, tailHeight } from '@renderer/landing'
 export { fencedCode } from '@renderer/fences'
 export { matchesQuery, wordsOf } from '@renderer/modelSearch'
+export { isNewer, updateCommand, howToUpdate } from '@shared/updates'
 export { buildActions } from '@renderer/actions'
 export {
   isPlausibleMath,

@@ -21,6 +21,7 @@ import { ICON } from '../icons'
 import { useStore, type SettingsTab as Tab } from '../store'
 import { Overlay } from './Overlay'
 import { Experimental } from './Experimental'
+import { UpdateSettings } from './UpdateSettings'
 import { KEYBIND_GROUPS, formatBinding } from '../keybinds'
 import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '@shared/defaults'
 import { formatRelative, modelShortName } from '../format'
@@ -1866,6 +1867,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 </button>
               </div>
             </div>
+
+            <div className="section-title">Updates</div>
+            <UpdateSettings />
 
             <div className="section-title">About</div>
             <p className="dim" style={{ fontSize: 13, lineHeight: 1.6 }}>

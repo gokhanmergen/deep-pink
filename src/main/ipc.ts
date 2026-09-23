@@ -15,6 +15,7 @@ import type {
   Thread,
   ThreadConfig
 } from '@shared/types'
+import type { UpdateConfig } from '@shared/updates'
 import * as repo from './db/repo'
 import { dbPath } from './db/index'
 import * as mcp from './mcp/host'
@@ -23,6 +24,7 @@ import * as icons from './icons'
 import * as importer from './import/index'
 import * as exporter from './export/index'
 import * as sync from './sync/engine'
+import * as updates from './updates'
 import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
@@ -35,6 +37,7 @@ import { isEncryptionAvailable, setApiKey } from './secrets'
 const CHAT_EVENT = 'chat:event'
 const MCP_STATUS_EVENT = 'mcp:status'
 const SYNC_EVENT = 'sync:event'
+const UPDATE_EVENT = 'updates:changed'
 const SYNC_PROGRESS = 'sync:progress'
 
 function broadcast(channel: string, payload: unknown): void {
@@ -81,6 +84,11 @@ const LOOK_FOR_UNNAMED_EVERY = 5 * 60 * 1000
 let sweeping: ReturnType<typeof setInterval> | null = null
 
 /** Names what is unnamed now, and keeps looking while the app is open. */
+/** Looks for a newer version, now and occasionally, behind the window. */
+export function startUpdateChecks(): void {
+  updates.startWatchingForUpdates()
+}
+
 export function startNaming(): void {
   void nameUnnamedThreads()
   if (sweeping) return
@@ -673,6 +681,21 @@ export function registerIpc(): void {
       }
       return found
     }
+  )
+
+  /*
+   * Whether there is a newer Deep Pink.
+   *
+   * The window is told rather than asking: the first check happens behind the
+   * first paint and lands seconds later, and a banner that appeared because
+   * something polled would be a banner that appeared late.
+   */
+  updates.onUpdateStatus((status) => broadcast(UPDATE_EVENT, status))
+  ipcMain.handle('updates:status', () => updates.updateStatus())
+  ipcMain.handle('updates:check', () => updates.checkForUpdate())
+  ipcMain.handle('updates:config', () => updates.loadUpdateConfig())
+  ipcMain.handle('updates:save', (_e, patch: Partial<UpdateConfig>) =>
+    updates.saveUpdateConfig(patch)
   )
 
   ipcMain.handle('icons:author', (_e, modelId: string) =>

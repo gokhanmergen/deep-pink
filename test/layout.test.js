@@ -715,6 +715,67 @@ suite(
       ink.clipped
     )
 
+    section('the update line takes its height out of the app, not the window')
+    /*
+     * `#root` held one child at `height: 100%`. The update line is a second,
+     * and two of those come to more than the viewport — which `body` clips,
+     * so the composer goes off the bottom and cannot be clicked. That is the
+     * bug the top of this file describes, reachable again by adding a
+     * sibling, which is why it is checked here rather than trusted.
+     *
+     * The status is pushed through the same channel the main process uses, so
+     * what is measured is the real banner rather than a stand-in.
+     */
+    const beforeBanner = await run(`(() => {
+      const c = document.getElementById('composer-input')
+      return c ? Math.round(c.getBoundingClientRect().bottom) : null
+    })()`)
+
+    win.webContents.send('updates:changed', {
+      currentVersion: '0.0.1',
+      latestVersion: '9.9.9',
+      releaseUrl: 'https://example.invalid/releases',
+      checkedAt: Date.now(),
+      installKind: 'pacman',
+      canSelfInstall: false,
+      readyToInstall: false,
+      error: null
+    })
+    await settle(600)
+
+    const withBanner = await run(`(() => {
+      const line = document.querySelector('.updateline')
+      const c = document.getElementById('composer-input')
+      const cr = c?.getBoundingClientRect()
+      return {
+        shown: !!line,
+        says: line?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
+        height: line ? Math.round(line.getBoundingClientRect().height) : 0,
+        composerBottom: cr ? Math.round(cr.bottom) : null,
+        viewport: window.innerHeight,
+        overflows: document.body.scrollHeight > window.innerHeight + 4
+      }
+    })()`)
+
+    check('the line appears when there is a newer version', withBanner.shown, withBanner)
+    check('and names both versions', /9\.9\.9/.test(withBanner.says ?? '') && /0\.0\.1/.test(withBanner.says ?? ''), withBanner.says)
+    // The whole point of knowing how it was installed.
+    check('and the command for how this copy was installed', /pacman -Syu/.test(withBanner.says ?? ''), withBanner.says)
+
+    check('the page still does not overflow the viewport', !withBanner.overflows, withBanner)
+    check('the composer is still on screen', withBanner.composerBottom <= withBanner.viewport + 1, withBanner)
+    check(
+      'and moved up by exactly the line it made room for',
+      beforeBanner !== null &&
+        Math.abs(beforeBanner - withBanner.composerBottom - withBanner.height) <= 2,
+      { beforeBanner, withBanner }
+    )
+
+    // Dismissing puts it back, and is remembered against that version.
+    await run(`document.querySelector('.updateline__close')?.click(), true`)
+    await settle(400)
+    check('dismissing it returns the space', await run(`!document.querySelector('.updateline')`))
+
     section('MCP says it is still moving')
     /*
      * Marked in two weights, the way every other unsettled feature is: a dot

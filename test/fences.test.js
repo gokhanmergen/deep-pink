@@ -123,3 +123,45 @@ suite('model search — the words people actually type', async ({ check, section
   check('one word right and one wrong', !finds(gptImage, 'gpt zzz'))
   check('the right words on the wrong model', !finds(sonnet, 'gpt image'))
 })
+
+/**
+ * Whether there is a newer Deep Pink, and what to say about it.
+ *
+ * The comparison is the part that fails quietly. A string comparison puts
+ * 0.9.0 above 0.10.0 — which this project reached the moment it left single
+ * digits — and the failure is silent in the worst direction: an app that has
+ * fallen behind cheerfully reporting it is current.
+ */
+suite('updates — newer, and how to get it', async ({ check, section }) => {
+  const { isNewer, updateCommand, howToUpdate } = require(
+    path.join(__dirname, '..', '.test-build', 'store.js')
+  )
+
+  section('which version is newer')
+  check('a later patch', isNewer('0.13.4', '0.13.3'))
+  check('a later minor', isNewer('0.14.0', '0.13.9'))
+  check('a later major', isNewer('1.0.0', '0.99.99'))
+  // The one a string comparison gets backwards, and the reason this is a
+  // function rather than an inequality.
+  check('ten is after nine, not before it', isNewer('0.10.0', '0.9.0'))
+  check('and a hundred after ninety-nine', isNewer('0.100.0', '0.99.0'))
+
+  section('and which is not')
+  check('the same version is not newer', !isNewer('0.13.3', '0.13.3'))
+  check('an older one is not', !isNewer('0.13.2', '0.13.3'))
+  check('nor an older minor behind a larger patch', !isNewer('0.12.9', '0.13.0'))
+  // Tags arrive with a v on them; the numbers are the question.
+  check('a leading v is not part of the number', !isNewer('v0.13.3', '0.13.3'))
+  check('and is read the same when it is newer', isNewer('v0.13.4', '0.13.3'))
+  check('missing parts count as zero', !isNewer('0.13', '0.13.0') && isNewer('0.13.1', '0.13'))
+
+  section('what to tell somebody about it')
+  check('a pacman install gets the pacman line', updateCommand('pacman') === 'sudo pacman -Syu deep-pink')
+  check('apt and dnf get their own', /apt/.test(updateCommand('apt')) && /dnf/.test(updateCommand('dnf')))
+  // No command is not a gap: there is no one line that updates an AppImage,
+  // a tarball or a Nix configuration, so the advice is prose instead.
+  check('and the ones with no single command say so', updateCommand('appimage') === null && updateCommand('nix') === null)
+  check('every kind still has advice', ['appimage','pacman','apt','dnf','nix','tarball','mac','windows','unknown']
+    .every((kind) => typeof howToUpdate(kind) === 'string' && howToUpdate(kind).length > 0))
+  check('and Nix is told to rebuild rather than to download', /rebuild/i.test(howToUpdate('nix')))
+})
