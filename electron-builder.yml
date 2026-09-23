@@ -24,7 +24,18 @@ publish: null
 linux:
   # A full-bleed tile: Linux desktops draw the icon as-is, with no rounding of
   # their own, so the padded macOS variant would look undersized here.
-  icon: build/icon.png
+  #
+  # A directory rather than the one file, which is what puts the icon in the
+  # launcher at all. Given a single 1024px PNG, electron-builder installs
+  # exactly that — `hicolor/1024x1024/apps/deep-pink.png` and nothing else —
+  # and hicolor is an index of sizes rather than a pile of images: a desktop
+  # looking for 48px finds no directory to look in and falls back to a blank
+  # tile. Installed from the package on Arch, that is a launcher entry with no
+  # picture on it.
+  #
+  # The sizes here are the ones the theme is indexed at, generated from the
+  # same source so there is nothing to keep in step by hand.
+  icon: build/icons
   # Names the installed .desktop file after `desktopName` in package.json, which
   # is also where Electron reads its app_id from — so the running window's
   # WM_CLASS / Wayland app_id and the entry's StartupWMClass are the same
