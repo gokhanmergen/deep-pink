@@ -12,11 +12,14 @@
  * one: `==like this==` shows its markers until the turn ends, and a trailing
  * line shows itself for as long as it takes to finish.
  *
- * What decides how many are marked is the reader's question, not the reply and
- * not the setting: the setting is a ceiling. A model told "up to five" treats
- * five as a quota and finds five in a reply that made one point, which is the
- * shape of the complaint this went through — the marks stopped meaning
- * anything because there were always the same number of them.
+ * Whether anything is marked depends on the kind of answer the reader wants:
+ * key points are for quick questions with short, direct answers, never for
+ * detailed responses. Within those quick replies, what decides how many are
+ * marked is the reader's question, not the reply and not the setting: the
+ * setting is a ceiling. A model told "up to five" treats five as a quota and
+ * finds five in a reply that made one point, which is the shape of the
+ * complaint this went through — the marks stopped meaning anything because
+ * there were always the same number of them.
  *
  * The one-thing rule is stated twice, at the top of the list and at the end of
  * it, which is not an oversight. A list this long is weighted at both ends and
@@ -42,7 +45,9 @@ export function keyPointPrompt(asked: number): string {
   const most = clampKeyPoints(asked)
   const many = most > 1
 
-  return `Every reply you write must end with ${
+  return `Use key-point comments only for a quick, simple question that calls for a short, direct answer. If the reader asks for detail, a thorough explanation, steps, analysis, multiple parts, or any other long response — or if a complete answer needs more than a short, direct reply — write the full answer with no key-point comments. Do not shorten or flatten a detailed answer to make it eligible. This rule takes priority over every instruction below.
+
+For an eligible quick question, end your concise reply with ${
     many
       ? `an HTML comment for each sentence that answers something the reader asked, up to ${most} of them`
       : 'an HTML comment naming the one sentence that answers what the reader asked'
@@ -50,7 +55,7 @@ export function keyPointPrompt(asked: number): string {
 
 <!--key: the sentence, verbatim-->${many ? '\n<!--key: another sentence, verbatim-->' : ''}
 
-This is required, not optional. ${
+For eligible quick replies, this is required, not optional. ${
     many ? 'They go' : 'It goes'
   } last, after everything else in the reply, with nothing after ${many ? 'them' : 'it'}.
 ${
@@ -84,9 +89,7 @@ reword it, or re-punctuate it.
 - Never mention the comment${many ? 's' : ''}, refer to ${
     many ? 'them' : 'it'
   }, or explain ${many ? 'them' : 'it'}. ${many ? 'They are' : 'It is'} not part of your answer.
-- The only reply that may leave ${
-    many ? 'them' : 'it'
-  } out is one with no prose in it at all.${
+- If the reader asks for detail or a thorough response, leave all comments out, even if the reply has a sentence that directly answers the question.${
     many
       ? `
 - Before you write ${'them'}, ask yourself how many separate things the reader wanted \
