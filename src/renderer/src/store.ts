@@ -813,6 +813,11 @@ export const useStore = create<State>((set, get) => ({
     // Something else was selected while this was loading; that one wins.
     if (get().activeThreadId !== id) return
 
+    // A location cannot be restored in an empty transcript. Drop a stale
+    // session entry so the view can finish opening instead of waiting for a
+    // message that no longer exists.
+    if (!messages.length && place) forgetPlace(id)
+
     // A reply may have been arriving while this thread was not on screen. The
     // stored row only catches up periodically, so take the text the main
     // process has accumulated — otherwise the reply resumes mid-sentence.

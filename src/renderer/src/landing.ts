@@ -148,12 +148,11 @@ export function landingPoint(
     reason
   })
 
-  // A reply arriving is the one thing that is genuinely happening at the
-  // bottom, and following it is the whole of what you are there for.
-  if (generating) return settle(end, 'generating')
-
   // Somewhere you actually chose beats anywhere this could work out.
   if (remembered && !remembered.atBottom) return settle(remembered.scrollTop, 'remembered')
+
+  // Follow an in-progress reply unless the reader chose a place to return to.
+  if (generating) return settle(end, 'generating')
 
   // A conversation you have said nothing in has no exchange to open at.
   if (askTop === null) return settle(end, 'end')

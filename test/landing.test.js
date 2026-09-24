@@ -132,8 +132,8 @@ suite('landing — where a conversation opens', async ({ check, section }) => {
   )
 
   const live = land(page(20000, 2000), scrolled, true)
-  check('a reply still arriving pins the end over everything', live.reason === 'generating')
-  check('which, with a tail under it, is the question at the top anyway', live.scrollTop === page(20000, 2000).bottom)
+  check('a saved reading place survives while a reply is still arriving', live.reason === 'remembered')
+  check('and returns to the same position', live.scrollTop === scrolled.scrollTop)
 
   section('conversations with nothing to aim at')
   check('nothing of yours in it lands at the end', landingPoint({ viewport: VIEWPORT, content: 2000, askTop: null, answerTop: null, moreAbove: false }, null, false).reason === 'end')

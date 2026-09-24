@@ -423,7 +423,8 @@ export function ChatView(): React.JSX.Element {
       applied.current = null
     }
 
-    pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    pinnedToBottom.current = distanceFromBottom < 80
 
     // Far enough up that the end of the conversation is somewhere else. The
     // threshold is deliberately past the one above: an offer to go back to
@@ -435,7 +436,7 @@ export function ChatView(): React.JSX.Element {
     // worth trusting: the thread changes under this component rather than
     // unmounting it.
     const store = useStore.getState()
-    if (store.activeThreadId) {
+    if (store.activeThreadId && store.messages[0]?.threadId === store.activeThreadId) {
       /*
        * The pixels here, the anchor when leaving.
        *
@@ -448,7 +449,9 @@ export function ChatView(): React.JSX.Element {
       rememberPlace(store.activeThreadId, {
         startSeq: store.messageWindowStart,
         scrollTop: el.scrollTop,
-        atBottom: pinnedToBottom.current,
+        // Following the stream has a little tolerance; remembering a place
+        // should not. Even a small deliberate scroll away from the end counts.
+        atBottom: distanceFromBottom < 1,
         topMessageId: placeOf(store.activeThreadId)?.topMessageId ?? null,
         topOffset: placeOf(store.activeThreadId)?.topOffset ?? 0
       })
@@ -469,6 +472,10 @@ export function ChatView(): React.JSX.Element {
     const opening = restoring.current
     if (opening !== null) {
       if (messages.length && messages[0].threadId !== opening) return
+      // An empty transcript can mean either that this thread is empty or that
+      // its messages have not arrived yet. A saved place only belongs to the
+      // latter; do not consume it while switching away from an empty thread.
+      if (!messages.length && placeOf(opening)) return
       restoring.current = null
 
       /*
@@ -641,10 +648,19 @@ export function ChatView(): React.JSX.Element {
     previousThread.current = activeThreadId
 
     if (el && leaving && leaving !== activeThreadId) {
-      const place = placeOf(leaving)
-      const top = topOfView(el)
-      if (place && top) {
-        rememberPlace(leaving, { ...place, topMessageId: top, topOffset: offsetOf(el, top) })
+      const store = useStore.getState()
+      // The transcript can still show an earlier thread if someone switches
+      // again before the first selection has finished loading. Save only the
+      // place belonging to the thread that is actually on screen.
+      const top = store.messages[0]?.threadId === leaving ? topOfView(el) : null
+      if (top) {
+        rememberPlace(leaving, {
+          startSeq: store.messageWindowStart,
+          scrollTop: el.scrollTop,
+          atBottom: el.scrollHeight - el.scrollTop - el.clientHeight < 1,
+          topMessageId: top,
+          topOffset: offsetOf(el, top)
+        })
       }
     }
 
