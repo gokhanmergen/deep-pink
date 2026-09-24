@@ -111,7 +111,7 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${compact ? Math.min(el.scrollHeight, 72) : el.scrollHeight}px`
+    el.style.height = `${compact ? Math.min(el.scrollHeight, 36) : el.scrollHeight}px`
   }, [value, compact])
 
   // Opening a thread means you are about to type in it. Don't steal focus from
@@ -128,7 +128,8 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
     if (busyElsewhere) return
 
     textareaRef.current?.focus()
-  }, [activeThreadId])
+    onInteract?.()
+  }, [activeThreadId, onInteract])
 
   const add = useCallback(async (files: File[]): Promise<void> => {
     if (!files.length) return
@@ -494,10 +495,15 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
             value={value}
             rows={1}
             onChange={(event) => {
+              onInteract?.()
               if (activeThreadId) setDraft(activeThreadId, event.target.value)
             }}
-            onKeyDown={onKeyDown}
+            onKeyDown={(event) => {
+              onInteract?.()
+              onKeyDown(event)
+            }}
             onPaste={(event) => {
+              onInteract?.()
               const files = attachableFilesFrom(event.clipboardData)
               if (files.length) {
                 // Only swallow the paste when it carries something attachable,

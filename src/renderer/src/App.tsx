@@ -223,8 +223,9 @@ export function App(): React.JSX.Element {
       }
 
       const store = useStore.getState()
+      const threadId = store.activeThreadId
       if (
-        !store.activeThreadId ||
+        !threadId ||
         store.overlay !== null ||
         store.dialog !== null ||
         store.pendingApproval !== null ||
@@ -243,7 +244,7 @@ export function App(): React.JSX.Element {
       const start = composer.selectionStart ?? composer.value.length
       const end = composer.selectionEnd ?? start
       composer.setRangeText(event.key, start, end, 'end')
-      store.setDraft(store.activeThreadId, composer.value)
+      store.setDraft(threadId, composer.value)
     }
 
     window.addEventListener('keydown', onKeyDown)

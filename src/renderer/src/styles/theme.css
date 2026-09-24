@@ -2637,9 +2637,16 @@ svg.lucide {
   transition: padding var(--quick);
 }
 
+/* During reading, leave just one prompt line and its padding in the bar. */
 .composer[data-compact='true'] {
   padding-top: var(--s1);
   padding-bottom: var(--s1);
+}
+
+.composer[data-compact='true'] .composer__notice,
+.composer[data-compact='true'] .repos,
+.composer[data-compact='true'] .thumbs {
+  display: none;
 }
 
 .composer__inner {
@@ -2687,8 +2694,8 @@ svg.lucide {
 }
 
 .composer[data-compact='true'] .composer__textarea {
-  min-height: 34px;
-  max-height: 72px;
+  min-height: 30px;
+  max-height: 36px;
   padding-top: var(--s1);
   padding-bottom: var(--s1);
 }

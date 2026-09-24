@@ -108,7 +108,7 @@ const ThreadRow = memo(function ThreadRow({
 }: {
   thread: Thread
   active: boolean
-  /** The composer has unsent prompt text for this thread. */
+  /** This inactive thread has unsent prompt text. */
   wip: boolean
   /** A reply is arriving in this thread, whether or not you are looking at it. */
   generating: boolean
@@ -410,7 +410,9 @@ export function Sidebar(): React.JSX.Element {
    * whose only lasting property was being in the way.
    *
    * The exceptions are the ways of saying you meant it: a chat you pinned,
-   * filed, named or made temporary stays, empty or not.
+   * filed, named or made temporary stays, empty or not. An unsent prompt joins
+   * the list only after you leave its thread, so typing does not rename the
+   * row under the composer.
    */
   const started = useMemo(
     () =>
@@ -421,9 +423,9 @@ export function Sidebar(): React.JSX.Element {
           t.title ||
           t.pinned ||
           t.folderId ||
-          Boolean(drafts[t.id]?.trim())
+          (t.id !== activeThreadId && Boolean(drafts[t.id]?.trim()))
       ),
-    [threads, drafts]
+    [threads, drafts, activeThreadId]
   )
 
   /**
@@ -1029,7 +1031,7 @@ export function Sidebar(): React.JSX.Element {
       key={thread.id}
       thread={thread}
       active={thread.id === activeThreadId}
-      wip={Boolean(drafts[thread.id]?.trim())}
+      wip={thread.id !== activeThreadId && Boolean(drafts[thread.id]?.trim())}
       generating={generatingThreadIds.includes(thread.id)}
       awaitingName={awaitingName(thread)}
       model={thread.config.model ?? defaultModel}
