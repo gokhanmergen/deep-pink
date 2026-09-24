@@ -2639,7 +2639,7 @@ svg.lucide {
 
 /* During reading, leave just one prompt line and its padding in the bar. */
 .composer[data-compact='true'] {
-  padding-top: 1px;
+  padding-top: 3px;
   padding-bottom: 1px;
 }
 
