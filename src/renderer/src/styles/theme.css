@@ -2633,14 +2633,14 @@ svg.lucide {
   flex: none;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
-  padding: var(--s3) var(--s6) var(--s4);
+  padding: var(--s4) var(--s6) var(--s3);
   transition: padding var(--quick);
 }
 
 /* During reading, leave just one prompt line and its padding in the bar. */
 .composer[data-compact='true'] {
-  padding-top: 2px;
-  padding-bottom: 2px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .composer[data-compact='true'] .composer__notice,
