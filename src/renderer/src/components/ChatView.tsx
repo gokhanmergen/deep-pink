@@ -254,6 +254,7 @@ export function ChatView(): React.JSX.Element {
    * did not set is a scroll position a person asked for.
    */
   const applied = useRef<number | null>(null)
+  const previousComposerCompact = useRef(composerCompact)
 
   /** The empty space under the conversation, and how tall it currently is. */
   const tailRef = useRef<HTMLDivElement>(null)
@@ -417,18 +418,28 @@ export function ChatView(): React.JSX.Element {
     const el = scrollRef.current
     if (!el) return
 
-    // Keep the composer tucked away after reading; focus or typing expands it.
-    setComposerCompact(true)
+    const movedByReader =
+      applied.current === null || Math.abs(el.scrollTop - applied.current) > 1
 
     // Reading has begun, so the landing is over — but only if this is the
     // reader's scroll rather than one of this component's own.
-    if (applied.current === null || Math.abs(el.scrollTop - applied.current) > 1) {
+    if (movedByReader) {
       holding.current = null
       applied.current = null
     }
 
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    pinnedToBottom.current = distanceFromBottom < 80
+    const atBottom = distanceFromBottom <= 2
+
+    // A reader scroll tucks the composer away until they reach the end again.
+    // Programmatic corrections must not change its state or interrupt them.
+    if (movedByReader) {
+      pinnedToBottom.current = atBottom
+      setComposerCompact(!atBottom)
+    } else if (atBottom) {
+      pinnedToBottom.current = true
+      setComposerCompact(false)
+    }
 
     // Far enough up that the end of the conversation is somewhere else. The
     // threshold is deliberately past the one above: an offer to go back to
@@ -679,6 +690,21 @@ export function ChatView(): React.JSX.Element {
     setAwayFromEnd(false)
   }, [activeThreadId])
 
+  // Expanding the composer reduces the transcript viewport. Keep the end in
+  // view when that expansion was caused by reaching the bottom.
+  useLayoutEffect(() => {
+    const wasCompact = previousComposerCompact.current
+    previousComposerCompact.current = composerCompact
+    if (wasCompact === composerCompact) return
+
+    const el = scrollRef.current
+    if (!el) return
+    if (!composerCompact && pinnedToBottom.current) {
+      el.scrollTop = el.scrollHeight
+    }
+    applied.current = el.scrollTop
+  }, [composerCompact])
+
   /**
    * Holds the end of the conversation while it settles.
    *
@@ -761,6 +787,22 @@ export function ChatView(): React.JSX.Element {
       observer.disconnect()
     }
   }, [sizeTail, buildNearby])
+
+  // The composer animates its height while collapsing or expanding. Follow
+  // the end through those viewport resizes only when the reader is pinned
+  // there; otherwise keep their chosen place untouched.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const observer = new ResizeObserver(() => {
+      if (!pinnedToBottom.current) return
+      el.scrollTop = el.scrollHeight
+      applied.current = el.scrollTop
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   /**
    * Opening or closing a disclosure is the reader taking the wheel.
@@ -898,6 +940,7 @@ export function ChatView(): React.JSX.Element {
     applied.current = el.scrollTop
     pinnedToBottom.current = true
     setAwayFromEnd(false)
+    setComposerCompact(false)
   }
 
   /**
