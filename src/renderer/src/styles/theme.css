@@ -2696,7 +2696,7 @@ svg.lucide {
 .composer[data-compact='true'] .composer__textarea {
   min-height: 22px;
   max-height: 24px;
-  padding-top: 1px;
+  padding-top: 4px;
   padding-bottom: 1px;
   line-height: 1.2;
 }
