@@ -122,6 +122,8 @@ interface State {
   /** The thread being dragged, so the list can show where it would land. */
   draggingThreadId: string | null
   activeThreadId: string | null
+  /** Unsent prompt text, held in memory only and kept with its thread. */
+  drafts: Record<string, string>
   /**
    * The part of the conversation that has been read in — the end of it, and
    * however much before that the reader has scrolled back to. Never the whole
@@ -336,6 +338,7 @@ interface State {
   /** Closes the overlay, returning to whatever opened it. */
   closeOverlay: () => void
   setSidebarFilter: (value: string) => void
+  setDraft: (threadId: string, value: string) => void
   toggleSidebar: () => void
   showToast: (message: string, tone?: Toast['tone']) => void
   approveTool: (approved: boolean) => Promise<void>
@@ -597,6 +600,7 @@ export const useStore = create<State>((set, get) => ({
   openFolderIds: [],
   draggingThreadId: null,
   activeThreadId: null,
+  drafts: {},
   messages: [],
   messageWindowStart: null,
   hasOlderMessages: false,
@@ -726,13 +730,19 @@ export const useStore = create<State>((set, get) => ({
       const abandoned =
         !get().generating &&
         !get().messages.length &&
+        !get().drafts[thread.id]?.trim() &&
         !thread.title &&
         thread.messageCount === 0 &&
         !thread.pinned &&
         !thread.folderId
 
       if (thread.temporary || abandoned) {
-        set({ threads: get().threads.filter((t) => t.id !== thread.id) })
+        const drafts = { ...get().drafts }
+        delete drafts[thread.id]
+        set({
+          threads: get().threads.filter((t) => t.id !== thread.id),
+          drafts
+        })
         forgetPlace(thread.id)
         void window.deepPink.threads.remove(thread.id)
       }
@@ -1007,8 +1017,10 @@ export const useStore = create<State>((set, get) => ({
   async deleteThread(id) {
     forgetPlace(id)
     await api.threads.remove(id)
+    const drafts = { ...get().drafts }
+    delete drafts[id]
     const remaining = get().threads.filter((t) => t.id !== id)
-    set({ threads: remaining })
+    set({ threads: remaining, drafts })
     if (get().activeThreadId === id) {
       await get().selectThread(remaining[0]?.id ?? null)
     }
@@ -1281,6 +1293,16 @@ export const useStore = create<State>((set, get) => ({
 
   setSidebarFilter(value) {
     set({ sidebarFilter: value })
+  },
+
+  setDraft(threadId, value) {
+    const current = get().drafts
+    if ((current[threadId] ?? '') === value) return
+
+    const drafts = { ...current }
+    if (value) drafts[threadId] = value
+    else delete drafts[threadId]
+    set({ drafts })
   },
 
   toggleSidebar() {

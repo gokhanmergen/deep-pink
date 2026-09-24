@@ -1236,6 +1236,20 @@ svg.lucide {
   border-color: var(--accent-line);
 }
 
+/* An unsent prompt is a draft kept with this thread for the current session. */
+.thread-item[data-wip='true'] {
+  border-color: rgba(232, 202, 105, 0.38);
+}
+
+.thread-item[data-wip='true'][data-active='true'] {
+  border-color: rgba(232, 202, 105, 0.62);
+  background: rgba(232, 202, 105, 0.08);
+}
+
+.thread-item[data-wip='true'] .thread-item__title {
+  color: #e8ca69;
+}
+
 .thread-item__ghost {
   color: var(--text-dim);
   flex: none;
@@ -4349,261 +4363,6 @@ svg.lucide {
   line-height: 1.5;
 }
 
-/* ------------------------------------------------------------------ *
- * Documents
- * ------------------------------------------------------------------ */
-
-/* Deliberately the same box as a chart. Both are a reply presenting something
-   the app drew rather than something the model wrote directly, and a reader
-   who has learned what that surface means should not have to learn it twice. */
-.docsblock {
-  animation: rise-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-  margin: 0 0 14px;
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-  overflow: hidden;
-}
-
-.docsblock--failed {
-  background: none;
-}
-
-.docsblock--failed .codeblock {
-  margin: 0;
-}
-
-/* Sticky, because the way back has to still be there once you have scrolled
-   into a document — which is exactly when you want it. */
-.docsblock__head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-panel);
-}
-
-.docsblock__mark {
-  color: var(--text-dim);
-  flex: none;
-}
-
-.docsblock__title {
-  font-size: 12px;
-  font-weight: var(--w-strong);
-  letter-spacing: 0.01em;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.docsblock__spacer {
-  flex: 1;
-}
-
-/* Quiet, and in the accent, because it is the same "working" the caret at the
-   end of a streaming reply means. */
-.docsblock__arriving {
-  flex: none;
-  font-size: 11px;
-  color: var(--accent);
-  opacity: 0.8;
-}
-
-/* Before the first document has finished arriving there is nothing to list. */
-.docsblock--waiting {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.docsblock__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--text-muted);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
-}
-
-.docsblock__back:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
-}
-
-.docsblock__step {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-  color: var(--text-dim);
-}
-
-.docsblock__count {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  padding: 0 2px;
-}
-
-.docsblock__arrow {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 4px;
-  color: var(--text-dim);
-}
-
-.docsblock__arrow:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
-.docsblock__arrow:disabled {
-  opacity: 0.3;
-}
-
-/* Quiet until the block is pointed at, exactly as the chart's is. */
-.docsblock__source {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  color: var(--text-dim);
-  opacity: 0;
-  padding: 2px;
-  border-radius: 4px;
-  transition: opacity 0.12s, color 0.12s;
-}
-
-.docsblock:hover .docsblock__source,
-.docsblock__source:focus-visible,
-.docsblock__source[aria-pressed='true'] {
-  opacity: 1;
-}
-
-.docsblock__source:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
-/* The list. Full-width rows rather than cards: a title is the thing being
-   chosen between, so nothing should shorten one to make a grid line up. */
-.docsblock__list {
-  display: flex;
-  flex-direction: column;
-}
-
-/*
- * A document at a time, in the order they were written.
- *
- * The one place in the app a stagger earns its keep: the list is short, it is
- * built once, and its whole point is that it is several separate things — so
- * they arrive as several separate things. Capped at the first eight, after
- * which the delay would be longer than anybody waits.
- */
-.docsblock__item {
-  animation: rise-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 12px;
-  text-align: left;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  transition: background 0.12s, color 0.12s;
-}
-
-.docsblock__item:nth-child(2) {
-  animation-delay: 0.03s;
-}
-.docsblock__item:nth-child(3) {
-  animation-delay: 0.06s;
-}
-.docsblock__item:nth-child(4) {
-  animation-delay: 0.09s;
-}
-.docsblock__item:nth-child(5) {
-  animation-delay: 0.12s;
-}
-.docsblock__item:nth-child(6) {
-  animation-delay: 0.15s;
-}
-.docsblock__item:nth-child(7) {
-  animation-delay: 0.18s;
-}
-.docsblock__item:nth-child(n + 8) {
-  animation-delay: 0.21s;
-}
-
-.docsblock__item:last-child {
-  border-bottom: none;
-}
-
-.docsblock__item:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.docsblock__index {
-  flex: none;
-  width: 20px;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-}
-
-.docsblock__itemtext {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.docsblock__itemtitle {
-  font-size: 13px;
-  font-weight: var(--w-ui);
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.docsblock__itemsummary {
-  font-size: 11px;
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.docsblock__go {
-  flex: none;
-  color: var(--text-dim);
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-
-.docsblock__item:hover .docsblock__go {
-  opacity: 1;
-}
-
-.docsblock__body {
-  animation: fade-in 0.16s ease-out;
-  padding: 12px;
-}
-
 /*
  * A question that nobody answered.
  *
@@ -4622,29 +4381,6 @@ svg.lucide {
   color: var(--text-dim);
 }
 
-/* The margin a document's last paragraph would otherwise add inside the box. */
-.docsblock__body .md > *:last-child {
-  margin-bottom: 0;
-}
-
-/* Ruled off from the set above it, because it is not part of it: the list is
-   what arrived and this is the app saying something about the list. Without
-   the line it reads as one more row that happens to be in a smaller type. */
-.docsblock__note {
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--text-dim);
-  line-height: var(--lh-small);
-}
-
-/* No box to be ruled off from — the failed variant is a bare code block with
-   the reason under it. */
-.docsblock--failed .docsblock__note {
-  padding: 6px 0 0;
-  border-top: none;
-}
-
 .chartblock .codeblock {
   margin: 0;
 }
@@ -4661,14 +4397,12 @@ svg.lucide {
  * box on it, and the code inside that.
  */
 .message[data-role='user'] .message__body .codeblock,
-.docsblock__body .codeblock,
 .chartblock:not(.chartblock--failed) .codeblock,
 .disclosure__content .codeblock {
   background: var(--bg);
 }
 
 .message[data-role='user'] .message__body .codeblock__head,
-.docsblock__body .codeblock__head,
 .chartblock:not(.chartblock--failed) .codeblock__head,
 .disclosure__content .codeblock__head {
   background: var(--bg-panel);

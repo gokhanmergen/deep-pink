@@ -467,5 +467,27 @@ export const MIGRATIONS: string[] = [
    WHERE json_extract(CASE WHEN json_valid(config) THEN config ELSE '{}' END, '$.model') IS NULL
      AND EXISTS (SELECT 1 FROM messages m
                   WHERE m.thread_id = threads.id AND m.role = 'assistant' AND m.model IS NOT NULL);
+  `,
+
+  /* 24 — remove the retired multiple-documents settings */ `
+  /*
+   * Older settings and thread configs may still contain the switch, and
+   * settings may still carry its keyboard binding. Remove both so sync no
+   * longer transports controls this build cannot use. filed_at advances
+   * the thread revision without changing the conversation's list position.
+   */
+  UPDATE settings
+     SET value = json_remove(value, '$.docsEnabled', '$.keybinds."docs.toggle"'),
+         updated_at = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+   WHERE key = 'settings'
+     AND json_valid(value)
+     AND (json_type(value, '$.docsEnabled') IS NOT NULL
+       OR json_type(value, '$.keybinds."docs.toggle"') IS NOT NULL);
+
+  UPDATE threads
+     SET config = json_remove(config, '$.docsEnabled'),
+         filed_at = MAX(filed_at, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
+   WHERE json_valid(config)
+     AND json_type(config, '$.docsEnabled') IS NOT NULL;
   `
 ]

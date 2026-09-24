@@ -493,16 +493,6 @@ export function buildActions(): AppAction[] {
       })
     },
     {
-      id: 'docs.toggle',
-      label: 'Toggle multiple documents for this thread',
-      group: 'Capabilities',
-      run: requireThread((id) => {
-        const on = thread?.config.docsEnabled ?? settings?.docsEnabled ?? false
-        void store.updateThread(id, { config: { docsEnabled: !on } })
-        store.showToast(on ? 'Documents off' : 'Documents on')
-      })
-    },
-    {
       id: 'reasoning.more',
       label: 'Think harder in this thread',
       group: 'Capabilities',

@@ -55,11 +55,6 @@ export function chartsEnabledFor(thread: Thread, settings: Settings): boolean {
   return thread.config.chartsEnabled ?? settings.chartsEnabled
 }
 
-export function docsEnabledFor(thread: Thread, settings: Settings): boolean {
-  if (settings.hideExperimental) return false
-  return thread.config.docsEnabled ?? settings.docsEnabled
-}
-
 export function activeServerIdsFor(thread: Thread): string[] | null {
   return thread.config.enabledMcpServers
 }
@@ -67,18 +62,15 @@ export function activeServerIdsFor(thread: Thread): string[] | null {
 /**
  * Which skills this conversation may use, in the order they are catalogued.
  *
- * Each still answers to its own switch — a skill is not something the model
- * may turn on for itself, because the app only renders a `dp-chart` block
- * when charts are on and a model handed the syntax regardless would write
- * JSON into a reply that shows it as JSON.
+ * The chart skill follows its switch. The renderer draws valid chart fences
+ * whether or not the model was invited to make them.
  *
  * What changed is the cost of leaving one on: a line rather than a page. See
  * `SKILLS`.
  */
 export function skillsFor(thread: Thread, settings: Settings): Skill[] {
   const on: Record<string, boolean> = {
-    charts: chartsEnabledFor(thread, settings),
-    documents: docsEnabledFor(thread, settings)
+    charts: chartsEnabledFor(thread, settings)
   }
   const skills = BUILT_IN.filter((skill) => on[skill.id])
 
@@ -195,9 +187,9 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
   } else {
     for (const skill of available) {
       push({
-        id: skill.custom ? `skill:${skill.id}` : skill.id === 'charts' ? 'charts' : 'docs',
-        source: skill.custom ? 'skills' : skill.id === 'charts' ? 'charts' : 'docs',
-        label: skill.id === 'charts' ? 'Chart syntax' : skill.id === 'documents' ? 'Multiple documents' : skill.name,
+        id: skill.custom ? `skill:${skill.id}` : 'charts',
+        source: skill.custom ? 'skills' : 'charts',
+        label: skill.custom ? skill.name : 'Chart syntax',
         origin: skill.custom ? 'Written in Settings' : 'Deep Pink',
         text: skill.instructions,
         removable: true
@@ -283,9 +275,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
    * instruction buried above the tool schemas is one a smaller model has
    * forgotten by the time it gets there. Measured with it last: the polite
    * wording was obeyed eight times in twelve across four models, the
-   * insistent one eleven. It sat with charts and documents at first, which
-   * are also about what a reply may *be* — but those shape the whole answer,
-   * and this only adds a line to the end of it.
+   * insistent one eleven. This only adds a line to the end of it.
    *
    * After the tools segment, which is not system text at all: `systemText`
    * below drops it, so this is genuinely the last thing the model reads.

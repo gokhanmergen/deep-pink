@@ -114,7 +114,6 @@ export const EMPTY_THREAD_CONFIG: ThreadConfig = {
   repoPaths: [],
   disabledPromptSegments: [],
   chartsEnabled: null,
-  docsEnabled: null,
   reasoning: null
 }
 
@@ -132,6 +131,12 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 }
 
 function toThread(row: ThreadRow, messageCount?: number): Thread {
+  const {
+    docsEnabled: _legacyDocsEnabled,
+    ...config
+  } = parseJson<Partial<ThreadConfig> & { docsEnabled?: unknown }>(row.config, {})
+  void _legacyDocsEnabled
+
   return {
     id: row.id,
     title: row.title,
@@ -142,7 +147,7 @@ function toThread(row: ThreadRow, messageCount?: number): Thread {
     folderId: row.folder_id,
     temporary: row.temporary === 1,
     messageCount: messageCount ?? countMessages(row.id),
-    config: { ...EMPTY_THREAD_CONFIG, ...parseJson<Partial<ThreadConfig>>(row.config, {}) }
+    config: { ...EMPTY_THREAD_CONFIG, ...config }
   }
 }
 

@@ -191,7 +191,6 @@ function toConfig(value: unknown): ThreadConfig {
     repoPaths: stringList(raw['repoPaths']),
     disabledPromptSegments: stringList(raw['disabledPromptSegments']),
     chartsEnabled: typeof raw['chartsEnabled'] === 'boolean' ? raw['chartsEnabled'] : null,
-    docsEnabled: typeof raw['docsEnabled'] === 'boolean' ? raw['docsEnabled'] : null,
     // Restored only when it is the shape this app writes; an export from a
     // build that predates reasoning modes simply follows the global default.
     reasoning: readReasoning(raw['reasoning'])

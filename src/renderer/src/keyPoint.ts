@@ -31,7 +31,7 @@ const BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dd, dt'
  * a walk that takes every text node cheerfully produces "so set:bashcopyon
  * the service" out of a paragraph that ran into one.
  */
-const NOT_PROSE = '.codeblock, .chartblock, .docsblock, .katex, pre, code, button'
+const NOT_PROSE = '.codeblock, .chartblock, .katex, pre, code, button'
 
 /** Below this a sentence is a fragment — a label, a lead-in, a list marker. */
 const SHORTEST = 40

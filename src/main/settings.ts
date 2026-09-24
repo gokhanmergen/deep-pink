@@ -20,7 +20,6 @@ const KEY = 'settings'
 function alreadyExperimenting(stored: Partial<Settings>): boolean {
   return Boolean(
     stored.chartsEnabled ||
-      stored.docsEnabled ||
       stored.keyPointEnabled ||
       stored.web?.enabled ||
       stored.sendAppAttribution === false
@@ -29,7 +28,13 @@ function alreadyExperimenting(stored: Partial<Settings>): boolean {
 
 /** Stored settings merged over defaults, so new options appear on upgrade. */
 export function loadSettings(): Settings {
-  const stored = getSetting<Partial<Settings>>(KEY, {})
+  const raw = getSetting<Partial<Settings> & { docsEnabled?: unknown }>(KEY, {})
+  // Older settings can still carry this removed feature's switch. Drop it as
+  // the settings are read so the next save also removes it from storage.
+  const { docsEnabled: _legacyDocsEnabled, ...stored } = raw
+  void _legacyDocsEnabled
+  const keybinds = { ...DEFAULT_KEYBINDS, ...stored.keybinds }
+  delete keybinds['docs.toggle']
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
@@ -50,7 +55,7 @@ export function loadSettings(): Settings {
       // with its default rather than as undefined.
       replyChips: { ...DEFAULT_SETTINGS.ui.replyChips, ...stored.ui?.replyChips }
     },
-    keybinds: { ...DEFAULT_KEYBINDS, ...stored.keybinds }
+    keybinds
   }
 }
 

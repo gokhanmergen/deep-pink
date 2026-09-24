@@ -105,8 +105,11 @@ suite('pinning — a chat keeps the model it was had with', async ({ check, sect
   message('lg1', 'legacy-garbled', 1, 'user', null)
   message('lg2', 'legacy-garbled', 2, 'assistant', 'test/garbled')
 
-  // The last migration is the one that does this; run it as the upgrade would.
-  db.exec(MIGRATIONS[MIGRATIONS.length - 1])
+  // Run the migration that pins each thread to its latest reply's model.
+  const pinningMigration = MIGRATIONS.find((sql) =>
+    sql.includes('Every thread that never had a model picked stored none')
+  )
+  db.exec(pinningMigration)
 
   const configOf = (id) => {
     try {
@@ -151,7 +154,7 @@ suite('pinning — a chat keeps the model it was had with', async ({ check, sect
   check('and none of them moves in the list', stamps.every((t) => t === T0), stamps)
 
   // Running it twice is the same as running it once.
-  db.exec(MIGRATIONS[MIGRATIONS.length - 1])
+  db.exec(pinningMigration)
   check('a second run changes nothing', configOf('legacy-switched')?.model === 'test/latest')
 
   global.fetch = originalFetch

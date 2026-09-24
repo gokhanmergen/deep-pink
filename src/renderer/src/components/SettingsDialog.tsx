@@ -51,7 +51,6 @@ import {
   type ReasoningMode
 } from '@shared/reasoning'
 import { CHARTS_PROMPT } from '@shared/charts'
-import { DOCS_PROMPT } from '@shared/docs'
 
 interface TabDef {
   id: Tab
@@ -79,9 +78,7 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     title: 'Capabilities',
     tabs: [
       { id: 'web', label: 'Web access', icon: <Globe {...ICON} />, experimental: true },
-      /* Charts and documents had a tab each, which made the two of them look
-         like features and the skills system like a third thing that happened
-         to involve them. They are the two skills that ship with it. */
+      /* The chart renderer and written instructions live together in Skills. */
       { id: 'skills', label: 'Skills', icon: <Sparkles {...ICON} />, experimental: true },
       { id: 'keyPoint', label: 'Key point', icon: <Highlighter {...ICON} />, experimental: true },
       { id: 'context', label: 'Context', icon: <Layers {...ICON} /> }
@@ -357,13 +354,8 @@ function SkillCard({
 /**
  * Everything a skill is, in one place.
  *
- * Charts and documents each had a tab of their own, which made two things
- * look like features of the app and the skills system look like a third thing
- * that happened to involve them. They are not a third thing: they are the two
- * skills that ship with it, and the difference between them and one written
- * here is only that they have a renderer behind them. So they are rows in the
- * same list, with the same switch and the same line, and the list ends with
- * the button that adds another.
+ * The built-in chart skill and skills written here share the same list. The
+ * built-in one has a renderer behind it; written ones carry instructions.
  */
 function SkillsTab({
   settings,
@@ -406,9 +398,7 @@ function SkillsTab({
 
   /** What is actually offered, which is what the catalogue is built from. */
   const offered = [
-    ...BUILT_IN.filter((skill) =>
-      skill.id === 'charts' ? settings.chartsEnabled : settings.docsEnabled
-    ),
+    ...(settings.chartsEnabled ? BUILT_IN : []),
     ...custom.filter((skill) => skill.enabled && !whyUnusable(skill, custom)).map(toSkill)
   ]
   const catalogue = skillCatalogue(offered)
@@ -445,9 +435,9 @@ function SkillsTab({
 
       <div className="section-title">Built in</div>
       <p className="field__hint">
-        These two have code behind them — a chart is drawn by a renderer that has to exist — so
-        they cannot be edited, only switched. A skill the app will not render is one the model is
-        told to answer without.
+        The chart skill has a renderer behind it, so it cannot be edited, only switched. The
+        renderer still draws valid chart fences when this switch is off; the switch controls
+        whether the model is invited to make them.
       </p>
 
       <SkillCard
@@ -474,27 +464,6 @@ function SkillsTab({
           </summary>
           <div className="disclosure__content">
             <pre>{CHARTS_PROMPT}</pre>
-          </div>
-        </details>
-      </SkillCard>
-
-      <SkillCard
-        title="Documents"
-        on={settings.docsEnabled}
-        onToggle={(next) => void saveSettings({ docsEnabled: next })}
-        revert={<Revert path="docsEnabled" what="documents" />}
-      >
-        <p className="field__hint">{builtInById('documents')?.when}</p>
-        <details className="disclosure">
-          <summary className="disclosure__summary">
-            <span className="chip">instructions</span>
-            <span>
-              {Math.ceil(DOCS_PROMPT.length / 4).toLocaleString()}{' '}
-              {settings.skillsOnDemand ? 'tokens, and only once it asks' : 'tokens per turn'}
-            </span>
-          </summary>
-          <div className="disclosure__content">
-            <pre>{DOCS_PROMPT}</pre>
           </div>
         </details>
       </SkillCard>
@@ -1788,7 +1757,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <Revert path="hideExperimental" what="hiding the experimental features" />
             </label>
             <p className="field__hint">
-              Web access, charts, multiple documents, the key point, MCP servers, reading a
+              Web access, charts, the key point, MCP servers, reading a
               repository and syncing to a bucket. Hidden means off as well as out of sight —
               each keeps its own settings, so turning this back off returns everything to how
               you left it.

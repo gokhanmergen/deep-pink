@@ -228,11 +228,6 @@ export interface ThreadConfig {
    */
   chartsEnabled: boolean | null
   /**
-   * Whether a reply may be a set of documents rather than one. Unset falls
-   * back to the global setting, exactly as charts does.
-   */
-  docsEnabled: boolean | null
-  /**
    * How hard this conversation asks the model to think. Null follows the
    * global default, as web access and charts do.
    *
@@ -261,7 +256,6 @@ export type SystemPromptSource =
   | 'compaction'
   | 'datetime'
   | 'charts'
-  | 'docs'
   /** The catalogue of what can be asked for, when skills load on demand. */
   | 'skills'
   | 'keyPoint'
@@ -606,7 +600,6 @@ export interface Settings {
    */
   hideExperimental: boolean
   chartsEnabled: boolean
-  docsEnabled: boolean
   /**
    * Whether a skill's instructions are fetched when the model wants them, or
    * held open in the prompt from the first turn.

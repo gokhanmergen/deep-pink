@@ -1,22 +1,16 @@
 import { CHARTS_PROMPT } from './charts'
-import { DOCS_PROMPT } from './docs'
 
 /**
  * Things the app can do that the model has to be taught how to ask for.
  *
- * Charts and documents each need several hundred tokens of syntax before a
- * model can produce one: the block name, the JSON shape, the fields, what the
- * app owns and what it does not. That text used to go into the system prompt
- * of every single turn for as long as the feature was switched on — about 700
- * tokens of chart and document grammar sitting in front of "what time is it
- * in Tokyo".
+ * Charts need several hundred tokens of syntax before a model can produce
+ * one: the block name, the JSON shape, the fields, what the app owns and what
+ * it does not. That text used to go into the system prompt of every single
+ * turn for as long as the feature was switched on.
  *
- * Which is why the only working way to use them was to turn them on when you
- * wanted one and off when you did not. Left on, a model with a page of chart
- * syntax in front of it draws charts, because that is what the instructions
- * in its context are about; left off, it cannot draw one even where a chart
- * is obviously the right answer. Neither of those is the model judging the
- * question. Both are the prompt deciding in advance.
+ * The switch controls whether the model can ask for those instructions. It no
+ * longer controls rendering: a valid chart fence is drawn whether or not the
+ * model was given the chart skill.
  *
  * So the instructions are not in the prompt any more. What is in the prompt
  * is a line per skill saying when it is worth having — and a tool to ask for
@@ -29,8 +23,8 @@ import { DOCS_PROMPT } from './docs'
  * to one line, which is the point: it becomes something you leave on.
  */
 
-/** The two the app ships with, each backed by a renderer of its own. */
-export type BuiltInSkillId = 'charts' | 'documents'
+/** The built-in skill, backed by its chart renderer. */
+export type BuiltInSkillId = 'charts'
 
 export interface Skill {
   /** What the model calls it. Unique across built-in and written-here alike. */
@@ -54,10 +48,9 @@ export interface Skill {
 /**
  * A skill somebody wrote themselves.
  *
- * The two built-in ones are built in because each needs code behind it — a
- * chart is drawn by a renderer that has to exist, and a set of documents is a
- * list the app builds. A written-here skill has nothing behind it but the
- * text, which turns out to be most of what a skill is: house style, the shape
+ * The built-in chart skill has code behind it: a chart is drawn by a renderer
+ * that has to exist. A written-here skill has nothing behind it but the text,
+ * which turns out to be most of what a skill is: house style, the shape
  * of a commit message, the format a report has to arrive in, the six things
  * to check before answering a question about the rota.
  *
@@ -126,20 +119,10 @@ export const BUILT_IN: readonly Skill[] = [
       'numbers, which are a sentence, or for a handful of labelled figures, which are a Markdown ' +
       'table and are read faster as one.',
     instructions: CHARTS_PROMPT
-  },
-  {
-    id: 'documents',
-    name: 'documents',
-    when:
-      'Present the answer as a set of documents the reader opens one at a time. Worth it when the ' +
-      'answer really is several separate pieces — one per file, per service, per region, per ' +
-      'option being compared — and the reader wants one of them. Not worth it when the parts are ' +
-      'meant to be read in order or refer to each other: that is one reply with headings.',
-    instructions: DOCS_PROMPT
   }
 ]
 
-/** Kept under its old name for the places that only ever wanted the two. */
+/** Kept under its old name for callers that treat built-ins as a group. */
 export const SKILLS = BUILT_IN
 
 export function builtInById(id: string): Skill | undefined {

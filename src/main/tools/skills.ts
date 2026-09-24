@@ -39,10 +39,9 @@ export function loadSkillTool(available: readonly Skill[]): ToolParam {
  * The instructions, or an explanation of why not.
  *
  * Answered from the list this conversation was actually offered, so a skill
- * that is switched off is refused rather than quietly returned: the app will
- * not render a `dp-chart` block when charts are off, and handing over the
- * syntax anyway produces an answer that looks right to the model and arrives
- * as a wall of JSON in front of the reader.
+ * that is switched off is refused rather than quietly returned. The renderer
+ * can still draw valid chart fences; the switch controls which instructions
+ * the model receives.
  */
 export function runLoadSkill(args: Record<string, unknown>, available: readonly Skill[]): string {
   const asked = typeof args['skill'] === 'string' ? args['skill'] : ''
@@ -50,10 +49,9 @@ export function runLoadSkill(args: Record<string, unknown>, available: readonly 
   if (found) return found.instructions
 
   // Known, but not here. Worth saying differently from a name that is simply
-  // wrong: one is a switch, the other is a mistake, and a model told "there
-  // is no such skill" about a real one will try to work around the absence.
+  // wrong: one is a switch, the other is a mistake.
   if (builtInById(asked)) {
-    return `The ${asked} skill is switched off for this conversation, so the app will not render one. Answer without it.`
+    return `The ${asked} skill is switched off for this conversation, so its instructions are not available. Answer without loading them.`
   }
 
   const known = available.length

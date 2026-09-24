@@ -5,8 +5,8 @@ const { suite, settle, openThread } = require('./support/harness')
  *
  * The parser suite proves what survives validation; this one boots the real app
  * and proves the other half — that a validated chart becomes geometry rather
- * than a stack trace, that its interactive parts work, that the switch turns it
- * back into code, and above all that nothing the model wrote is ever live in
+ * than a stack trace, that its interactive parts work, that the prompt switch
+ * does not hide it, and above all that nothing the model wrote is ever live in
  * the DOM. A model-authored `<script>` has to arrive as eight characters of
  * text.
  */
@@ -234,12 +234,12 @@ suite(
     })()`)
     check('the chart becomes its own JSON', source.code === 1 && source.svg === 0, source)
 
-    section('switching charts off puts the code back')
-    // Charts, web access and documents share one Extras menu in the composer
-    // now, so switching one off is two clicks: the menu, then the item.
+    section('switching the prompt off does not hide rendered charts')
+    // Charts and web access share one Extras menu in the composer, so
+    // switching the prompt off is two clicks: the menu, then the item.
     check('the composer offers the extras', await run(`(() => {
       const extras = [...document.querySelectorAll('button')].find((b) =>
-        (b.getAttribute('title') || '').includes('charts and multiple documents')
+        (b.getAttribute('title') || '').includes('charts')
       )
       if (!extras) return false
       extras.click()
@@ -259,8 +259,8 @@ suite(
       blocks: document.querySelectorAll('.chartblock:not(.chartblock--failed)').length,
       codeblocks: document.querySelectorAll('.codeblock').length
     })`)
-    check('no chart is drawn any more', off.blocks === 0, off)
-    check('and every one of them is readable as code', off.codeblocks >= 8, off)
+    check('the valid chart fences still draw', off.blocks >= 5, off)
+    check('the malformed chart stays readable as code', off.codeblocks >= 3, off)
   },
   { bootApp: true }
 )

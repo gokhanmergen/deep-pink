@@ -14,7 +14,6 @@ import {
   FolderCode,
   Globe,
   BarChart3,
-  FileText,
   Image as ImageIcon,
   Brain,
   Paperclip,
@@ -37,7 +36,6 @@ import {
 export const COMPOSER_ID = 'composer-input'
 
 export function Composer(): React.JSX.Element {
-  const [value, setValue] = useState('')
   const [images, setImages] = useState<StagedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [attachMenu, setAttachMenu] = useState<{ x: number; y: number } | null>(null)
@@ -54,6 +52,8 @@ export function Composer(): React.JSX.Element {
   const send = useStore((s) => s.send)
   const abort = useStore((s) => s.abort)
   const activeThreadId = useStore((s) => s.activeThreadId)
+  const value = useStore((s) => (s.activeThreadId ? (s.drafts[s.activeThreadId] ?? '') : ''))
+  const setDraft = useStore((s) => s.setDraft)
   const updateThread = useStore((s) => s.updateThread)
   const threads = useStore((s) => s.threads)
   const setOverlay = useStore((s) => s.setOverlay)
@@ -63,7 +63,6 @@ export function Composer(): React.JSX.Element {
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   const webOn = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
   const chartsOn = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
-  const docsOn = thread?.config.docsEnabled ?? settings?.docsEnabled ?? false
   const reasoning = resolveReasoning(thread?.config.reasoning, settings?.reasoning)
 
   // Web access works by giving the model tools. A model that cannot call tools
@@ -227,7 +226,7 @@ export function Composer(): React.JSX.Element {
     const content = value.trim()
     // An image on its own is a perfectly good message.
     if ((!content && !images.length) || generating) return
-    setValue('')
+    if (activeThreadId) setDraft(activeThreadId, '')
     setImages([])
     void send(content, images.map(({ mime, filename, data, width, height }) => ({
       mime,
@@ -270,15 +269,10 @@ export function Composer(): React.JSX.Element {
     void updateThread(activeThreadId, { config: { chartsEnabled: !chartsOn } })
   }
 
-  const toggleDocs = (): void => {
-    if (!activeThreadId) return
-    void updateThread(activeThreadId, { config: { docsEnabled: !docsOn } })
-  }
-
   /**
    * What this thread lets a reply be, and what it lets the model go and do.
    *
-   * These were three buttons in the row, each carrying its own word for on or
+   * These were buttons in the row, each carrying its own word for on or
    * off, and between them they took more of the composer than the thing you
    * type into. They are also the settings you change least: once a thread is
    * set up the way you want it, you do not touch them again. So they are a
@@ -302,17 +296,9 @@ export function Composer(): React.JSX.Element {
       on: chartsOn,
       onSelect: toggleCharts
     },
-    {
-      id: 'docs',
-      label: 'Multiple documents',
-      icon: <FileText {...ICON} />,
-      hint: formatBinding(keybinds['docs.toggle'] ?? 'mod+shift+o'),
-      on: docsOn,
-      onSelect: toggleDocs
-    }
   ]
 
-  const extrasOn = [webOn, chartsOn, docsOn].filter(Boolean).length
+  const extrasOn = [webOn, chartsOn].filter(Boolean).length
 
   /*
    * How hard to think, for this conversation.
@@ -463,7 +449,9 @@ export function Composer(): React.JSX.Element {
             }
             value={value}
             rows={1}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => {
+              if (activeThreadId) setDraft(activeThreadId, event.target.value)
+            }}
             onKeyDown={onKeyDown}
             onPaste={(event) => {
               const files = attachableFilesFrom(event.clipboardData)
@@ -514,7 +502,7 @@ export function Composer(): React.JSX.Element {
                   const r = event.currentTarget.getBoundingClientRect()
                   setExtraMenu({ x: Math.round(r.left), y: Math.round(r.top) })
                 }}
-                title="Web access, charts and multiple documents, for this thread"
+                title="Web access and charts, for this thread"
                 type="button"
                 disabled={!activeThreadId}
               >

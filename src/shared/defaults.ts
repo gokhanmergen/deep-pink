@@ -152,13 +152,6 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   'charts.toggle': 'mod+shift+b',
   'reasoning.more': 'mod+shift+.',
   'reasoning.less': 'mod+shift+,',
-  /*
-   * Not `mod+shift+d`, which it shipped with and which branching a thread has
-   * held since long before documents existed. Two actions on one chord is
-   * resolved by declaration order, and branching is declared first — so this
-   * was simply unreachable from the keyboard for two releases.
-   */
-  'docs.toggle': 'mod+shift+o',
   'sync.pause': 'mod+shift+u',
   'mcp.panel': 'mod+shift+e',
   'reasoning.toggle': 'mod+shift+r',
@@ -269,7 +262,6 @@ export const DEFAULT_SETTINGS: Settings = {
    */
   hideExperimental: true,
   chartsEnabled: false,
-  docsEnabled: false,
   skillsOnDemand: true,
   customSkills: [],
   keyPointEnabled: false,

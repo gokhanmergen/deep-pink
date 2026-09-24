@@ -3,18 +3,12 @@ const { suite } = require('./support/harness')
 /**
  * Skills: what is in the prompt, and what is fetched when the model asks.
  *
- * Charts and documents each need several hundred tokens of syntax before a
- * model can produce one, and that text used to be in the system prompt of
- * every turn for as long as the feature was on. Which is why the only working
- * way to use either was to switch it on when you wanted one and off when you
- * did not: a model with a page of chart grammar in front of it draws charts,
- * and a model with none cannot draw one where a chart is obviously right.
- * Neither is the model judging the question.
- *
- * Now the prompt carries a line per skill saying when the skill earns its
- * keep, plus a tool to ask for the rest. These checks are mostly about the
- * two ways that can go wrong: advertising something the app will not render,
- * and putting the instructions behind a tool the model cannot call.
+ * Charts need several hundred tokens of syntax before a model can produce
+ * one, and that text used to be in the system prompt of every turn for as long
+ * as the feature was on. The prompt now carries a line per skill saying when
+ * it earns its keep, plus a tool to ask for the rest. These checks are mostly
+ * about advertising unavailable skills and putting instructions behind a
+ * tool the model cannot call.
  */
 suite('skills — a line in the prompt, the rest on request', async ({ check, section, subject }) => {
   const { getDb, repo, assembleContext, skillsFor, skills, skillTool, DEFAULT_SETTINGS } = subject
@@ -74,18 +68,17 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
     builtInById('charts').when
   )
 
-  section('both on')
-  const both = context({ chartsEnabled: true, docsEnabled: true })
-  check('one catalogue, not two segments', segment(both, 'skills')?.label === 'Skills (2)', segment(both, 'skills')?.label)
-  check('naming both', ['charts', 'documents'].every((id) => segment(both, 'skills').text.includes(`\`${id}\``)))
-  check('and one tool, not two', toolNames(both).filter((n) => n === LOAD_SKILL).length === 1, toolNames(both))
+  section('the built-in skill')
+  const both = context({ chartsEnabled: true })
+  check('one catalogue', segment(both, 'skills')?.label === 'Skills (1)', segment(both, 'skills')?.label)
+  check('naming charts', segment(both, 'skills')?.text.includes('`charts`'))
+  check('and one tool', toolNames(both).filter((n) => n === LOAD_SKILL).length === 1, toolNames(both))
 
   section('held open instead')
-  const held = context({ chartsEnabled: true, docsEnabled: true, skillsOnDemand: false })
+  const held = context({ chartsEnabled: true, skillsOnDemand: false })
   check('no catalogue', !segment(held, 'skills'))
   check('nothing to call', !toolNames(held).includes(LOAD_SKILL), toolNames(held))
   check('the chart syntax is in the prompt', held.systemText.includes('dp-chart'))
-  check('and the document syntax too', held.systemText.includes('dp-docs'))
   check(
     'which is what it used to cost',
     held.estimatedTokens > both.estimatedTokens,
@@ -100,8 +93,7 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
   const hidden = assembleContext(repo.getThread(thread.id), {
     ...DEFAULT_SETTINGS,
     hideExperimental: true,
-    chartsEnabled: true,
-    docsEnabled: true
+    chartsEnabled: true
   })
   check('no skills at all', skillsFor(repo.getThread(thread.id), { ...DEFAULT_SETTINGS, hideExperimental: true, chartsEnabled: true }).length === 0)
   check('nothing advertised', !segment(hidden, 'skills'), hidden.segments.map((s) => s.id))
@@ -109,8 +101,8 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
 
   /*
    * Asking is a tool call, and a model that cannot make one does not decline
-   * politely — it never sees the instructions at all, so charts stay
-   * undrawable in a thread where charts are switched on. Worse than the
+   * politely — it never sees the instructions at all, so it may not know the
+   * chart syntax even where it would help. Worse than the
    * tokens this exists to save, so those models keep the old arrangement.
    */
   section('a model that cannot call tools')
@@ -163,14 +155,13 @@ suite('skills — a line in the prompt, the rest on request', async ({ check, se
   )
 
   /*
-   * The app will not render a `dp-chart` block when charts are off, so
-   * handing over the syntax anyway produces an answer that looks right to the
-   * model and arrives as a wall of JSON in front of the reader.
+   * The renderer can draw a chart fence even when the skill is off, but the
+   * model does not get the detailed chart instructions unless the skill is on.
    */
   section('asking for one that is switched off')
-  const refused = runLoadSkill({ skill: 'charts' }, [builtInById('documents')])
+  const refused = runLoadSkill({ skill: 'charts' }, [])
   check('is refused', !refused.includes('dp-chart'), refused)
-  check('and told to answer without it', /answer without it/i.test(refused), refused)
+  check('and told the skill is off', /switched off/i.test(refused), refused)
 
   section('asking for one that does not exist')
   const unknown = runLoadSkill({ skill: 'interpretive dance' }, [builtInById('charts')])

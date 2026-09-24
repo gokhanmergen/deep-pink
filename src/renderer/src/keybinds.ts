@@ -199,7 +199,6 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
       { id: 'charts.toggle', label: 'Toggle charts' },
       { id: 'reasoning.more', label: 'Think harder' },
       { id: 'reasoning.less', label: 'Think less' },
-      { id: 'docs.toggle', label: 'Toggle multiple documents' },
       { id: 'sync.pause', label: 'Pause / resume syncing' },
       { id: 'mcp.panel', label: 'MCP servers' },
       { id: 'reasoning.toggle', label: 'Show / hide reasoning' },

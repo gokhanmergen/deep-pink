@@ -92,6 +92,7 @@ const AFTER_OPENING = 1200
 const ThreadRow = memo(function ThreadRow({
   thread,
   active,
+  wip,
   generating,
   awaitingName,
   model,
@@ -107,6 +108,8 @@ const ThreadRow = memo(function ThreadRow({
 }: {
   thread: Thread
   active: boolean
+  /** The composer has unsent prompt text for this thread. */
+  wip: boolean
   /** A reply is arriving in this thread, whether or not you are looking at it. */
   generating: boolean
   /** It has no name yet and one is coming, so there is nothing to write here. */
@@ -175,6 +178,7 @@ const ThreadRow = memo(function ThreadRow({
       }}
       onDragEnd={() => onDragState(null)}
       data-temporary={thread.temporary}
+      data-wip={wip || undefined}
       data-generating={generating}
       data-leaving={leaving || undefined}
       // A row on its way out is a row nothing should be able to click.
@@ -185,9 +189,11 @@ const ThreadRow = memo(function ThreadRow({
       title={
         thread.temporary
           ? 'Temporary chat — deleted when you leave it or close the app'
-          : awaitingName
-            ? 'Naming this conversation…'
-            : threadLabel(thread)
+          : wip
+            ? 'Unsent prompt draft — kept until the app restarts'
+            : awaitingName
+              ? 'Naming this conversation…'
+              : threadLabel(thread)
       }
       type="button"
     >
@@ -239,7 +245,7 @@ const ThreadRow = memo(function ThreadRow({
           </span>
         ) : (
           <span className="thread-item__title" data-settling={settling || undefined}>
-            {threadLabel(thread)}
+            {wip && !thread.title ? 'WIP Thread' : threadLabel(thread)}
           </span>
         )}
         {/* The time the list is ordered by, where the eye already is. */}
@@ -275,9 +281,11 @@ const ThreadRow = memo(function ThreadRow({
                 `READABLE_MESSAGES`; one follows each of these anyway, so
                 counting both said the same thing twice. */}
             <span className="nowrap">
-              {thread.messageCount === 0
-                ? 'empty'
-                : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
+              {wip
+                ? 'unsent draft'
+                : thread.messageCount === 0
+                  ? 'empty'
+                  : `${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}`}
             </span>
             <span className="thread-item__sep">·</span>
             {/* The second half of the line is the age of an ordinary thread,
@@ -323,6 +331,7 @@ const isPinned = (entry: Entry): boolean =>
 
 export function Sidebar(): React.JSX.Element {
   const threads = useStore((s) => s.threads)
+  const drafts = useStore((s) => s.drafts)
   const folders = useStore((s) => s.folders)
   const openFolderIds = useStore((s) => s.openFolderIds)
   const draggingThreadId = useStore((s) => s.draggingThreadId)
@@ -406,9 +415,15 @@ export function Sidebar(): React.JSX.Element {
   const started = useMemo(
     () =>
       threads.filter(
-        (t) => t.messageCount > 0 || t.temporary || t.title || t.pinned || t.folderId
+        (t) =>
+          t.messageCount > 0 ||
+          t.temporary ||
+          t.title ||
+          t.pinned ||
+          t.folderId ||
+          Boolean(drafts[t.id]?.trim())
       ),
-    [threads]
+    [threads, drafts]
   )
 
   /**
@@ -1014,6 +1029,7 @@ export function Sidebar(): React.JSX.Element {
       key={thread.id}
       thread={thread}
       active={thread.id === activeThreadId}
+      wip={Boolean(drafts[thread.id]?.trim())}
       generating={generatingThreadIds.includes(thread.id)}
       awaitingName={awaitingName(thread)}
       model={thread.config.model ?? defaultModel}

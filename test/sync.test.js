@@ -330,12 +330,8 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   const folder = repo.createFolder('Systems')
   const thread = repo.createThread('Rust ownership', {
     model: 'anthropic/claude-sonnet-4.5',
-    // What a reply in this thread is allowed to be. Per-thread switches live
-    // inside `config`, which travels as one value — so a switch added to the
-    // app needs no change to sync at all, and this is the check that stays
-    // true when the next one is added.
-    chartsEnabled: true,
-    docsEnabled: true
+    // Per-thread settings live inside `config`, which travels as one value.
+    chartsEnabled: true
   })
   repo.setThreadFolder(thread.id, folder.id)
   const question = repo.insertMessage({
@@ -360,8 +356,7 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   })
   repo.setSetting('settings', {
     defaultModel: 'anthropic/claude-opus-4',
-    temperature: 0.4,
-    docsEnabled: true
+    temperature: 0.4
   })
 
   // The one thing that must never travel.
@@ -508,8 +503,8 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   check('the thread is here', restored.length === 1 && restored[0].title === 'Rust ownership', restored)
   check('with its settings', restored[0].config.model === 'anthropic/claude-sonnet-4.5')
   check(
-    'including what a reply in it may be',
-    restored[0].config.chartsEnabled === true && restored[0].config.docsEnabled === true,
+    'including its chart setting',
+    restored[0].config.chartsEnabled === true,
     restored[0].config
   )
   check('in its folder', repo.getFolder(restored[0].folderId)?.name === 'Systems')
@@ -526,11 +521,6 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
     attachments.readBase64(messages[0].attachments[0].id) === PNG
   )
   check('the app settings came too', repo.getSetting('settings', {}).temperature === 0.4)
-  check(
-    'and the global switches with them',
-    repo.getSetting('settings', {}).docsEnabled === true,
-    repo.getSetting('settings', {})
-  )
   check(
     'the OpenRouter key did not, because it was never in the database',
     secrets.getApiKey() === 'sk-or-must-never-leave-this-machine'

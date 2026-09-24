@@ -212,7 +212,7 @@ export function Wizard({ onClose }: { onClose: () => void }): React.JSX.Element 
               <FlaskConical {...ICON} /> The unfinished parts
             </div>
             <p className="field__hint">
-              Web access, charts, replies split into documents, marking the key sentence,
+              Web access, charts, marking the key sentence,
               MCP servers, reading a code repository, and syncing to a bucket. They work,
               and they move about more than the rest of the app.
             </p>
