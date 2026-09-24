@@ -111,7 +111,7 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${compact ? Math.min(el.scrollHeight, 36) : el.scrollHeight}px`
+    el.style.height = `${compact ? Math.min(el.scrollHeight, 24) : el.scrollHeight}px`
   }, [value, compact])
 
   // Opening a thread means you are about to type in it. Don't steal focus from

@@ -2639,8 +2639,8 @@ svg.lucide {
 
 /* During reading, leave just one prompt line and its padding in the bar. */
 .composer[data-compact='true'] {
-  padding-top: var(--s1);
-  padding-bottom: var(--s1);
+  padding-top: 1px;
+  padding-bottom: 1px;
 }
 
 .composer[data-compact='true'] .composer__notice,
@@ -2694,10 +2694,11 @@ svg.lucide {
 }
 
 .composer[data-compact='true'] .composer__textarea {
-  min-height: 30px;
-  max-height: 36px;
-  padding-top: var(--s1);
-  padding-bottom: var(--s1);
+  min-height: 22px;
+  max-height: 24px;
+  padding-top: 1px;
+  padding-bottom: 1px;
+  line-height: 1.2;
 }
 
 .composer__textarea::placeholder {
