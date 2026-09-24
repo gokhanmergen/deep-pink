@@ -2634,6 +2634,12 @@ svg.lucide {
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
   padding: var(--s3) var(--s6) var(--s4);
+  transition: padding var(--quick);
+}
+
+.composer[data-compact='true'] {
+  padding-top: var(--s1);
+  padding-bottom: var(--s1);
 }
 
 .composer__inner {
@@ -2676,6 +2682,15 @@ svg.lucide {
   min-height: 46px;
   line-height: 1.55;
   font-family: inherit;
+  transition: height var(--quick), min-height var(--quick), max-height var(--quick),
+    padding var(--quick);
+}
+
+.composer[data-compact='true'] .composer__textarea {
+  min-height: 34px;
+  max-height: 72px;
+  padding-top: var(--s1);
+  padding-bottom: var(--s1);
 }
 
 .composer__textarea::placeholder {
@@ -2688,6 +2703,19 @@ svg.lucide {
   gap: var(--s1);
   padding: var(--s1) var(--s2) var(--s2);
   flex-wrap: wrap;
+  max-height: 180px;
+  opacity: 1;
+  overflow: hidden;
+  transition: max-height var(--quick), opacity var(--quick), padding var(--quick), visibility 0s;
+}
+
+.composer[data-compact='true'] .composer__bar {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 /* Send sits at the far end on its own, which is the whole of what the row of

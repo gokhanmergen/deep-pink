@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   MAX_COUNT,
   attachableFilesFrom,
@@ -35,7 +35,12 @@ import {
 
 export const COMPOSER_ID = 'composer-input'
 
-export function Composer(): React.JSX.Element {
+interface ComposerProps {
+  compact?: boolean
+  onInteract?: () => void
+}
+
+export function Composer({ compact = false, onInteract }: ComposerProps): React.JSX.Element {
   const [images, setImages] = useState<StagedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [attachMenu, setAttachMenu] = useState<{ x: number; y: number } | null>(null)
@@ -106,8 +111,8 @@ export function Composer(): React.JSX.Element {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [value])
+    el.style.height = `${compact ? Math.min(el.scrollHeight, 72) : el.scrollHeight}px`
+  }, [value, compact])
 
   // Opening a thread means you are about to type in it. Don't steal focus from
   // someone who is already typing somewhere else, though — a search box, a
@@ -125,12 +130,45 @@ export function Composer(): React.JSX.Element {
     textareaRef.current?.focus()
   }, [activeThreadId])
 
-  const add = async (files: File[]): Promise<void> => {
+  const add = useCallback(async (files: File[]): Promise<void> => {
     if (!files.length) return
     const { staged, rejected } = await stageFiles(files, images.length)
     if (staged.length) setImages((current) => [...current, ...staged])
     if (rejected.length) showToast(rejected[0], 'error')
-  }
+  }, [images.length, showToast])
+
+  // Images can be pasted while the transcript or another non-editable part of
+  // the window has focus. Treat that like pasting into the composer, then leave
+  // ordinary text pastes to the control the user is already typing in.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent): void => {
+      if (event.defaultPrevented) return
+      const files = attachableFilesFrom(event.clipboardData)
+      if (!files.length || event.target === textareaRef.current) return
+
+      const store = useStore.getState()
+      if (
+        !store.activeThreadId ||
+        store.overlay !== null ||
+        store.dialog !== null ||
+        store.pendingApproval !== null ||
+        store.imageViewer !== null ||
+        store.editingMessageId !== null ||
+        store.renaming !== null
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      onInteract?.()
+      textareaRef.current?.focus({ preventScroll: true })
+      void add(files)
+    }
+
+    window.addEventListener('paste', onPaste, true)
+    return () => window.removeEventListener('paste', onPaste, true)
+  }, [add, onInteract])
 
   // Attached directories live on the thread, not the message, so they persist
   // across turns and follow you when you come back to the conversation.
@@ -331,7 +369,13 @@ export function Composer(): React.JSX.Element {
   const canReason = modelInfo == null || modelInfo.supportsReasoning
 
   return (
-    <div className="composer" ref={rootRef}>
+    <div
+      className="composer"
+      data-compact={compact}
+      ref={rootRef}
+      onPointerDown={onInteract}
+      onFocusCapture={onInteract}
+    >
       <div className="composer__inner">
         {toolsUnsupported && (
           <div className="composer__notice">

@@ -3,6 +3,7 @@ import { useStore } from './store'
 import { buildActions } from './actions'
 import { warmHighlighter } from './highlight'
 import { matchesParsed, parseBinding } from './keybinds'
+import { COMPOSER_ID } from './components/Composer'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { CommandPalette } from './components/CommandPalette'
@@ -193,17 +194,56 @@ export function App(): React.JSX.Element {
         if (editable && !chorded) continue
         hits.add(id)
       }
-      if (!hits.size) return
-
       // In the order the actions are declared, because two of them share a
       // binding — deleting the thread and deleting its last message — and
       // which one wins has always been decided by that order.
-      for (const action of buildActions()) {
-        if (!hits.has(action.id)) continue
-        event.preventDefault()
-        void action.run()
+      if (hits.size) {
+        for (const action of buildActions()) {
+          if (!hits.has(action.id)) continue
+          event.preventDefault()
+          void action.run()
+          return
+        }
+      }
+
+      // A printable key starts a prompt when focus is on the conversation or
+      // other non-editable chrome. Insert the first key explicitly: focusing a
+      // textarea during keydown does not retarget that keystroke to it.
+      if (
+        editable ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.key.length !== 1 ||
+        (event.key === ' ' && event.target instanceof HTMLButtonElement)
+      ) {
         return
       }
+
+      const store = useStore.getState()
+      if (
+        !store.activeThreadId ||
+        store.overlay !== null ||
+        store.dialog !== null ||
+        store.pendingApproval !== null ||
+        store.imageViewer !== null ||
+        store.editingMessageId !== null ||
+        store.renaming !== null
+      ) {
+        return
+      }
+
+      const composer = document.getElementById(COMPOSER_ID) as HTMLTextAreaElement | null
+      if (!composer || composer.disabled) return
+
+      event.preventDefault()
+      composer.focus({ preventScroll: true })
+      const start = composer.selectionStart ?? composer.value.length
+      const end = composer.selectionEnd ?? start
+      composer.setRangeText(event.key, start, end, 'end')
+      store.setDraft(store.activeThreadId, composer.value)
     }
 
     window.addEventListener('keydown', onKeyDown)

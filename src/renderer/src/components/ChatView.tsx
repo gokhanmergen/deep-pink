@@ -183,6 +183,7 @@ export function ChatView(): React.JSX.Element {
    * than of what is on the page.
    */
   const [awayFromEnd, setAwayFromEnd] = useState(false)
+  const [composerCompact, setComposerCompact] = useState(false)
 
   /**
    * The blocks whose contents have been built, by the id of their frame.
@@ -194,6 +195,9 @@ export function ChatView(): React.JSX.Element {
   const [built, setBuilt] = useState<ReadonlySet<string>>(NOTHING_BUILT)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollingNow = useRef(false)
+  const expandWhileScrolling = useRef(false)
   const pinnedToBottom = useRef(true)
 
   /**
@@ -395,6 +399,7 @@ export function ChatView(): React.JSX.Element {
   useEffect(() => {
     return () => {
       if (pendingBuild.current) clearTimeout(pendingBuild.current)
+      if (scrollStopTimer.current) clearTimeout(scrollStopTimer.current)
     }
   }, [])
 
@@ -415,6 +420,16 @@ export function ChatView(): React.JSX.Element {
   const onScroll = useCallback((): void => {
     const el = scrollRef.current
     if (!el) return
+
+    scrollingNow.current = true
+    if (!expandWhileScrolling.current) setComposerCompact(true)
+    if (scrollStopTimer.current) clearTimeout(scrollStopTimer.current)
+    scrollStopTimer.current = setTimeout(() => {
+      scrollStopTimer.current = null
+      scrollingNow.current = false
+      expandWhileScrolling.current = false
+      setComposerCompact(false)
+    }, 220)
 
     // Reading has begun, so the landing is over — but only if this is the
     // reader's scroll rather than one of this component's own.
@@ -460,6 +475,11 @@ export function ChatView(): React.JSX.Element {
     fetchAhead()
     scheduleBuild()
   }, [fetchAhead, scheduleBuild])
+
+  const expandComposer = useCallback((): void => {
+    if (scrollingNow.current) expandWhileScrolling.current = true
+    setComposerCompact(false)
+  }, [])
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -1211,7 +1231,7 @@ export function ChatView(): React.JSX.Element {
 
       </div>
 
-      <Composer />
+      <Composer compact={composerCompact} onInteract={expandComposer} />
     </div>
   )
 }
