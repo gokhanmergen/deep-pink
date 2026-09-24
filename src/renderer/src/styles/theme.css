@@ -2633,7 +2633,7 @@ svg.lucide {
   flex: none;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
-  padding: var(--s4) var(--s6) var(--s3);
+  padding: var(--s3) var(--s6) var(--s4);
   transition: padding var(--quick);
 }
 
@@ -2682,7 +2682,7 @@ svg.lucide {
   width: 100%;
   border: none;
   background: none;
-  padding: 18px var(--s4) var(--s3);
+  padding: var(--s3) var(--s4);
   resize: none;
   outline: none;
   max-height: 320px;
