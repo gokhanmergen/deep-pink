@@ -1117,9 +1117,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               ) : info?.platform === 'linux' ? (
                 <>The native popup launcher is unavailable in this build.</>
               ) : info ? (
-                <>
-                  Bind your shortcut to <code className="mono">deep-pink --quick-question</code>.
-                </>
+                <>The native popup launcher is currently available on Linux only.</>
               ) : null}
             </p>
           </>

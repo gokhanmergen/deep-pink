@@ -491,62 +491,17 @@ static gboolean window_delete(GtkWidget *widget, GdkEvent *event, gpointer user_
   return FALSE;
 }
 
-static GtkWidget *make_header(App *app) {
-  GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-  GtkWidget *bolt = gtk_label_new("⚡");
-  GtkWidget *title = gtk_label_new("Quick Question");
-  GtkWidget *spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  GtkWidget *close = gtk_button_new_with_label("×");
-  gtk_widget_set_halign(title, GTK_ALIGN_START);
-  gtk_widget_set_hexpand(spacer, TRUE);
-  gtk_widget_set_tooltip_text(close, "Close · Escape");
-  gtk_style_context_add_class(gtk_widget_get_style_context(title), "title");
-  gtk_style_context_add_class(gtk_widget_get_style_context(close), "flat");
-  gtk_box_pack_start(GTK_BOX(header), bolt, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(header), title, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(header), spacer, TRUE, TRUE, 0);
-  gtk_box_pack_end(GTK_BOX(header), close, FALSE, FALSE, 0);
-  g_signal_connect_swapped(close, "clicked", G_CALLBACK(gtk_window_close), app->window);
-  return header;
-}
-
-static void install_style(void) {
-  static const gchar css[] =
-      "window.quick-question { background: #0a0a0d; color: #e6e6ec; }"
-      "window.quick-question label { color: #e6e6ec; }"
-      "window.quick-question label.dim { color: #82828d; }"
-      "window.quick-question label.title { font-size: 15px; font-weight: 600; }"
-      "window.quick-question label.error { color: #ff9098; }"
-      "window.quick-question textview { background: #17171d; color: #e6e6ec; }"
-      "window.quick-question textview text { background: #17171d; color: #e6e6ec; }"
-      "window.quick-question button { background: #19191f; color: #e6e6ec; border-radius: 8px; padding: 7px 13px; }"
-      "window.quick-question button.suggested-action { background: #8982ff; color: #08080b; }"
-      "window.quick-question button.flat { background: transparent; padding: 4px 8px; }";
-  GtkCssProvider *provider = gtk_css_provider_new();
-  GError *error = NULL;
-  if (!gtk_css_provider_load_from_data(provider, css, -1, &error)) {
-    g_clear_error(&error);
-  }
-  gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
-                                            GTK_STYLE_PROVIDER(provider),
-                                            GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-  g_object_unref(provider);
-}
-
 static void activate(GtkApplication *application, gpointer user_data) {
   App *app = user_data;
-  install_style();
   app->window = gtk_application_window_new(application);
   gtk_window_set_title(GTK_WINDOW(app->window), "Quick Question");
   gtk_window_set_icon_name(GTK_WINDOW(app->window), "deep-pink");
   gtk_window_set_default_size(GTK_WINDOW(app->window), 560, 390);
   gtk_window_set_resizable(GTK_WINDOW(app->window), TRUE);
   gtk_window_set_position(GTK_WINDOW(app->window), GTK_WIN_POS_CENTER);
-  gtk_window_set_decorated(GTK_WINDOW(app->window), FALSE);
   gtk_window_set_type_hint(GTK_WINDOW(app->window), GDK_WINDOW_TYPE_HINT_DIALOG);
   gtk_window_set_skip_taskbar_hint(GTK_WINDOW(app->window), TRUE);
   gtk_window_set_keep_above(GTK_WINDOW(app->window), TRUE);
-  gtk_style_context_add_class(gtk_widget_get_style_context(app->window), "quick-question");
 
   GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
   gtk_widget_set_margin_top(outer, 15);
@@ -554,13 +509,13 @@ static void activate(GtkApplication *application, gpointer user_data) {
   gtk_widget_set_margin_start(outer, 18);
   gtk_widget_set_margin_end(outer, 18);
   gtk_container_add(GTK_CONTAINER(app->window), outer);
-  gtk_box_pack_start(GTK_BOX(outer), make_header(app), FALSE, FALSE, 0);
 
   GtkWidget *label = gtk_label_new("What do you need to know?");
   gtk_widget_set_halign(label, GTK_ALIGN_START);
   gtk_box_pack_start(GTK_BOX(outer), label, FALSE, FALSE, 0);
 
   GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+  gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(scroll), GTK_SHADOW_IN);
   gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
   gtk_widget_set_size_request(scroll, -1, 78);
   gtk_widget_set_vexpand(scroll, FALSE);
@@ -570,7 +525,6 @@ static void activate(GtkApplication *application, gpointer user_data) {
   gtk_text_view_set_right_margin(GTK_TEXT_VIEW(app->input), 10);
   gtk_text_view_set_top_margin(GTK_TEXT_VIEW(app->input), 9);
   gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(app->input), 9);
-  gtk_style_context_add_class(gtk_widget_get_style_context(app->input), "prompt");
   gtk_container_add(GTK_CONTAINER(scroll), app->input);
   gtk_box_pack_start(GTK_BOX(outer), scroll, FALSE, TRUE, 0);
   g_signal_connect(app->input, "key-press-event", G_CALLBACK(input_key_press), app);
@@ -579,7 +533,6 @@ static void activate(GtkApplication *application, gpointer user_data) {
   app->question_label = gtk_label_new("");
   gtk_label_set_line_wrap(GTK_LABEL(app->question_label), TRUE);
   gtk_label_set_xalign(GTK_LABEL(app->question_label), 0.0f);
-  gtk_style_context_add_class(gtk_widget_get_style_context(app->question_label), "dim");
   app->answer_label = gtk_label_new("");
   gtk_label_set_line_wrap(GTK_LABEL(app->answer_label), TRUE);
   gtk_label_set_line_wrap_mode(GTK_LABEL(app->answer_label), PANGO_WRAP_WORD_CHAR);
@@ -613,7 +566,6 @@ static void activate(GtkApplication *application, gpointer user_data) {
 
   app->status_label = gtk_label_new("Starting Deep Pink…");
   gtk_widget_set_halign(app->status_label, GTK_ALIGN_START);
-  gtk_style_context_add_class(gtk_widget_get_style_context(app->status_label), "dim");
   gtk_box_pack_end(GTK_BOX(outer), app->status_label, FALSE, FALSE, 0);
 
   gtk_widget_show_all(app->window);

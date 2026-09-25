@@ -7,7 +7,7 @@
     { self, nixpkgs }:
     let
       # The packaged app wraps the Electron from nixpkgs, which is a Linux
-      # build; macOS still gets its .app from `pnpm dist:mac`, which needs the
+      # build; macOS still gets its .app from `just package-mac`, which needs the
       # code-signing tools Apple ships rather than anything Nix can provide.
       linuxSystems = [
         "x86_64-linux"
@@ -32,29 +32,32 @@
         deep-pink = final.callPackage ./nix/package.nix { };
       };
 
-      # `nix develop` — everything `pnpm dev`, `pnpm test` and `pnpm dist:linux`
-      # need, and nothing global to install first.
+      # `nix develop` — everything `just dev`, `just test` and
+      # `just package-linux` need, including the GTK development files.
       devShells = forSystems devSystems (pkgs: {
         default = pkgs.mkShell {
           packages = [
+            pkgs.just
             pkgs.nodejs
             pkgs.pnpm_11
-            # `pnpm install` compiles the SQLite binding from source when no
+            # `just install` compiles the SQLite binding from source when no
             # prebuild matches the platform.
             pkgs.python3
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.electron
+            pkgs.gtk3
             # What encrypted key storage is built on here; macOS has the
             # Keychain and needs nothing installed.
             pkgs.libsecret
+            pkgs.pkg-config
             # The suites that boot the real window need a display; on a
-            # headless machine, `xvfb-run --auto-servernum pnpm test`.
+            # headless machine, `xvfb-run --auto-servernum just test`.
             pkgs.xvfb-run
           ];
 
           # Use the Electron from nixpkgs rather than downloading one, and let
-          # `pnpm dev` find it where electron-vite looks.
+          # `just dev` find it where electron-vite looks.
           shellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
             export ELECTRON_SKIP_BINARY_DOWNLOAD=1
             export ELECTRON_OVERRIDE_DIST_PATH="${pkgs.electron}/libexec/electron"

@@ -220,25 +220,6 @@ const api = {
     info: (): Promise<AppInfo> => ipcRenderer.invoke('app:info')
   },
 
-  quickQuestion: {
-    ask: (question: string, requestId: number): Promise<string> =>
-      ipcRenderer.invoke('quick-question:ask', question, requestId),
-    cancel: (): void => ipcRenderer.send('quick-question:cancel'),
-    onOpened: (listener: () => void): (() => void) => {
-      const handler = (): void => listener()
-      ipcRenderer.on('quick-question:opened', handler)
-      return () => ipcRenderer.removeListener('quick-question:opened', handler)
-    },
-    onContent: (
-      listener: (payload: { requestId: number; content: string }) => void
-    ): (() => void) => {
-      const handler = (_e: unknown, payload: { requestId: number; content: string }): void =>
-        listener(payload)
-      ipcRenderer.on('quick-question:content', handler)
-      return () => ipcRenderer.removeListener('quick-question:content', handler)
-    }
-  },
-
   repo: {
     /** Opens a directory picker; returns the chosen path, or null if cancelled. */
     choose: (): Promise<string | null> => ipcRenderer.invoke('repo:choose'),

@@ -5,9 +5,12 @@
   copyDesktopItems,
   electron,
   fetchPnpmDeps,
+  gtk3,
+  just,
   makeDesktopItem,
   makeWrapper,
   nodejs,
+  pkg-config,
   pnpmConfigHook,
   pnpm_11,
 }:
@@ -18,7 +21,7 @@
   Two things make an Electron app awkward to package with Nix, and both are
   avoidable here rather than worked around:
 
-  1. Electron itself. `pnpm install` normally downloads a hundred-megabyte
+  1. Electron itself. `just install` normally downloads a hundred-megabyte
      binary from GitHub, which a sandboxed build cannot do and should not want
      to — so the download is skipped and the app is launched with the Electron
      from nixpkgs, whose libraries the rest of the system already knows how to
@@ -56,6 +59,9 @@ stdenv.mkDerivation (finalAttrs: {
       ../pnpm-workspace.yaml
       ../.npmrc
       ../electron.vite.config.ts
+      ../justfile
+      ../native/quick-question.c
+      ../scripts/build-native-quick-question.sh
       ../tsconfig.json
       ../tsconfig.node.json
       ../tsconfig.web.json
@@ -81,13 +87,15 @@ stdenv.mkDerivation (finalAttrs: {
     copyDesktopItems
     makeWrapper
     nodejs
+    pkg-config
     pnpmConfigHook
     pnpm_11
+    just
   ];
 
   # What the prebuilt SQLite binding links against. Without it the app starts,
   # fails to open its database and never draws a window.
-  buildInputs = [ (lib.getLib stdenv.cc.cc) ];
+  buildInputs = [ (lib.getLib stdenv.cc.cc) gtk3 ];
 
   __structuredAttrs = true;
   strictDeps = true;
@@ -101,7 +109,7 @@ stdenv.mkDerivation (finalAttrs: {
   buildPhase = ''
     runHook preBuild
 
-    pnpm exec electron-vite build
+    just build
 
     # What ships is the bundle plus the three runtime dependencies. Everything
     # else — Electron, TypeScript, the whole renderer toolchain — was scaffolding
@@ -123,6 +131,8 @@ stdenv.mkDerivation (finalAttrs: {
 
     mkdir -p $out/share/deep-pink
     cp -r out node_modules package.json $out/share/deep-pink/
+    mkdir -p $out/share/deep-pink/build
+    cp -r build/native $out/share/deep-pink/build/
 
     # `--inherit-argv0` so the process is called what the launcher called it,
     # and the Wayland flags only when the session is actually Wayland: XWayland
@@ -130,6 +140,7 @@ stdenv.mkDerivation (finalAttrs: {
     makeWrapper ${electron}/bin/electron $out/bin/deep-pink \
       --inherit-argv0 \
       --add-flags $out/share/deep-pink \
+      --set DEEP_PINK_EXECUTABLE $out/bin/deep-pink \
       --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations}}"
 
     # Named for the app id, which is also what Electron reports as its

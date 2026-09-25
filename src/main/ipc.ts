@@ -29,7 +29,6 @@ import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
-import { askQuickQuestion } from './quickQuestion'
 import { installedLauncherPath } from './nativeLauncher'
 import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { keyPointCeiling } from '@shared/defaults'
@@ -42,8 +41,6 @@ const MCP_STATUS_EVENT = 'mcp:status'
 const SYNC_EVENT = 'sync:event'
 const UPDATE_EVENT = 'updates:changed'
 const SYNC_PROGRESS = 'sync:progress'
-const quickQuestionControllers = new Map<number, AbortController>()
-
 function quickQuestionLauncherPath(): string | null {
   return installedLauncherPath()
 }
@@ -52,10 +49,6 @@ function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload)
   }
-}
-
-export function cancelQuickQuestion(senderId: number): void {
-  quickQuestionControllers.get(senderId)?.abort()
 }
 
 const emit = (event: StreamEvent): void => broadcast(CHAT_EVENT, event)
@@ -203,43 +196,6 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('settings:encryptionAvailable', (): boolean => isEncryptionAvailable())
-
-  /* ---------------- Quick Question ---------------- */
-
-  ipcMain.handle(
-    'quick-question:ask',
-    async (event, question: string, rawRequestId: number): Promise<string> => {
-      const requestId = Number.isSafeInteger(rawRequestId) ? rawRequestId : 0
-      const controller = new AbortController()
-      quickQuestionControllers.get(event.sender.id)?.abort()
-      quickQuestionControllers.set(event.sender.id, controller)
-
-      let shown = ''
-      try {
-        return await askQuickQuestion(question, controller.signal, (content) => {
-          if (
-            event.sender.isDestroyed() ||
-            quickQuestionControllers.get(event.sender.id) !== controller
-          ) {
-            return
-          }
-          shown = content
-          event.sender.send('quick-question:content', { requestId, content })
-        })
-      } catch (error) {
-        if (controller.signal.aborted) return shown
-        throw error
-      } finally {
-        if (quickQuestionControllers.get(event.sender.id) === controller) {
-          quickQuestionControllers.delete(event.sender.id)
-        }
-      }
-    }
-  )
-
-  ipcMain.on('quick-question:cancel', (event) => {
-    cancelQuickQuestion(event.sender.id)
-  })
 
   /* ---------------- models ---------------- */
 

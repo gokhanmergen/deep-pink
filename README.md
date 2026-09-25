@@ -221,32 +221,34 @@ threads stay where the rest of this README says they do, in
 ```bash
 git clone https://github.com/gokhanmergen/deep-pink.git
 cd deep-pink
-pnpm install
-pnpm dev
+just install
+just dev
 ```
 
-Node 20 or newer, and [pnpm](https://pnpm.io/installation). pnpm is used rather
-than npm because electron-builder needs a package manager it can drive to
-rebuild the native SQLite binding against Electron's ABI, and because npm's
-hoisting quietly hides undeclared dependencies.
+Install [just](https://github.com/casey/just#installation), Node 20 or newer,
+and [pnpm](https://pnpm.io/installation). just provides the project commands;
+pnpm manages JavaScript dependencies and rebuilds the native SQLite binding.
 
-`pnpm install` downloads or compiles that SQLite binding; on Linux it needs
+`just install` downloads or compiles the SQLite binding; on Linux it needs
 `build-essential` and `python3` if no prebuilt binary matches your platform.
+`just build` also compiles the native GTK Quick Question launcher, which needs
+`libgtk-3-dev` and `pkg-config`.
 
 ### Build a Linux package yourself
 
 ```bash
-pnpm dist:linux
+just package-linux
 ```
 
-Produces AppImage, `.deb`, `.rpm`, `.pkg.tar.xz` and a tarball in `release/`.
+Builds the app and GTK popup, then produces AppImage, `.deb`, `.rpm`,
+`.pkg.tar.xz` and a tarball in `release/`.
 
 Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
 
 ### Build a macOS app
 
 ```bash
-pnpm dist:mac
+just package-mac arm64
 ```
 
 Produces `release/Deep Pink-<version>-arm64.dmg` and a `.zip`. Drag the app to
@@ -333,10 +335,11 @@ The full list, including the ones not shown here, is in the cheatsheet — and a
 ## Development
 
 ```bash
-pnpm dev         # hot-reloading dev build
-pnpm typecheck   # main, preload and renderer
-pnpm test        # storage, streaming, tool handling, layout, web guards
-pnpm build       # production bundle
+just dev             # hot-reloading development app
+just typecheck       # main, preload and renderer
+just test            # storage, streaming, tool handling, layout, web guards
+just build           # production bundle; compiles GTK launcher on Linux
+just package-linux   # complete Linux package build
 ```
 
 To cut a release, bump the version and push the tag — the workflow builds the
@@ -345,22 +348,22 @@ tests fail or the tag disagrees with `package.json`, and attaches everything to
 one GitHub release:
 
 ```bash
-pnpm version patch
+just version patch
 git push --follow-tags
 ```
 
-The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum pnpm test`.
+The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum just test`.
 
 ### With Nix
 
 ```bash
-nix develop      # node, pnpm, Electron, libsecret and xvfb-run
-pnpm install
-pnpm dev
+nix develop      # just, node, pnpm, GTK, Electron, libsecret and xvfb-run
+just install
+just dev
 ```
 
 The shell points the `electron` package at the Electron from nixpkgs
-(`ELECTRON_OVERRIDE_DIST_PATH`), so `pnpm install` does not download a second
+(`ELECTRON_OVERRIDE_DIST_PATH`), so `just install` does not download a second
 copy of it.
 
 `nix/package.nix` pins the hash of every dependency in `pnpm-lock.yaml`, which

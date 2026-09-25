@@ -134,7 +134,7 @@ def main() -> None:
     print(f"  icon.ico   Windows, {len(ICO_SIZES)} sizes")
 
     write_icns(square)
-    print("\nRebuild to pick them up:  pnpm dist:mac  /  pnpm dist:linux")
+    print("\nRebuild to pick them up:  just package-mac arm64  /  just package-linux")
 
 
 if __name__ == "__main__":

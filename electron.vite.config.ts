@@ -52,10 +52,7 @@ export default defineConfig({
     worker: { format: 'es' },
     build: {
       rollupOptions: {
-        input: {
-          index: resolve(__dirname, 'src/renderer/index.html'),
-          'quick-question': resolve(__dirname, 'src/renderer/quick-question.html')
-        }
+        input: { index: resolve(__dirname, 'src/renderer/index.html') }
       }
     },
     resolve: {

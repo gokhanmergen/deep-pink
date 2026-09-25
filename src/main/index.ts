@@ -3,7 +3,7 @@ import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
 import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
-import { cancelQuickQuestion, registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
+import { registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
 import { startLocalIpc, stopLocalIpc } from './localIpc'
 import { prepareNativeLauncher } from './nativeLauncher'
 import * as attachments from './attachments'
@@ -22,17 +22,14 @@ import { reportUncaught } from './report'
 reportUncaught()
 
 const isDev = !app.isPackaged
-const launchedAsQuickQuestion = process.argv.includes('--quick-question')
 const launchedAsNativeIpcServer = process.argv.includes('--ipc-server')
 let mainWindow: BrowserWindow | null = null
-let quickQuestionWindow: BrowserWindow | null = null
-let quickQuestionOwnsHiddenMain = false
 let appIsQuitting = false
 let nativeIpcClientCount = 0
 let nativeServiceIdleTimer: NodeJS.Timeout | null = null
 let backgroundTasksStarted = false
 let canOpenWindows = false
-let pendingLaunch: 'main' | 'quick-question' | null = null
+let pendingLaunch = false
 
 function scheduleNativeServiceExit(delay: number): void {
   if (nativeServiceIdleTimer) clearTimeout(nativeServiceIdleTimer)
@@ -79,7 +76,7 @@ function startBackgroundTasks(): void {
   startSync()
 }
 
-function createWindow(showImmediately = true): BrowserWindow {
+function createWindow(): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow
   const win = new BrowserWindow({
     width: 1280,
@@ -104,7 +101,6 @@ function createWindow(showImmediately = true): BrowserWindow {
   mainWindow = win
 
   // In background mode the close button means "put the main window away".
-  // The preloaded Quick Question window keeps the process ready for the WM.
   win.on('close', (event) => {
     if (!appIsQuitting && loadSettings().quickQuestion.keepRunning) {
       event.preventDefault()
@@ -114,14 +110,6 @@ function createWindow(showImmediately = true): BrowserWindow {
   win.on('closed', () => {
     if (mainWindow === win) {
       mainWindow = null
-      quickQuestionOwnsHiddenMain = false
-    }
-    // The launcher is preloaded while the app is open. Without background
-    // mode it should not keep a supposedly closed app alive by itself.
-    if (appIsQuitting || !loadSettings().quickQuestion.keepRunning) {
-      if (quickQuestionWindow && !quickQuestionWindow.isDestroyed()) {
-        quickQuestionWindow.destroy()
-      }
     }
   })
 
@@ -174,95 +162,11 @@ function createWindow(showImmediately = true): BrowserWindow {
    * skeleton of the app's own chrome that the HTML parser puts up without
    * waiting for any script. What the reader sees is the app appearing in a
    * quarter of a second and filling in, rather than a quarter of a second of
-   * nothing followed by two seconds more of it. A launcher-only start opts out
-   * and keeps this owner window hidden.
+   * nothing followed by two seconds more of it.
    */
-  if (showImmediately) win.show()
-
-  return win
-}
-
-function createQuickQuestionWindow(): BrowserWindow {
-  if (quickQuestionWindow && !quickQuestionWindow.isDestroyed()) return quickQuestionWindow
-
-  // On Linux, a parented modal window is reported to the window manager as a
-  // dialog. The transient relationship makes tiling WMs float it reliably.
-  // A launcher-only start still needs an owner, but must not open the full UI.
-  if (process.platform === 'linux' && (!mainWindow || mainWindow.isDestroyed())) {
-    quickQuestionOwnsHiddenMain = true
-    createWindow(false)
-  }
-
-  const win = new BrowserWindow({
-    title: 'Quick Question',
-    width: 560,
-    height: 390,
-    minWidth: 430,
-    minHeight: 300,
-    show: false,
-    center: true,
-    frame: false,
-    resizable: true,
-    alwaysOnTop: true,
-    ...(process.platform === 'linux' && mainWindow
-      ? { parent: mainWindow, modal: true }
-      : {}),
-    skipTaskbar: true,
-    autoHideMenuBar: true,
-    backgroundColor: '#0a0a0d',
-    ...(process.platform === 'linux' ? { icon: join(__dirname, '../../build/icon.png') } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      spellcheck: true
-    }
-  })
-  quickQuestionWindow = win
-  win.on('close', () => cancelQuickQuestion(win.webContents.id))
-  win.on('closed', () => {
-    cancelQuickQuestion(win.webContents.id)
-    if (quickQuestionWindow === win) quickQuestionWindow = null
-
-    if (appIsQuitting) return
-    const keepRunning = loadSettings().quickQuestion.keepRunning
-    const hasOwner = Boolean(mainWindow && !mainWindow.isDestroyed())
-    if (hasOwner && (mainWindow?.isVisible() || keepRunning)) {
-      // A shown modal window is destroyed on close because Linux desktops do
-      // not consistently support hiding dialogs. Recreate it hidden and warm.
-      createQuickQuestionWindow()
-      return
-    }
-
-    if (quickQuestionOwnsHiddenMain && hasOwner && mainWindow) {
-      // A cold launcher invocation owns its hidden main window. With
-      // background mode off, remove the owner too so the process can exit.
-      quickQuestionOwnsHiddenMain = false
-      mainWindow.destroy()
-      app.quit()
-    }
-  })
-
-  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
-    const url = new URL('/quick-question.html', process.env['ELECTRON_RENDERER_URL']).toString()
-    win.loadURL(url)
-  } else {
-    win.loadFile(join(__dirname, '../renderer/quick-question.html'))
-  }
-
-  // A small static skeleton is already in the HTML, so it can be shown before
-  // React has parsed the popup bundle. It stays hidden until the WM invokes it.
-  return win
-}
-
-function openQuickQuestion(): void {
-  const win = createQuickQuestionWindow()
-  if (win.isMinimized()) win.restore()
   win.show()
-  win.focus()
-  win.webContents.focus()
-  if (!win.webContents.isLoading()) win.webContents.send('quick-question:opened')
+
+  return win
 }
 
 function openMainWindow(): void {
@@ -272,7 +176,6 @@ function openMainWindow(): void {
   }
   startBackgroundTasks()
   const win = createWindow()
-  quickQuestionOwnsHiddenMain = false
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
@@ -294,14 +197,11 @@ app.on('second-instance', (_event, commandLine) => {
   // already owns the single-instance lock, its IPC socket is already the only
   // thing the second process needs to discover.
   if (commandLine.includes('--ipc-server')) return
-
-  const launch = commandLine.includes('--quick-question') ? 'quick-question' : 'main'
   if (!canOpenWindows) {
-    pendingLaunch = launch
+    pendingLaunch = true
     return
   }
-  if (launch === 'quick-question') openQuickQuestion()
-  else openMainWindow()
+  openMainWindow()
 })
 
 app.whenReady().then(async () => {
@@ -349,25 +249,15 @@ app.whenReady().then(async () => {
         return
       }
     }
-  }
-  canOpenWindows = true
-  const launch = pendingLaunch ??
-    (launchedAsQuickQuestion
-      ? 'quick-question'
-      : launchedAsNativeIpcServer
-        ? 'ipc-server'
-        : 'main')
-  pendingLaunch = null
-  if (launch === 'quick-question') openQuickQuestion()
-  else if (launch === 'main') createWindow()
-  // The GTK launcher handles Linux popup rendering without preloading a
-  // Chromium window. Keep the old popup available on the other platforms.
-  if (process.platform !== 'linux') createQuickQuestionWindow()
-  if (process.platform === 'linux') {
-    void prepareNativeLauncher().catch((error) => {
+    // Settings can immediately show the window-manager binding, so copy the
+    // helper before exposing the main window instead of racing the settings UI.
+    await prepareNativeLauncher().catch((error) => {
       console.error('Could not prepare the native Quick Question launcher:', error)
     })
   }
+  canOpenWindows = true
+  if (pendingLaunch || !launchedAsNativeIpcServer) createWindow()
+  pendingLaunch = false
   if (launchedAsNativeIpcServer) scheduleNativeServiceExit(30_000)
 
   // Keep a launcher-only process lean. If it later opens the main window,

@@ -1,12 +1,12 @@
-import { statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { chmod, copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 
 function bundledLauncherPath(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'native', 'deep-pink-quick')
-    : join(__dirname, '../../build/native/deep-pink-quick')
+  const packaged = join(process.resourcesPath, 'native', 'deep-pink-quick')
+  const appBundle = join(__dirname, '../../build/native/deep-pink-quick')
+  return app.isPackaged && existsSync(packaged) ? packaged : appBundle
 }
 
 export function installedLauncherPath(): string | null {
@@ -39,10 +39,12 @@ export async function prepareNativeLauncher(): Promise<string | null> {
   await chmod(temporary, 0o700)
   await rename(temporary, destination)
 
-  if (app.isPackaged) {
+  const executable =
+    process.env['DEEP_PINK_EXECUTABLE'] ||
+    (app.isPackaged ? process.env['APPIMAGE'] || process.execPath : null)
+  if (executable) {
     // APPIMAGE is the stable command needed to restart an AppImage after its
-    // temporary mount has gone away. Other Linux packages use process.execPath.
-    const executable = process.env['APPIMAGE'] || process.execPath
+    // temporary mount has gone away. Nix supplies its wrapper explicitly.
     await writeFile(join(directory, 'deep-pink-executable'), `${executable}\n`, {
       mode: 0o600
     })

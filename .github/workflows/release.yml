@@ -5,7 +5,7 @@ name: Release
 # Two ways to run it:
 #
 #   Tag a version — builds and publishes a real release:
-#     pnpm version patch          # writes package.json and tags
+#     just version patch          # writes package.json and tags
 #     git push --follow-tags
 #
 #   Run it by hand from the Actions tab — builds the packages, and publishes
@@ -90,6 +90,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: extractions/setup-just@v4
+
       - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v7
@@ -110,10 +112,10 @@ jobs:
           sudo apt-get install -y libgtk-3-0 libgtk-3-dev pkg-config libnss3 libxss1 libasound2t64 libsecret-1-0 \
             rpm fakeroot xvfb libarchive-tools
 
-      - run: pnpm install --frozen-lockfile
+      - run: just install-ci
 
       - name: Typecheck
-        run: pnpm run typecheck
+        run: just typecheck
 
       # A version that fails its own tests should not become a release. The
       # suites run inside Electron and one of them drives a real window, so they
@@ -121,22 +123,20 @@ jobs:
       # platform — the code under test is the same on all of them.
       - name: Test
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pnpm test
+        run: xvfb-run --auto-servernum just test
 
       # No token in any of these: given one, electron-builder tries to publish
       # the artefacts itself. Publishing is the release job's work.
       - name: Build the Linux packages
         if: matrix.platform == 'linux'
-        run: pnpm run dist:linux
+        run: just package-linux
 
       # Ad-hoc signed, using the identity in electron-builder.yml — there is no
       # Developer ID for this project, and Apple Silicon will not launch a
       # binary with no signature at all.
       - name: Build the macOS disk image and zip
         if: matrix.platform == 'mac'
-        run: |
-          pnpm run build
-          pnpm exec electron-builder --mac --${{ matrix.arch }}
+        run: just package-mac ${{ matrix.arch }}
 
       - name: Collect the artefacts
         shell: bash

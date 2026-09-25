@@ -64,10 +64,12 @@ manager shortcut. The native popup starts the Electron process with
 `--ipc-server` if the socket is not available; that service exits when the
 popup disconnects unless background Quick Question is enabled.
 
-Build the launcher locally with:
+Build just the GTK launcher with:
 
 ```sh
-pnpm run build:native-quick-question
+just native
 ```
 
-This requires a C compiler and GTK 3 development files.
+`just build` compiles it along with the app, and `just package-linux` builds all
+Linux packages with the helper included. These commands require a C compiler,
+`pkg-config`, and GTK 3 development files.
