@@ -16,7 +16,8 @@
     "build": "pnpm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "node scripts/run-tests.mjs",
-    "dist:linux": "pnpm run build && electron-builder --linux",
+    "build:native-quick-question": "bash scripts/build-native-quick-question.sh",
+    "dist:linux": "pnpm run build && pnpm run build:native-quick-question && electron-builder --linux",
     "dist:mac": "pnpm run build && electron-builder --mac",
     "postinstall": "electron-builder install-app-deps"
   },

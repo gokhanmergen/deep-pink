@@ -11,6 +11,10 @@ files:
   - package.json
   - '!**/*.map'
 
+extraResources:
+  - from: build/native
+    to: native
+
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
 

@@ -4,6 +4,8 @@ import { closeDb, getDb } from './db/index'
 import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
 import { cancelQuickQuestion, registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
+import { startLocalIpc, stopLocalIpc } from './localIpc'
+import { prepareNativeLauncher } from './nativeLauncher'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
@@ -21,12 +23,61 @@ reportUncaught()
 
 const isDev = !app.isPackaged
 const launchedAsQuickQuestion = process.argv.includes('--quick-question')
+const launchedAsNativeIpcServer = process.argv.includes('--ipc-server')
 let mainWindow: BrowserWindow | null = null
 let quickQuestionWindow: BrowserWindow | null = null
 let quickQuestionOwnsHiddenMain = false
 let appIsQuitting = false
+let nativeIpcClientCount = 0
+let nativeServiceIdleTimer: NodeJS.Timeout | null = null
+let backgroundTasksStarted = false
 let canOpenWindows = false
 let pendingLaunch: 'main' | 'quick-question' | null = null
+
+function scheduleNativeServiceExit(delay: number): void {
+  if (nativeServiceIdleTimer) clearTimeout(nativeServiceIdleTimer)
+  nativeServiceIdleTimer = null
+  if (
+    appIsQuitting ||
+    process.platform !== 'linux' ||
+    nativeIpcClientCount > 0 ||
+    loadSettings().quickQuestion.keepRunning ||
+    (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible())
+  ) {
+    return
+  }
+
+  nativeServiceIdleTimer = setTimeout(() => {
+    nativeServiceIdleTimer = null
+    if (
+      !appIsQuitting &&
+      process.platform === 'linux' &&
+      nativeIpcClientCount === 0 &&
+      !loadSettings().quickQuestion.keepRunning &&
+      (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible())
+    ) {
+      app.quit()
+    }
+  }, delay)
+}
+
+function nativeIpcClientCountChanged(count: number): void {
+  nativeIpcClientCount = count
+  if (nativeServiceIdleTimer) {
+    clearTimeout(nativeServiceIdleTimer)
+    nativeServiceIdleTimer = null
+  }
+  if (count === 0) scheduleNativeServiceExit(300)
+}
+
+function startBackgroundTasks(): void {
+  if (backgroundTasksStarted) return
+  backgroundTasksStarted = true
+  if (!loadSettings().hideExperimental) mcp.connectAll().catch(() => undefined)
+  startNaming()
+  startUpdateChecks()
+  startSync()
+}
 
 function createWindow(showImmediately = true): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow
@@ -215,6 +266,11 @@ function openQuickQuestion(): void {
 }
 
 function openMainWindow(): void {
+  if (nativeServiceIdleTimer) {
+    clearTimeout(nativeServiceIdleTimer)
+    nativeServiceIdleTimer = null
+  }
+  startBackgroundTasks()
   const win = createWindow()
   quickQuestionOwnsHiddenMain = false
   if (win.isMinimized()) win.restore()
@@ -234,6 +290,11 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.on('second-instance', (_event, commandLine) => {
+  // The native popup starts the Electron service on demand. If this process
+  // already owns the single-instance lock, its IPC socket is already the only
+  // thing the second process needs to discover.
+  if (commandLine.includes('--ipc-server')) return
+
   const launch = commandLine.includes('--quick-question') ? 'quick-question' : 'main'
   if (!canOpenWindows) {
     pendingLaunch = launch
@@ -275,35 +336,44 @@ app.whenReady().then(async () => {
   if (orphans) console.log(`Removed ${orphans} orphaned attachment file(s).`)
 
   registerIpc()
+  if (process.platform === 'linux') {
+    try {
+      await startLocalIpc({
+        openMainWindow,
+        onClientCountChange: nativeIpcClientCountChanged
+      })
+    } catch (error) {
+      console.error('Could not start the Deep Pink local IPC socket:', error)
+      if (launchedAsNativeIpcServer) {
+        app.quit()
+        return
+      }
+    }
+  }
   canOpenWindows = true
-  const launch = pendingLaunch ?? (launchedAsQuickQuestion ? 'quick-question' : 'main')
+  const launch = pendingLaunch ??
+    (launchedAsQuickQuestion
+      ? 'quick-question'
+      : launchedAsNativeIpcServer
+        ? 'ipc-server'
+        : 'main')
   pendingLaunch = null
   if (launch === 'quick-question') openQuickQuestion()
-  else createWindow()
-  // Warm the compact renderer while the full app remains usable. When the
-  // background setting is off, closing the main window also destroys it.
-  createQuickQuestionWindow()
+  else if (launch === 'main') createWindow()
+  // The GTK launcher handles Linux popup rendering without preloading a
+  // Chromium window. Keep the old popup available on the other platforms.
+  if (process.platform !== 'linux') createQuickQuestionWindow()
+  if (process.platform === 'linux') {
+    void prepareNativeLauncher().catch((error) => {
+      console.error('Could not prepare the native Quick Question launcher:', error)
+    })
+  }
+  if (launchedAsNativeIpcServer) scheduleNativeServiceExit(30_000)
 
-  // Connecting MCP servers spawns processes; do it after the window is up so
-  // a slow or broken server never delays first paint. Not at all while the
-  // experimental parts are hidden: these are processes on your machine, and
-  // starting them for a feature the app is not showing is the one version of
-  // this that could surprise somebody badly.
-  if (!loadSettings().hideExperimental) mcp.connectAll().catch(() => undefined)
-
-  // Naming is one request per thread, so it happens behind the first paint and
-  // the renderer picks each one up through the event it emits. It keeps
-  // looking while the app is open, rather than only now: a name lost to a
-  // closed window or a blinked network used to wait for the next start.
-  startNaming()
-
-  // And whether there is a newer one. A network round trip, so it waits until
-  // there is a window to tell.
-  startUpdateChecks()
-
-  // Sync runs behind the window too: the first thing it does is a network
-  // round trip, and nothing on screen should be waiting on it.
-  startSync()
+  // Keep a launcher-only process lean. If it later opens the main window,
+  // these services start there; ordinary starts still defer them until after
+  // the first paint.
+  if (!launchedAsNativeIpcServer) startBackgroundTasks()
 
   app.on('activate', () => {
     openMainWindow()
@@ -311,17 +381,32 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  // A native popup may still be connected after its user opens and closes the
+  // full app. Keep the IPC host alive until that client disconnects; the idle
+  // handler will quit it when background mode is off.
+  if (launchedAsNativeIpcServer) {
+    scheduleNativeServiceExit(300)
+    return
+  }
+  // If a GTK popup is still using this process, let its request finish. The
+  // last client disconnect schedules the normal idle shutdown.
+  if (process.platform === 'linux' && nativeIpcClientCount > 0) return
   if (!appIsQuitting && loadSettings().quickQuestion.keepRunning) return
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', async () => {
   appIsQuitting = true
+  if (nativeServiceIdleTimer) {
+    clearTimeout(nativeServiceIdleTimer)
+    nativeServiceIdleTimer = null
+  }
   // First, and synchronously: an async handler does not hold the app open, so
   // anything awaited before this may simply not happen. A temporary chat has to
   // be gone before the database closes, not merely scheduled to be.
   deleteTemporaryThreads()
 
+  await stopLocalIpc().catch(() => undefined)
   await mcp.disconnectAll().catch(() => undefined)
   await shutdownRepoWorker().catch(() => undefined)
   closeDb()

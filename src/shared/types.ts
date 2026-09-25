@@ -1026,6 +1026,7 @@ export interface AppInfo {
   node: string
   platform: string
   arch: string
+  quickQuestionLauncherPath: string | null
 }
 
 /** A reply still arriving, so a view can catch up on what it missed. */

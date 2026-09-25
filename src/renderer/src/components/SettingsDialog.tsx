@@ -61,6 +61,10 @@ interface TabDef {
   experimental?: boolean
 }
 
+function shellQuoteArg(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`
+}
+
 /**
  * The sections, down the side.
  *
@@ -1100,10 +1104,23 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </label>
             <p className="field__hint">
               {settings.quickQuestion.keepRunning
-                ? 'The popup stays preloaded after you close the main window. '
-                : 'Turn this on to keep the popup preloaded after closing the main window. '}
-              Bind your window manager to{' '}
-              <code className="mono">deep-pink --quick-question</code> to open it.
+                ? 'The model service stays available after you close the main window. '
+                : 'Turn this on to keep the model service available after closing the main window. '}
+              {info?.platform === 'linux' && info.quickQuestionLauncherPath ? (
+                <>
+                  Bind your window manager shortcut to{' '}
+                  <code className="mono">
+                    {shellQuoteArg(info.quickQuestionLauncherPath)}
+                  </code>
+                  . This opens the native popup directly.
+                </>
+              ) : info?.platform === 'linux' ? (
+                <>The native popup launcher is unavailable in this build.</>
+              ) : info ? (
+                <>
+                  Bind your shortcut to <code className="mono">deep-pink --quick-question</code>.
+                </>
+              ) : null}
             </p>
           </>
         )}
