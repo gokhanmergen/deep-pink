@@ -279,10 +279,11 @@ For Hyprland:
 bind = SUPER, SPACE, exec, /home/alice/.config/deep-pink/native/deep-pink-launcher
 ```
 
-The Wayland overlay popup uses GTK Layer Shell. It avoids normal tiling on
-compositors that implement the layer-shell protocol, including wlroots-based
-compositors and KDE Plasma. On GNOME Wayland and X11 it falls back to a regular
-GTK dialog; an X11 tiling WM may need a floating-window rule for that dialog.
+The Wayland overlay popup uses GTK Layer Shell with on-demand keyboard focus,
+so normal compositor shortcuts remain available while it is open. The overlay
+requires layer-shell protocol v4, available on current wlroots-based compositors
+and KDE Plasma. On older compositors, GNOME Wayland and X11 it falls back to a
+regular GTK dialog; an X11 tiling WM may need a floating-window rule for it.
 
 ### Build a macOS app
 

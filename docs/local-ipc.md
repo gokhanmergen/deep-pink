@@ -60,9 +60,10 @@ launcher is still in use.
 The Linux build compiles `native/launcher.c` as `deep-pink-launcher` and
 packages it under `resources/native/`. On startup the app copies it to a stable
 path under its user data directory; Settings shows that path for a window
-manager shortcut. On Wayland compositors that support layer shell, it uses an
-overlay layer so tiling rules do not turn it into a regular tiled window. The
-native popup starts the Electron process with
+manager shortcut. On Wayland compositors with layer-shell protocol v4, it uses
+an overlay layer with on-demand keyboard focus, preserving the compositor's
+normal shortcuts. Older protocol versions use the regular GTK dialog fallback
+because they only offer exclusive keyboard focus. The native popup starts the Electron process with
 `--ipc-server` if the socket is not available; that service exits when the
 popup disconnects unless background Quick Question is enabled.
 

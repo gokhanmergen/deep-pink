@@ -500,20 +500,27 @@ static void activate(GtkApplication *application, gpointer user_data) {
   gtk_window_set_default_size(GTK_WINDOW(app->window), 560, 390);
   gtk_window_set_resizable(GTK_WINDOW(app->window), TRUE);
 
-  if (gtk_layer_is_supported()) {
+  gboolean use_layer_shell = FALSE;
+#if defined(DEEP_PINK_LAYER_SHELL_ON_DEMAND)
+  use_layer_shell = gtk_layer_is_supported() && gtk_layer_get_protocol_version() >= 4;
+#endif
+
+  if (use_layer_shell) {
     // A dialog hint is still an ordinary toplevel on Wayland, so tiling
     // compositors place it like any other app. Layer shell makes this a real
-    // centered overlay and asks the compositor to give it keyboard focus.
-    // Leave every edge unanchored: the layer-shell protocol centers surfaces
-    // with no anchors, while anchoring opposite edges would stretch it.
+    // centered overlay. On-demand focus lets the compositor manage focus and
+    // shortcuts normally; exclusive focus can consume every key event.
+    // Leave every edge unanchored: layer shell centers a surface with no
+    // anchors, while anchoring opposite edges would stretch it.
     gtk_layer_init_for_window(GTK_WINDOW(app->window));
     gtk_layer_set_namespace(GTK_WINDOW(app->window), "deep-pink-launcher");
     gtk_layer_set_layer(GTK_WINDOW(app->window), GTK_LAYER_SHELL_LAYER_OVERLAY);
-    gtk_layer_set_keyboard_interactivity(GTK_WINDOW(app->window), TRUE);
+    gtk_layer_set_keyboard_mode(GTK_WINDOW(app->window), GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
     gtk_window_set_decorated(GTK_WINDOW(app->window), FALSE);
   } else {
-    // X11 and Wayland compositors without layer-shell support use the normal
-    // dialog hints as a best-effort floating popup.
+    // X11 and compositors without layer-shell v4 use a regular GTK dialog.
+    // Older layer-shell versions only offer exclusive focus, which can block
+    // shortcuts for every other application while this popup is open.
     gtk_window_set_position(GTK_WINDOW(app->window), GTK_WIN_POS_CENTER);
     gtk_window_set_type_hint(GTK_WINDOW(app->window), GDK_WINDOW_TYPE_HINT_DIALOG);
     gtk_window_set_skip_taskbar_hint(GTK_WINDOW(app->window), TRUE);
@@ -562,6 +569,10 @@ static void activate(GtkApplication *application, gpointer user_data) {
   gtk_box_pack_start(GTK_BOX(app->result_box), app->answer_label, FALSE, TRUE, 0);
   gtk_box_pack_start(GTK_BOX(outer), app->result_box, TRUE, TRUE, 0);
   gtk_widget_set_no_show_all(app->result_box, TRUE);
+  // The parent is intentionally skipped by show_all so it starts hidden. Its
+  // children still need their own visible flags set before we reveal it later.
+  gtk_widget_show(app->question_label);
+  gtk_widget_show(app->answer_label);
   gtk_widget_set_visible(app->result_box, FALSE);
 
   GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
