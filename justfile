@@ -9,7 +9,7 @@ install:
 install-ci:
     pnpm install --frozen-lockfile
 
-dev: native
+dev: launcher
     pnpm dev
 
 preview: build
@@ -24,13 +24,13 @@ test:
 version kind:
     pnpm version {{kind}}
 
-native:
-    bash scripts/build-native-quick-question.sh
+launcher:
+    bash scripts/build-native-launcher.sh
 
 # Build the app and, on Linux, compile its native GTK Quick Question popup.
 build:
     pnpm run build
-    if [[ "$(uname -s)" == "Linux" ]]; then just native; fi
+    if [[ "$(uname -s)" == "Linux" ]]; then just launcher; fi
 
 # Build all Linux packages with the GTK launcher included.
 package-linux: build
@@ -42,4 +42,4 @@ package-mac arch="arm64":
 
 clean:
     rm -rf out release
-    rm -f build/native/deep-pink-quick
+    rm -f build/native/deep-pink-launcher

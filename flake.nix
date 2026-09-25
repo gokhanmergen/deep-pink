@@ -47,6 +47,7 @@
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.electron
             pkgs.gtk3
+            pkgs.gtk-layer-shell
             # What encrypted key storage is built on here; macOS has the
             # Keychain and needs nothing installed.
             pkgs.libsecret

@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <glib-unix.h>
 #include <gtk/gtk.h>
+#include <gtk-layer-shell.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
@@ -498,10 +499,26 @@ static void activate(GtkApplication *application, gpointer user_data) {
   gtk_window_set_icon_name(GTK_WINDOW(app->window), "deep-pink");
   gtk_window_set_default_size(GTK_WINDOW(app->window), 560, 390);
   gtk_window_set_resizable(GTK_WINDOW(app->window), TRUE);
-  gtk_window_set_position(GTK_WINDOW(app->window), GTK_WIN_POS_CENTER);
-  gtk_window_set_type_hint(GTK_WINDOW(app->window), GDK_WINDOW_TYPE_HINT_DIALOG);
-  gtk_window_set_skip_taskbar_hint(GTK_WINDOW(app->window), TRUE);
-  gtk_window_set_keep_above(GTK_WINDOW(app->window), TRUE);
+
+  if (gtk_layer_is_supported()) {
+    // A dialog hint is still an ordinary toplevel on Wayland, so tiling
+    // compositors place it like any other app. Layer shell makes this a real
+    // centered overlay and asks the compositor to give it keyboard focus.
+    // Leave every edge unanchored: the layer-shell protocol centers surfaces
+    // with no anchors, while anchoring opposite edges would stretch it.
+    gtk_layer_init_for_window(GTK_WINDOW(app->window));
+    gtk_layer_set_namespace(GTK_WINDOW(app->window), "deep-pink-launcher");
+    gtk_layer_set_layer(GTK_WINDOW(app->window), GTK_LAYER_SHELL_LAYER_OVERLAY);
+    gtk_layer_set_keyboard_interactivity(GTK_WINDOW(app->window), TRUE);
+    gtk_window_set_decorated(GTK_WINDOW(app->window), FALSE);
+  } else {
+    // X11 and Wayland compositors without layer-shell support use the normal
+    // dialog hints as a best-effort floating popup.
+    gtk_window_set_position(GTK_WINDOW(app->window), GTK_WIN_POS_CENTER);
+    gtk_window_set_type_hint(GTK_WINDOW(app->window), GDK_WINDOW_TYPE_HINT_DIALOG);
+    gtk_window_set_skip_taskbar_hint(GTK_WINDOW(app->window), TRUE);
+    gtk_window_set_keep_above(GTK_WINDOW(app->window), TRUE);
+  }
 
   GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
   gtk_widget_set_margin_top(outer, 15);
@@ -582,7 +599,7 @@ int main(int argc, char **argv) {
   app.socket_fd = -1;
   app.socket_path = make_socket_path();
   app.incoming = g_string_new(NULL);
-  GtkApplication *application = gtk_application_new("dev.deeppink.app",
+  GtkApplication *application = gtk_application_new("dev.deeppink.launcher",
                                                      G_APPLICATION_NON_UNIQUE);
   g_signal_connect(application, "activate", G_CALLBACK(activate), &app);
   int status = g_application_run(G_APPLICATION(application), argc, argv);

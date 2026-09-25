@@ -57,19 +57,21 @@ launcher is still in use.
 
 ## Native launcher
 
-The Linux build compiles `native/quick-question.c` as `deep-pink-quick` and
+The Linux build compiles `native/launcher.c` as `deep-pink-launcher` and
 packages it under `resources/native/`. On startup the app copies it to a stable
 path under its user data directory; Settings shows that path for a window
-manager shortcut. The native popup starts the Electron process with
+manager shortcut. On Wayland compositors that support layer shell, it uses an
+overlay layer so tiling rules do not turn it into a regular tiled window. The
+native popup starts the Electron process with
 `--ipc-server` if the socket is not available; that service exits when the
 popup disconnects unless background Quick Question is enabled.
 
 Build just the GTK launcher with:
 
 ```sh
-just native
+just launcher
 ```
 
 `just build` compiles it along with the app, and `just package-linux` builds all
 Linux packages with the helper included. These commands require a C compiler,
-`pkg-config`, and GTK 3 development files.
+`pkg-config`, GTK 3 development files, and GTK Layer Shell development files.

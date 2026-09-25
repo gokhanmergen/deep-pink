@@ -232,7 +232,7 @@ pnpm manages JavaScript dependencies and rebuilds the native SQLite binding.
 `just install` downloads or compiles the SQLite binding; on Linux it needs
 `build-essential` and `python3` if no prebuilt binary matches your platform.
 `just build` also compiles the native GTK Quick Question launcher, which needs
-`libgtk-3-dev` and `pkg-config`.
+`libgtk-3-dev`, `libgtk-layer-shell-dev` and `pkg-config` on Debian or Ubuntu.
 
 ### Build a Linux package yourself
 
@@ -243,7 +243,46 @@ just package-linux
 Builds the app and GTK popup, then produces AppImage, `.deb`, `.rpm`,
 `.pkg.tar.xz` and a tarball in `release/`.
 
-Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
+Runtime dependencies on Debian/Ubuntu: `libgtk-3-0 libgtk-layer-shell0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0 libsecret-1-0`. `libsecret` is what backs encrypted key storage — without it the app still runs, and tells you the key is stored as a permission-restricted file instead.
+
+### Install and bind the launcher
+
+`just build` builds the app and launcher in the checkout. To make an
+installable Linux package, run `just package-linux`, then install the package
+for your distro from `release/`. For example:
+
+```bash
+sudo apt install ./release/*.deb
+# or on Arch:
+sudo pacman -U ./release/*.pkg.tar.xz
+# or on Fedora:
+sudo dnf install ./release/*.rpm
+```
+
+Start Deep Pink once after installing. It copies `deep-pink-launcher` to a
+stable path in its user data directory. Open **Settings → Quick Question** and
+copy the shell-quoted command shown there; use that exact path in your WM
+config. It is not installed globally on your `PATH`. The app refreshes its
+copy when it starts, so you do not need to reinstall the launcher separately
+after an app update.
+
+For Sway or i3, for example, replace the example path with the command shown
+in Settings:
+
+```text
+bindsym $mod+space exec --no-startup-id '/home/alice/.config/deep-pink/native/deep-pink-launcher'
+```
+
+For Hyprland:
+
+```text
+bind = SUPER, SPACE, exec, /home/alice/.config/deep-pink/native/deep-pink-launcher
+```
+
+The Wayland overlay popup uses GTK Layer Shell. It avoids normal tiling on
+compositors that implement the layer-shell protocol, including wlroots-based
+compositors and KDE Plasma. On GNOME Wayland and X11 it falls back to a regular
+GTK dialog; an X11 tiling WM may need a floating-window rule for that dialog.
 
 ### Build a macOS app
 

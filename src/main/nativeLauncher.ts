@@ -1,17 +1,17 @@
 import { existsSync, statSync } from 'node:fs'
-import { chmod, copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
 
 function bundledLauncherPath(): string {
-  const packaged = join(process.resourcesPath, 'native', 'deep-pink-quick')
-  const appBundle = join(__dirname, '../../build/native/deep-pink-quick')
+  const packaged = join(process.resourcesPath, 'native', 'deep-pink-launcher')
+  const appBundle = join(__dirname, '../../build/native/deep-pink-launcher')
   return app.isPackaged && existsSync(packaged) ? packaged : appBundle
 }
 
 export function installedLauncherPath(): string | null {
   if (process.platform !== 'linux') return null
-  const path = join(app.getPath('userData'), 'native', 'deep-pink-quick')
+  const path = join(app.getPath('userData'), 'native', 'deep-pink-launcher')
   try {
     return statSync(path).isFile() ? path : null
   } catch {
@@ -31,13 +31,14 @@ export async function prepareNativeLauncher(): Promise<string | null> {
   }
 
   const directory = join(app.getPath('userData'), 'native')
-  const destination = join(directory, 'deep-pink-quick')
+  const destination = join(directory, 'deep-pink-launcher')
   const temporary = `${destination}.${process.pid}.tmp`
   await mkdir(directory, { recursive: true, mode: 0o700 })
   await chmod(directory, 0o700)
   await copyFile(source, temporary)
   await chmod(temporary, 0o700)
   await rename(temporary, destination)
+  await rm(join(directory, 'deep-pink-quick'), { force: true })
 
   const executable =
     process.env['DEEP_PINK_EXECUTABLE'] ||

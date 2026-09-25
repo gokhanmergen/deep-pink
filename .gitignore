@@ -13,7 +13,7 @@ npm-debug.log*
 !.env.example
 
 .test-build/
-build/native/deep-pink-quick
+build/native/deep-pink-launcher
 
 # `nix build` leaves its output symlinked here.
 result

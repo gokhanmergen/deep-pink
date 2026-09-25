@@ -6,6 +6,7 @@
   electron,
   fetchPnpmDeps,
   gtk3,
+  gtk-layer-shell,
   just,
   makeDesktopItem,
   makeWrapper,
@@ -60,8 +61,8 @@ stdenv.mkDerivation (finalAttrs: {
       ../.npmrc
       ../electron.vite.config.ts
       ../justfile
-      ../native/quick-question.c
-      ../scripts/build-native-quick-question.sh
+      ../native/launcher.c
+      ../scripts/build-native-launcher.sh
       ../tsconfig.json
       ../tsconfig.node.json
       ../tsconfig.web.json
@@ -95,7 +96,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   # What the prebuilt SQLite binding links against. Without it the app starts,
   # fails to open its database and never draws a window.
-  buildInputs = [ (lib.getLib stdenv.cc.cc) gtk3 ];
+  buildInputs = [ (lib.getLib stdenv.cc.cc) gtk3 gtk-layer-shell ];
 
   __structuredAttrs = true;
   strictDeps = true;
