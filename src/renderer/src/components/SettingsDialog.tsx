@@ -1065,6 +1065,27 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </p>
             </div>
 
+            <div className="section-title">Web access</div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.quickQuestion.webAccessEnabled}
+                onChange={(event) =>
+                  void saveSettings({
+                    quickQuestion: { webAccessEnabled: event.target.checked }
+                  })
+                }
+              />
+              <span>Enable web access by default</span>
+              <Revert
+                path="quickQuestion.webAccessEnabled"
+                what="Quick Question web access"
+              />
+            </label>
+            <p className="field__hint">
+              Uses the search backend selected in Web access settings.
+            </p>
+
             <div className="section-title">Launcher</div>
             <label className="switch">
               <input

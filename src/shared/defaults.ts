@@ -295,6 +295,7 @@ export const DEFAULT_SETTINGS: Settings = {
   quickQuestion: {
     model: 'google/gemini-2.5-flash-lite',
     systemPrompt: DEFAULT_QUICK_QUESTION_PROMPT,
+    webAccessEnabled: false,
     keepRunning: false
   },
   sendAppAttribution: true,

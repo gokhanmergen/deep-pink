@@ -29,6 +29,14 @@ import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels, streamChat } from './providers/openrouter'
+import type { ChatMessageParam, ToolParam } from './providers/openrouter'
+import {
+  WEB_FETCH_TOOL,
+  WEB_PROMPT_SEGMENT,
+  WEB_SEARCH_TOOL,
+  runWebFetch,
+  runWebSearch
+} from './tools/web'
 import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { keyPointCeiling } from '@shared/defaults'
 import { loadSettings, saveSettings } from './settings'
@@ -50,6 +58,10 @@ function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload)
   }
+}
+
+export function cancelQuickQuestion(senderId: number): void {
+  quickQuestionControllers.get(senderId)?.abort()
 }
 
 const emit = (event: StreamEvent): void => broadcast(CHAT_EVENT, event)
@@ -200,74 +212,177 @@ export function registerIpc(): void {
 
   /* ---------------- Quick Question ---------------- */
 
-  ipcMain.handle('quick-question:ask', async (event, question: string): Promise<string> => {
-    const prompt = String(question ?? '').trim()
-    if (!prompt) return ''
+  ipcMain.handle(
+    'quick-question:ask',
+    async (event, question: string, rawRequestId: number): Promise<string> => {
+      const prompt = String(question ?? '').trim()
+      if (!prompt) return ''
 
-    const settings = loadSettings()
-    const model = settings.quickQuestion.model || settings.defaultModel
-    const controller = new AbortController()
-    quickQuestionControllers.get(event.sender.id)?.abort()
-    quickQuestionControllers.set(event.sender.id, controller)
+      const settings = loadSettings()
+      const model = settings.quickQuestion.model || settings.defaultModel
+      const requestId = Number.isSafeInteger(rawRequestId) ? rawRequestId : 0
+      const controller = new AbortController()
+      quickQuestionControllers.get(event.sender.id)?.abort()
+      quickQuestionControllers.set(event.sender.id, controller)
 
-    let raw = ''
-    let shown = ''
-    try {
-      const result = await streamChat(
+      const webEnabled = settings.quickQuestion.webAccessEnabled
+      const useWebPlugin = webEnabled && settings.web.engine === 'openrouter'
+      const webInstructions = useWebPlugin
+        ? [
+            'Web search is enabled through the model provider.',
+            'Use it for current or uncertain information, and cite the URLs it returns.'
+          ].join(' ')
+        : WEB_PROMPT_SEGMENT
+      const webTools: ToolParam[] =
+        webEnabled && !useWebPlugin ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL] : []
+      const messages: ChatMessageParam[] = [
         {
-          model,
-          messages: [
-            {
-              role: 'system',
-              content: [
-                settings.quickQuestion.systemPrompt.trim(),
-                'Answer in one short paragraph maximum. Do not use headings or lists.'
-              ]
-                .filter(Boolean)
-                .join('\n\n')
-            },
-            { role: 'user', content: prompt }
-          ],
-          temperature: settings.temperature,
-          // This launcher is for short answers. The prompt also sets a hard
-          // one-paragraph shape; the renderer never receives later paragraphs.
-          maxTokens: 256,
-          providerRouting:
-            settings.modelProviderRouting[model] ?? settings.defaultProviderRouting,
-          attribution: settings.sendAppAttribution,
-          includeReasoning: false,
-          signal: controller.signal
+          role: 'system',
+          content: [
+            settings.quickQuestion.systemPrompt.trim(),
+            'Answer in one short paragraph maximum. Do not use headings or lists.',
+            ...(webEnabled ? [webInstructions] : [])
+          ]
+            .filter(Boolean)
+            .join('\n\n')
         },
-        {
-          onContent: (delta) => {
-            raw += delta
-            const next = firstParagraph(raw)
-            if (next === shown || event.sender.isDestroyed()) return
-            shown = next
-            event.sender.send('quick-question:content', shown)
-          }
-        }
-      )
+        { role: 'user', content: prompt }
+      ]
 
-      // Cover providers that returned content without stream deltas, and
-      // return the same bounded answer that the popup has been showing.
-      const answer = firstParagraph(result.content || raw)
-      if (answer !== shown && !event.sender.isDestroyed()) {
-        event.sender.send('quick-question:content', answer)
-      }
-      return answer
-    } catch (error) {
-      if (controller.signal.aborted) return shown
-      throw error
-    } finally {
-      if (quickQuestionControllers.get(event.sender.id) === controller) {
-        quickQuestionControllers.delete(event.sender.id)
+      let shown = ''
+      try {
+        // Keep web tool turns bounded, so a model that repeatedly searches cannot
+        // leave the popup waiting indefinitely without a final answer.
+        for (let toolRound = 0; toolRound <= 4; toolRound++) {
+          let raw = ''
+          const result = await streamChat(
+            {
+              model,
+              messages,
+              temperature: settings.temperature,
+              // This launcher is for short answers. The prompt also sets a hard
+              // one-paragraph shape; the renderer never receives later paragraphs.
+              maxTokens: 256,
+              tools: webTools.length ? webTools : undefined,
+              providerRouting: webTools.length
+                ? {
+                    ...(settings.modelProviderRouting[model] ?? settings.defaultProviderRouting),
+                    requireParameters: true
+                  }
+                : settings.modelProviderRouting[model] ?? settings.defaultProviderRouting,
+              webPlugin: useWebPlugin,
+              attribution: settings.sendAppAttribution,
+              includeReasoning: false,
+              signal: controller.signal
+            },
+            {
+              onContent: (delta) => {
+                raw += delta
+                // Buffer web-enabled replies until we know this was the final
+                // model turn; otherwise a pre-search sentence flashes as though
+                // it were the completed answer.
+                if (webEnabled || controller.signal.aborted) return
+                const next = firstParagraph(raw)
+                if (
+                  next === shown ||
+                  event.sender.isDestroyed() ||
+                  quickQuestionControllers.get(event.sender.id) !== controller
+                ) {
+                  return
+                }
+                shown = next
+                event.sender.send('quick-question:content', { requestId, content: shown })
+              }
+            }
+          )
+
+          if (result.toolCalls.length) {
+            if (!webTools.length || toolRound === 4) {
+              throw new Error('Quick Question could not finish its web search. Please try again.')
+            }
+
+            messages.push({
+              role: 'assistant',
+              content: result.content,
+              tool_calls: result.toolCalls.map((call) => ({
+                id: call.id,
+                type: 'function' as const,
+                function: { name: call.name, arguments: call.arguments || '{}' }
+              }))
+            })
+
+            for (const call of result.toolCalls) {
+              let content: string
+              try {
+                const args: unknown = JSON.parse(call.arguments || '{}')
+                if (!args || typeof args !== 'object' || Array.isArray(args)) {
+                  throw new Error('Tool arguments must be a JSON object.')
+                }
+                content =
+                  call.name === 'web_search'
+                    ? await runWebSearch(
+                        args as { query?: string; max_results?: number },
+                        settings.web
+                      )
+                    : call.name === 'web_fetch'
+                      ? await runWebFetch(
+                          args as { url?: string; max_chars?: number },
+                          settings.web
+                        )
+                      : `Unsupported Quick Question tool: ${call.name}`
+              } catch (error) {
+                content = `Web tool error: ${error instanceof Error ? error.message : String(error)}`
+              }
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content
+              })
+            }
+
+            shown = ''
+            if (!event.sender.isDestroyed()) {
+              event.sender.send('quick-question:content', { requestId, content: '' })
+            }
+            continue
+          }
+
+          const citationUrls = [...new Set(result.citations.map((citation) => citation.url))]
+          const answer = firstParagraph(
+            [result.content || raw, citationUrls.length ? `Sources: ${citationUrls.join(', ')}` : '']
+              .filter(Boolean)
+              .join(' ')
+          )
+          if (!answer) {
+            throw new Error(
+              'The model returned an empty response. Try again or choose another Quick Question model.'
+            )
+          }
+
+          if (
+            answer !== shown &&
+            !event.sender.isDestroyed() &&
+            quickQuestionControllers.get(event.sender.id) === controller
+          ) {
+            shown = answer
+            event.sender.send('quick-question:content', { requestId, content: answer })
+          }
+          return answer
+        }
+        throw new Error('Quick Question could not finish its response. Please try again.')
+      } catch (error) {
+        if (controller.signal.aborted) return shown
+        throw error
+      } finally {
+        if (quickQuestionControllers.get(event.sender.id) === controller) {
+          quickQuestionControllers.delete(event.sender.id)
+        }
       }
     }
-  })
+  )
 
   ipcMain.on('quick-question:cancel', (event) => {
-    quickQuestionControllers.get(event.sender.id)?.abort()
+    cancelQuickQuestion(event.sender.id)
   })
 
   /* ---------------- models ---------------- */

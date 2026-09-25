@@ -221,20 +221,19 @@ const api = {
   },
 
   quickQuestion: {
-    ask: (question: string): Promise<string> => ipcRenderer.invoke('quick-question:ask', question),
+    ask: (question: string, requestId: number): Promise<string> =>
+      ipcRenderer.invoke('quick-question:ask', question, requestId),
     cancel: (): void => ipcRenderer.send('quick-question:cancel'),
     onOpened: (listener: () => void): (() => void) => {
       const handler = (): void => listener()
       ipcRenderer.on('quick-question:opened', handler)
       return () => ipcRenderer.removeListener('quick-question:opened', handler)
     },
-    onHidden: (listener: () => void): (() => void) => {
-      const handler = (): void => listener()
-      ipcRenderer.on('quick-question:hidden', handler)
-      return () => ipcRenderer.removeListener('quick-question:hidden', handler)
-    },
-    onContent: (listener: (content: string) => void): (() => void) => {
-      const handler = (_e: unknown, content: string): void => listener(content)
+    onContent: (
+      listener: (payload: { requestId: number; content: string }) => void
+    ): (() => void) => {
+      const handler = (_e: unknown, payload: { requestId: number; content: string }): void =>
+        listener(payload)
       ipcRenderer.on('quick-question:content', handler)
       return () => ipcRenderer.removeListener('quick-question:content', handler)
     }

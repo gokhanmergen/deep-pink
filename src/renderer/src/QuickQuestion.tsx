@@ -16,8 +16,10 @@ export function QuickQuestion(): React.JSX.Element {
   useEffect(() => {
     let mounted = true
     const focus = (): void => requestAnimationFrame(() => input.current?.focus())
-    const removeContent = window.deepPink.quickQuestion.onContent((content) => {
-      if (isOpen.current) setAnswer(content)
+    const removeContent = window.deepPink.quickQuestion.onContent((payload) => {
+      if (isOpen.current && requestId.current === payload.requestId) {
+        setAnswer(payload.content)
+      }
     })
     const removeOpened = window.deepPink.quickQuestion.onOpened(() => {
       isOpen.current = true
@@ -30,12 +32,6 @@ export function QuickQuestion(): React.JSX.Element {
       setLoading(false)
       focus()
     })
-    const removeHidden = window.deepPink.quickQuestion.onHidden(() => {
-      isOpen.current = false
-      requestId.current++
-      window.deepPink.quickQuestion.cancel()
-      setLoading(false)
-    })
     void window.deepPink.settings.get().then((next) => {
       if (!mounted) return
       setSettings(next)
@@ -46,7 +42,9 @@ export function QuickQuestion(): React.JSX.Element {
       mounted = false
       removeContent()
       removeOpened()
-      removeHidden()
+      isOpen.current = false
+      requestId.current++
+      window.deepPink.quickQuestion.cancel()
     }
   }, [])
 
@@ -59,7 +57,7 @@ export function QuickQuestion(): React.JSX.Element {
     setError('')
     setLoading(true)
     try {
-      const result = await window.deepPink.quickQuestion.ask(text)
+      const result = await window.deepPink.quickQuestion.ask(text, currentRequest)
       if (requestId.current === currentRequest) setAnswer(result)
     } catch (cause) {
       if (requestId.current === currentRequest) {

@@ -549,6 +549,8 @@ export interface QuickQuestionSettings {
   model: string
   /** Additional instructions, alongside the built-in one-paragraph limit. */
   systemPrompt: string
+  /** Whether Quick Question may use the configured web search backend. */
+  webAccessEnabled: boolean
   /** Keep the app process and preloaded launcher alive after closing the main window. */
   keepRunning: boolean
 }

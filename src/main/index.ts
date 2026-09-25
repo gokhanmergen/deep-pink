@@ -3,7 +3,7 @@ import { BrowserWindow, app, shell } from 'electron'
 import { closeDb, getDb } from './db/index'
 import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
-import { registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
+import { cancelQuickQuestion, registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
@@ -23,10 +23,12 @@ const isDev = !app.isPackaged
 const launchedAsQuickQuestion = process.argv.includes('--quick-question')
 let mainWindow: BrowserWindow | null = null
 let quickQuestionWindow: BrowserWindow | null = null
+let quickQuestionOwnsHiddenMain = false
+let appIsQuitting = false
 let canOpenWindows = false
 let pendingLaunch: 'main' | 'quick-question' | null = null
 
-function createWindow(): BrowserWindow {
+function createWindow(showImmediately = true): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) return mainWindow
   const win = new BrowserWindow({
     width: 1280,
@@ -53,16 +55,19 @@ function createWindow(): BrowserWindow {
   // In background mode the close button means "put the main window away".
   // The preloaded Quick Question window keeps the process ready for the WM.
   win.on('close', (event) => {
-    if (loadSettings().quickQuestion.keepRunning) {
+    if (!appIsQuitting && loadSettings().quickQuestion.keepRunning) {
       event.preventDefault()
       win.hide()
     }
   })
   win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null
+    if (mainWindow === win) {
+      mainWindow = null
+      quickQuestionOwnsHiddenMain = false
+    }
     // The launcher is preloaded while the app is open. Without background
     // mode it should not keep a supposedly closed app alive by itself.
-    if (!loadSettings().quickQuestion.keepRunning) {
+    if (appIsQuitting || !loadSettings().quickQuestion.keepRunning) {
       if (quickQuestionWindow && !quickQuestionWindow.isDestroyed()) {
         quickQuestionWindow.destroy()
       }
@@ -113,20 +118,29 @@ function createWindow(): BrowserWindow {
    * nothing on screen. `dom-ready` is no better, because a module script is
    * deferred and the DOM is not called ready until it has run.
    *
-   * So the window is shown at once. It is not empty when it arrives:
+   * So the visible main window is shown at once. It is not empty when it arrives:
    * `backgroundColor` paints immediately, and `index.html` carries a static
    * skeleton of the app's own chrome that the HTML parser puts up without
    * waiting for any script. What the reader sees is the app appearing in a
    * quarter of a second and filling in, rather than a quarter of a second of
-   * nothing followed by two seconds more of it.
+   * nothing followed by two seconds more of it. A launcher-only start opts out
+   * and keeps this owner window hidden.
    */
-  win.show()
+  if (showImmediately) win.show()
 
   return win
 }
 
 function createQuickQuestionWindow(): BrowserWindow {
   if (quickQuestionWindow && !quickQuestionWindow.isDestroyed()) return quickQuestionWindow
+
+  // On Linux, a parented modal window is reported to the window manager as a
+  // dialog. The transient relationship makes tiling WMs float it reliably.
+  // A launcher-only start still needs an owner, but must not open the full UI.
+  if (process.platform === 'linux' && (!mainWindow || mainWindow.isDestroyed())) {
+    quickQuestionOwnsHiddenMain = true
+    createWindow(false)
+  }
 
   const win = new BrowserWindow({
     title: 'Quick Question',
@@ -138,10 +152,10 @@ function createQuickQuestionWindow(): BrowserWindow {
     center: true,
     frame: false,
     resizable: true,
-    // Tiling window managers otherwise treat this like another full app
-    // window. The utility type lets Linux WMs place the launcher as a float.
-    ...(process.platform === 'linux' ? { type: 'toolbar' as const } : {}),
     alwaysOnTop: true,
+    ...(process.platform === 'linux' && mainWindow
+      ? { parent: mainWindow, modal: true }
+      : {}),
     skipTaskbar: true,
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0d',
@@ -155,22 +169,28 @@ function createQuickQuestionWindow(): BrowserWindow {
     }
   })
   quickQuestionWindow = win
-  win.on('hide', () => {
-    if (!win.isDestroyed()) win.webContents.send('quick-question:hidden')
-  })
-  win.on('close', (event) => {
-    // Keep it warm while the full app is open, or when background mode has
-    // explicitly asked the process to remain available after closing it.
-    if (
-      loadSettings().quickQuestion.keepRunning ||
-      (mainWindow && !mainWindow.isDestroyed())
-    ) {
-      event.preventDefault()
-      win.hide()
-    }
-  })
+  win.on('close', () => cancelQuickQuestion(win.webContents.id))
   win.on('closed', () => {
+    cancelQuickQuestion(win.webContents.id)
     if (quickQuestionWindow === win) quickQuestionWindow = null
+
+    if (appIsQuitting) return
+    const keepRunning = loadSettings().quickQuestion.keepRunning
+    const hasOwner = Boolean(mainWindow && !mainWindow.isDestroyed())
+    if (hasOwner && (mainWindow?.isVisible() || keepRunning)) {
+      // A shown modal window is destroyed on close because Linux desktops do
+      // not consistently support hiding dialogs. Recreate it hidden and warm.
+      createQuickQuestionWindow()
+      return
+    }
+
+    if (quickQuestionOwnsHiddenMain && hasOwner && mainWindow) {
+      // A cold launcher invocation owns its hidden main window. With
+      // background mode off, remove the owner too so the process can exit.
+      quickQuestionOwnsHiddenMain = false
+      mainWindow.destroy()
+      app.quit()
+    }
   })
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
@@ -196,6 +216,7 @@ function openQuickQuestion(): void {
 
 function openMainWindow(): void {
   const win = createWindow()
+  quickQuestionOwnsHiddenMain = false
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
@@ -290,11 +311,12 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (loadSettings().quickQuestion.keepRunning) return
+  if (!appIsQuitting && loadSettings().quickQuestion.keepRunning) return
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', async () => {
+  appIsQuitting = true
   // First, and synchronously: an async handler does not hold the app open, so
   // anything awaited before this may simply not happen. A temporary chat has to
   // be gone before the database closes, not merely scheduled to be.
