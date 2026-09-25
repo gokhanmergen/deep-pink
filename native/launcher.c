@@ -33,6 +33,7 @@ typedef struct {
   int socket_fd;
   guint socket_watch;
   guint retry_source;
+  guint focus_out_source;
   guint retry_count;
   guint next_id;
   gboolean connected;
@@ -40,6 +41,8 @@ typedef struct {
   gboolean pending_ask;
   gboolean request_active;
   gboolean closing;
+  gboolean initial_focus_pending;
+  gboolean has_had_focus;
   gchar *socket_path;
   gchar *request_id;
   GString *incoming;
@@ -478,11 +481,57 @@ static gboolean input_key_press(GtkWidget *widget, GdkEventKey *event, gpointer 
   return FALSE;
 }
 
+static gboolean close_if_unfocused(gpointer user_data) {
+  App *app = user_data;
+  app->focus_out_source = 0;
+  if (!app->closing && app->has_had_focus) {
+    gtk_window_close(GTK_WINDOW(app->window));
+  }
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean window_focus_in(GtkWidget *widget,
+                                GdkEventFocus *event,
+                                gpointer user_data) {
+  (void)widget;
+  (void)event;
+  App *app = user_data;
+  app->has_had_focus = TRUE;
+  if (app->focus_out_source) {
+    g_source_remove(app->focus_out_source);
+    app->focus_out_source = 0;
+  }
+  if (app->initial_focus_pending) {
+    app->initial_focus_pending = FALSE;
+    gtk_window_set_focus(GTK_WINDOW(app->window), app->input);
+    gtk_widget_grab_focus(app->input);
+  }
+  return FALSE;
+}
+
+static gboolean window_focus_out(GtkWidget *widget,
+                                 GdkEventFocus *event,
+                                 gpointer user_data) {
+  (void)widget;
+  (void)event;
+  App *app = user_data;
+  if (app->has_had_focus && !app->focus_out_source) {
+    // Check after the focus transition settles. A transient focus event should
+    // not dismiss the launcher if the compositor immediately refocuses it.
+    app->focus_out_source = g_timeout_add(100, close_if_unfocused, app);
+  }
+  return FALSE;
+}
+
 static gboolean window_delete(GtkWidget *widget, GdkEvent *event, gpointer user_data) {
   (void)widget;
   (void)event;
   App *app = user_data;
   app->closing = TRUE;
+  if (app->focus_out_source) {
+    g_source_remove(app->focus_out_source);
+    app->focus_out_source = 0;
+  }
   if (app->request_active) cancel_question(app);
   disconnect_socket(app, FALSE);
   if (app->retry_source) {
@@ -591,16 +640,23 @@ static void activate(GtkApplication *application, gpointer user_data) {
   g_signal_connect(app->stop_button, "clicked", G_CALLBACK(stop_clicked), app);
   g_signal_connect(app->again_button, "clicked", G_CALLBACK(again_clicked), app);
   g_signal_connect(app->window, "delete-event", G_CALLBACK(window_delete), app);
+  g_signal_connect(app->window, "focus-in-event", G_CALLBACK(window_focus_in), app);
+  g_signal_connect(app->window, "focus-out-event", G_CALLBACK(window_focus_out), app);
 
   app->status_label = gtk_label_new("Starting Deep Pink…");
   gtk_widget_set_halign(app->status_label, GTK_ALIGN_START);
   gtk_box_pack_end(GTK_BOX(outer), app->status_label, FALSE, FALSE, 0);
 
+  app->initial_focus_pending = TRUE;
+  gtk_window_set_focus(GTK_WINDOW(app->window), app->input);
   gtk_widget_show_all(app->window);
   gtk_widget_set_visible(app->result_box, FALSE);
   update_actions(app);
   gtk_widget_grab_focus(app->input);
   gtk_window_present(GTK_WINDOW(app->window));
+  // Presenting may be what gives a Wayland layer surface keyboard focus.
+  // Repeat the child focus request after presentation as well.
+  gtk_widget_grab_focus(app->input);
   begin_connecting(app);
 }
 
