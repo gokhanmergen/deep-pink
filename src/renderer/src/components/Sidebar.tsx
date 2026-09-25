@@ -160,6 +160,9 @@ const ThreadRow = memo(function ThreadRow({
     return () => clearTimeout(timer)
   }, [thread.title])
 
+  const isEmptyUntitled = !thread.title && thread.messageCount === 0 && !thread.temporary
+  const emptyLabel = isEmptyUntitled ? 'New thread' : threadLabel(thread)
+
   return (
     <button
       className="thread-item"
@@ -193,7 +196,7 @@ const ThreadRow = memo(function ThreadRow({
             ? 'Unsent prompt draft — kept until the app restarts'
             : awaitingName
               ? 'Naming this conversation…'
-              : threadLabel(thread)
+              : emptyLabel
       }
       type="button"
     >
@@ -245,7 +248,7 @@ const ThreadRow = memo(function ThreadRow({
           </span>
         ) : (
           <span className="thread-item__title" data-settling={settling || undefined}>
-            {wip && !thread.title ? 'WIP Thread' : threadLabel(thread)}
+            {wip && !thread.title ? 'WIP Thread' : emptyLabel}
           </span>
         )}
         {/* The time the list is ordered by, where the eye already is. */}
