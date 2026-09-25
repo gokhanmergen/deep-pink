@@ -160,9 +160,6 @@ const ThreadRow = memo(function ThreadRow({
     return () => clearTimeout(timer)
   }, [thread.title])
 
-  const isEmptyUntitled = !thread.title && thread.messageCount === 0 && !thread.temporary
-  const emptyLabel = isEmptyUntitled ? 'New thread' : threadLabel(thread)
-
   return (
     <button
       className="thread-item"
@@ -196,7 +193,7 @@ const ThreadRow = memo(function ThreadRow({
             ? 'Unsent prompt draft — kept until the app restarts'
             : awaitingName
               ? 'Naming this conversation…'
-              : emptyLabel
+              : threadLabel(thread)
       }
       type="button"
     >
@@ -248,7 +245,7 @@ const ThreadRow = memo(function ThreadRow({
           </span>
         ) : (
           <span className="thread-item__title" data-settling={settling || undefined}>
-            {wip && !thread.title ? 'WIP Thread' : emptyLabel}
+            {wip && !thread.title ? 'WIP Thread' : threadLabel(thread)}
           </span>
         )}
         {/* The time the list is ordered by, where the eye already is. */}
@@ -339,6 +336,9 @@ export function Sidebar(): React.JSX.Element {
   const openFolderIds = useStore((s) => s.openFolderIds)
   const draggingThreadId = useStore((s) => s.draggingThreadId)
   const activeThreadId = useStore((s) => s.activeThreadId)
+  const activeHasMessages = useStore((s) =>
+    Boolean(s.activeThreadId && s.messages.some((message) => message.threadId === s.activeThreadId))
+  )
   const generatingThreadIds = useStore((s) => s.generatingThreadIds)
   const namingFinished = useStore((s) => s.namingFinished)
   const hideExperimental = useStore((s) => s.settings?.hideExperimental ?? true)
@@ -404,9 +404,9 @@ export function Sidebar(): React.JSX.Element {
    * under a heading that says what it is.
    */
   /**
-   * Keep the current thread visible, even before its first message, and keep
-   * any thread with an unsent prompt in the list as it is selected. The WIP
-   * label itself is still only shown while that thread is inactive.
+   * Hide a new empty thread until it becomes a conversation. An unsent prompt
+   * appears as a WIP row only after its thread is inactive, and stays that way
+   * until the user returns to it.
    *
    * Empty inactive threads without a draft stay out of the library unless
    * they were named, pinned, filed, or made temporary.
@@ -423,15 +423,15 @@ export function Sidebar(): React.JSX.Element {
     () =>
       threads.filter(
         (t) =>
-          t.id === activeThreadId ||
+          (t.id === activeThreadId && activeHasMessages) ||
           t.messageCount > 0 ||
           t.temporary ||
           t.title ||
           t.pinned ||
           t.folderId ||
-          draftIds.has(t.id)
+          (t.id !== activeThreadId && draftIds.has(t.id))
       ),
-    [threads, activeThreadId, draftIds]
+    [threads, activeThreadId, activeHasMessages, draftIds]
   )
 
   /**
