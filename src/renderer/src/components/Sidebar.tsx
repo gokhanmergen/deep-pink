@@ -401,31 +401,34 @@ export function Sidebar(): React.JSX.Element {
    * under a heading that says what it is.
    */
   /**
-   * A chat nobody has said anything in is not in the list yet.
+   * Keep the current thread visible, even before its first message, and keep
+   * any thread with an unsent prompt in the list as it is selected. The WIP
+   * label itself is still only shown while that thread is inactive.
    *
-   * One is created every time the app starts and every time New Thread is
-   * pressed, and until you say something it is not a conversation — it is an
-   * intention. Showing it put a row called "Untitled thread" permanently at the
-   * top of the library, and clicking anything else deleted it, which is a row
-   * whose only lasting property was being in the way.
-   *
-   * The exceptions are the ways of saying you meant it: a chat you pinned,
-   * filed, named or made temporary stays, empty or not. An unsent prompt joins
-   * the list only after you leave its thread, so typing does not rename the
-   * row under the composer.
+   * Empty inactive threads without a draft stay out of the library unless
+   * they were named, pinned, filed, or made temporary.
    */
+  const draftIdsKey = Object.keys(drafts)
+    .filter((id) => Boolean(drafts[id]?.trim()))
+    .sort()
+    .join('\u0000')
+  const draftIds = useMemo(
+    () => new Set(draftIdsKey ? draftIdsKey.split('\u0000') : []),
+    [draftIdsKey]
+  )
   const started = useMemo(
     () =>
       threads.filter(
         (t) =>
+          t.id === activeThreadId ||
           t.messageCount > 0 ||
           t.temporary ||
           t.title ||
           t.pinned ||
           t.folderId ||
-          (t.id !== activeThreadId && Boolean(drafts[t.id]?.trim()))
+          draftIds.has(t.id)
       ),
-    [threads, drafts, activeThreadId]
+    [threads, activeThreadId, draftIds]
   )
 
   /**
@@ -438,29 +441,71 @@ export function Sidebar(): React.JSX.Element {
    */
   const [leaving, setLeaving] = useState<Thread[]>([])
   const lastSeen = useRef(started)
+  const leaveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
   useEffect(() => {
     const present = new Set(started.map((t) => t.id))
     const gone = lastSeen.current.filter((t) => !present.has(t.id))
     lastSeen.current = started
+
+    // If a row returns during its exit animation, cancel its timer and render
+    // the live row once instead of leaving a duplicate ghost behind.
+    for (const id of present) {
+      const timer = leaveTimers.current.get(id)
+      if (timer) {
+        clearTimeout(timer)
+        leaveTimers.current.delete(id)
+      }
+    }
+    setLeaving((current) => {
+      const next = current.filter((thread) => !present.has(thread.id))
+      return next.length === current.length ? current : next
+    })
+
     if (!gone.length) return
 
-    setLeaving((current) => [...current, ...gone])
-    const ids = new Set(gone.map((t) => t.id))
-    const timer = setTimeout(
-      () => setLeaving((current) => current.filter((t) => !ids.has(t.id))),
-      LEAVING_TAKES
-    )
-    return () => clearTimeout(timer)
+    setLeaving((current) => {
+      const byId = new Map(current.map((thread) => [thread.id, thread]))
+      for (const thread of gone) {
+        if (!present.has(thread.id)) byId.set(thread.id, thread)
+      }
+      return [...byId.values()]
+    })
+
+    for (const thread of gone) {
+      if (present.has(thread.id)) continue
+      const previous = leaveTimers.current.get(thread.id)
+      if (previous) clearTimeout(previous)
+      const timer = setTimeout(() => {
+        leaveTimers.current.delete(thread.id)
+        setLeaving((current) => current.filter((item) => item.id !== thread.id))
+      }, LEAVING_TAKES)
+      leaveTimers.current.set(thread.id, timer)
+    }
   }, [started])
 
-  /** What the list draws: what is here, and what is still on its way out. */
-  const listed = useMemo(
-    () => (leaving.length ? [...started, ...leaving] : started),
-    [started, leaving]
+  useEffect(
+    () => () => {
+      for (const timer of leaveTimers.current.values()) clearTimeout(timer)
+      leaveTimers.current.clear()
+    },
+    []
   )
 
-  const goneIds = useMemo(() => new Set(leaving.map((t) => t.id)), [leaving])
+  /** What the list draws: what is here, and what is still on its way out. */
+  const startedIds = useMemo(() => new Set(started.map((thread) => thread.id)), [started])
+  const listed = useMemo(
+    () =>
+      leaving.length
+        ? [...started, ...leaving.filter((thread) => !startedIds.has(thread.id))]
+        : started,
+    [started, startedIds, leaving]
+  )
+
+  const goneIds = useMemo(
+    () => new Set(leaving.filter((thread) => !startedIds.has(thread.id)).map((thread) => thread.id)),
+    [leaving, startedIds]
+  )
 
   const temporaryThreads = useMemo(
     () => listed.filter((t) => t.temporary).sort((a, b) => b.createdAt - a.createdAt),
