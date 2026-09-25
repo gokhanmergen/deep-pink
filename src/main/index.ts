@@ -129,6 +129,7 @@ function createQuickQuestionWindow(): BrowserWindow {
   if (quickQuestionWindow && !quickQuestionWindow.isDestroyed()) return quickQuestionWindow
 
   const win = new BrowserWindow({
+    title: 'Quick Question',
     width: 560,
     height: 390,
     minWidth: 430,
@@ -137,8 +138,12 @@ function createQuickQuestionWindow(): BrowserWindow {
     center: true,
     frame: false,
     resizable: true,
+    // Tiling window managers otherwise treat this like another full app
+    // window. The utility type lets Linux WMs place the launcher as a float.
+    ...(process.platform === 'linux' ? { type: 'toolbar' as const } : {}),
     alwaysOnTop: true,
     skipTaskbar: true,
+    autoHideMenuBar: true,
     backgroundColor: '#0a0a0d',
     ...(process.platform === 'linux' ? { icon: join(__dirname, '../../build/icon.png') } : {}),
     webPreferences: {
