@@ -28,7 +28,7 @@ import * as updates from './updates'
 import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
-import { getCredits, listEndpoints, listModels } from './providers/openrouter'
+import { getCredits, listEndpoints, listModels, streamChat } from './providers/openrouter'
 import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { keyPointCeiling } from '@shared/defaults'
 import { loadSettings, saveSettings } from './settings'
@@ -40,6 +40,11 @@ const MCP_STATUS_EVENT = 'mcp:status'
 const SYNC_EVENT = 'sync:event'
 const UPDATE_EVENT = 'updates:changed'
 const SYNC_PROGRESS = 'sync:progress'
+const quickQuestionControllers = new Map<number, AbortController>()
+
+function firstParagraph(text: string): string {
+  return (text.trim().split(/\n\s*\n/, 1)[0] ?? '').replace(/\s*\n\s*/g, ' ').trim()
+}
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -192,6 +197,78 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('settings:encryptionAvailable', (): boolean => isEncryptionAvailable())
+
+  /* ---------------- Quick Question ---------------- */
+
+  ipcMain.handle('quick-question:ask', async (event, question: string): Promise<string> => {
+    const prompt = String(question ?? '').trim()
+    if (!prompt) return ''
+
+    const settings = loadSettings()
+    const model = settings.quickQuestion.model || settings.defaultModel
+    const controller = new AbortController()
+    quickQuestionControllers.get(event.sender.id)?.abort()
+    quickQuestionControllers.set(event.sender.id, controller)
+
+    let raw = ''
+    let shown = ''
+    try {
+      const result = await streamChat(
+        {
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: [
+                settings.quickQuestion.systemPrompt.trim(),
+                'Answer in one short paragraph maximum. Do not use headings or lists.'
+              ]
+                .filter(Boolean)
+                .join('\n\n')
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: settings.temperature,
+          // This launcher is for short answers. The prompt also sets a hard
+          // one-paragraph shape; the renderer never receives later paragraphs.
+          maxTokens: 256,
+          providerRouting:
+            settings.modelProviderRouting[model] ?? settings.defaultProviderRouting,
+          attribution: settings.sendAppAttribution,
+          includeReasoning: false,
+          signal: controller.signal
+        },
+        {
+          onContent: (delta) => {
+            raw += delta
+            const next = firstParagraph(raw)
+            if (next === shown || event.sender.isDestroyed()) return
+            shown = next
+            event.sender.send('quick-question:content', shown)
+          }
+        }
+      )
+
+      // Cover providers that returned content without stream deltas, and
+      // return the same bounded answer that the popup has been showing.
+      const answer = firstParagraph(result.content || raw)
+      if (answer !== shown && !event.sender.isDestroyed()) {
+        event.sender.send('quick-question:content', answer)
+      }
+      return answer
+    } catch (error) {
+      if (controller.signal.aborted) return shown
+      throw error
+    } finally {
+      if (quickQuestionControllers.get(event.sender.id) === controller) {
+        quickQuestionControllers.delete(event.sender.id)
+      }
+    }
+  })
+
+  ipcMain.on('quick-question:cancel', (event) => {
+    quickQuestionControllers.get(event.sender.id)?.abort()
+  })
 
   /* ---------------- models ---------------- */
 

@@ -12,7 +12,7 @@ interface Props {
    * have been answered, and 'pregenTitle' the one that names them from the
    * question while the answer is still arriving.
    */
-  mode: 'chat' | 'title' | 'pregenTitle' | 'default' | 'keyPoint'
+  mode: 'chat' | 'title' | 'pregenTitle' | 'default' | 'keyPoint' | 'quickQuestion'
   onClose: () => void
 }
 
@@ -54,16 +54,35 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const listRef = useRef<HTMLDivElement>(null)
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
-  const current =
-    mode === 'keyPoint'
-      ? settings?.keyPointModel
-      : mode === 'title'
-        ? settings?.titleModel
-        : mode === 'pregenTitle'
-          ? settings?.titlePregenModel
-          : mode === 'default'
-            ? settings?.defaultModel
-            : thread?.config.model ?? settings?.defaultModel
+  let current: string | undefined
+  switch (mode) {
+    case 'keyPoint':
+      current = settings?.keyPointModel
+      break
+    case 'title':
+      current = settings?.titleModel
+      break
+    case 'pregenTitle':
+      current = settings?.titlePregenModel
+      break
+    case 'default':
+      current = settings?.defaultModel
+      break
+    case 'quickQuestion':
+      current = settings?.quickQuestion.model
+      break
+    case 'chat':
+      current = thread?.config.model ?? settings?.defaultModel
+      break
+  }
+  const searchPlaceholder = {
+    chat: 'Search models…',
+    title: 'Model for generating thread names…',
+    pregenTitle: 'Model for the first name, written from the question…',
+    default: 'Model that new threads start with…',
+    keyPoint: 'Search models…',
+    quickQuestion: 'Model for Quick Question…'
+  }[mode]
 
   const filtered = useMemo(() => {
     // Every word somewhere in the id or the name, rather than the whole
@@ -101,6 +120,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     if (mode === 'keyPoint') {
       await saveSettings({ keyPointModel: modelId })
       showToast(`Key sentences will be picked by ${modelShortName(modelId)}`)
+    } else if (mode === 'quickQuestion') {
+      await saveSettings({ quickQuestion: { model: modelId } })
+      showToast(`Quick Question will use ${modelShortName(modelId)}`)
     } else if (mode === 'title') {
       await saveSettings({ titleModel: modelId })
       showToast(`Thread names will use ${modelShortName(modelId)}`)
@@ -142,15 +164,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
         <div className="panel__head" style={{ padding: 0 }}>
           <input
             className="panel__search"
-            placeholder={
-              mode === 'title'
-                ? 'Model for generating thread names…'
-                : mode === 'pregenTitle'
-                  ? 'Model for the first name, written from the question…'
-                  : mode === 'default'
-                    ? 'Model that new threads start with…'
-                    : 'Search models…'
-            }
+            placeholder={searchPlaceholder}
             value={query}
             autoFocus
             onChange={(event) => setQuery(event.target.value)}

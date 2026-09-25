@@ -544,6 +544,15 @@ export interface CompactionSettings {
   requireConfirmation: boolean
 }
 
+/** Settings for the one-turn launcher window. */
+export interface QuickQuestionSettings {
+  model: string
+  /** Additional instructions, alongside the built-in one-paragraph limit. */
+  systemPrompt: string
+  /** Keep the app process and preloaded launcher alive after closing the main window. */
+  keepRunning: boolean
+}
+
 /* ------------------------------------------------------------------ *
  * Settings
  * ------------------------------------------------------------------ */
@@ -657,6 +666,7 @@ export interface Settings {
   keyPointMany: boolean
   web: WebSearchSettings
   compaction: CompactionSettings
+  quickQuestion: QuickQuestionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */
   sendAppAttribution: boolean
   keybinds: Record<string, string>
@@ -669,10 +679,11 @@ export interface Settings {
  */
 export type SettingsPatch = Omit<
   Partial<Settings>,
-  'web' | 'compaction' | 'ui' | 'defaultProviderRouting'
+  'web' | 'compaction' | 'quickQuestion' | 'ui' | 'defaultProviderRouting'
 > & {
   web?: Partial<WebSearchSettings>
   compaction?: Partial<CompactionSettings>
+  quickQuestion?: Partial<QuickQuestionSettings>
   /**
    * `replyChips` is partial within the partial: it is eight switches and a
    * caller turning one of them over should not have to restate the other

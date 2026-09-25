@@ -48,6 +48,7 @@ export function loadSettings(): Settings {
     modelProviderRouting: stored.modelProviderRouting ?? {},
     web: { ...DEFAULT_SETTINGS.web, ...stored.web },
     compaction: { ...DEFAULT_SETTINGS.compaction, ...stored.compaction },
+    quickQuestion: { ...DEFAULT_SETTINGS.quickQuestion, ...stored.quickQuestion },
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...stored.ui,
@@ -68,6 +69,7 @@ export function saveSettings(patch: SettingsPatch): Settings {
     modelProviderRouting: patch.modelProviderRouting ?? current.modelProviderRouting,
     web: { ...current.web, ...patch.web },
     compaction: { ...current.compaction, ...patch.compaction },
+    quickQuestion: { ...current.quickQuestion, ...patch.quickQuestion },
     ui: {
       ...current.ui,
       ...patch.ui,

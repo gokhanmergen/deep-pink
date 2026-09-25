@@ -48,6 +48,8 @@ export const DEFAULT_COMPACTION: CompactionSettings = {
   requireConfirmation: true
 }
 
+export const DEFAULT_QUICK_QUESTION_PROMPT = `Answer the question directly and briefly. Use one short paragraph at most, with no heading or list.`
+
 export const DEFAULT_TITLE_PROMPT = `Write a title for this conversation.
 
 Rules:
@@ -290,6 +292,11 @@ export const DEFAULT_SETTINGS: Settings = {
   keyPointMany: true,
   web: DEFAULT_WEB_SETTINGS,
   compaction: DEFAULT_COMPACTION,
+  quickQuestion: {
+    model: 'google/gemini-2.5-flash-lite',
+    systemPrompt: DEFAULT_QUICK_QUESTION_PROMPT,
+    keepRunning: false
+  },
   sendAppAttribution: true,
   keybinds: DEFAULT_KEYBINDS,
   ui: DEFAULT_UI

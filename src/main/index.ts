@@ -20,8 +20,14 @@ import { reportUncaught } from './report'
 reportUncaught()
 
 const isDev = !app.isPackaged
+const launchedAsQuickQuestion = process.argv.includes('--quick-question')
+let mainWindow: BrowserWindow | null = null
+let quickQuestionWindow: BrowserWindow | null = null
+let canOpenWindows = false
+let pendingLaunch: 'main' | 'quick-question' | null = null
 
 function createWindow(): BrowserWindow {
+  if (mainWindow && !mainWindow.isDestroyed()) return mainWindow
   const win = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -40,6 +46,26 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: true
+    }
+  })
+  mainWindow = win
+
+  // In background mode the close button means "put the main window away".
+  // The preloaded Quick Question window keeps the process ready for the WM.
+  win.on('close', (event) => {
+    if (loadSettings().quickQuestion.keepRunning) {
+      event.preventDefault()
+      win.hide()
+    }
+  })
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+    // The launcher is preloaded while the app is open. Without background
+    // mode it should not keep a supposedly closed app alive by itself.
+    if (!loadSettings().quickQuestion.keepRunning) {
+      if (quickQuestionWindow && !quickQuestionWindow.isDestroyed()) {
+        quickQuestionWindow.destroy()
+      }
     }
   })
 
@@ -99,6 +125,77 @@ function createWindow(): BrowserWindow {
   return win
 }
 
+function createQuickQuestionWindow(): BrowserWindow {
+  if (quickQuestionWindow && !quickQuestionWindow.isDestroyed()) return quickQuestionWindow
+
+  const win = new BrowserWindow({
+    width: 560,
+    height: 390,
+    minWidth: 430,
+    minHeight: 300,
+    show: false,
+    center: true,
+    frame: false,
+    resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: '#0a0a0d',
+    ...(process.platform === 'linux' ? { icon: join(__dirname, '../../build/icon.png') } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      spellcheck: true
+    }
+  })
+  quickQuestionWindow = win
+  win.on('hide', () => {
+    if (!win.isDestroyed()) win.webContents.send('quick-question:hidden')
+  })
+  win.on('close', (event) => {
+    // Keep it warm while the full app is open, or when background mode has
+    // explicitly asked the process to remain available after closing it.
+    if (
+      loadSettings().quickQuestion.keepRunning ||
+      (mainWindow && !mainWindow.isDestroyed())
+    ) {
+      event.preventDefault()
+      win.hide()
+    }
+  })
+  win.on('closed', () => {
+    if (quickQuestionWindow === win) quickQuestionWindow = null
+  })
+
+  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
+    const url = new URL('/quick-question.html', process.env['ELECTRON_RENDERER_URL']).toString()
+    win.loadURL(url)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/quick-question.html'))
+  }
+
+  // A small static skeleton is already in the HTML, so it can be shown before
+  // React has parsed the popup bundle. It stays hidden until the WM invokes it.
+  return win
+}
+
+function openQuickQuestion(): void {
+  const win = createQuickQuestionWindow()
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  win.webContents.focus()
+  if (!win.webContents.isLoading()) win.webContents.send('quick-question:opened')
+}
+
+function openMainWindow(): void {
+  const win = createWindow()
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
 // Must happen before the app is ready: Chromium decides how to treat a custom
 // scheme at startup, and attachments are served over one.
 attachments.registerScheme()
@@ -110,11 +207,14 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 }
 
-app.on('second-instance', () => {
-  const [win] = BrowserWindow.getAllWindows()
-  if (!win) return
-  if (win.isMinimized()) win.restore()
-  win.focus()
+app.on('second-instance', (_event, commandLine) => {
+  const launch = commandLine.includes('--quick-question') ? 'quick-question' : 'main'
+  if (!canOpenWindows) {
+    pendingLaunch = launch
+    return
+  }
+  if (launch === 'quick-question') openQuickQuestion()
+  else openMainWindow()
 })
 
 app.whenReady().then(async () => {
@@ -149,7 +249,14 @@ app.whenReady().then(async () => {
   if (orphans) console.log(`Removed ${orphans} orphaned attachment file(s).`)
 
   registerIpc()
-  createWindow()
+  canOpenWindows = true
+  const launch = pendingLaunch ?? (launchedAsQuickQuestion ? 'quick-question' : 'main')
+  pendingLaunch = null
+  if (launch === 'quick-question') openQuickQuestion()
+  else createWindow()
+  // Warm the compact renderer while the full app remains usable. When the
+  // background setting is off, closing the main window also destroys it.
+  createQuickQuestionWindow()
 
   // Connecting MCP servers spawns processes; do it after the window is up so
   // a slow or broken server never delays first paint. Not at all while the
@@ -173,11 +280,12 @@ app.whenReady().then(async () => {
   startSync()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    openMainWindow()
   })
 })
 
 app.on('window-all-closed', () => {
+  if (loadSettings().quickQuestion.keepRunning) return
   if (process.platform !== 'darwin') app.quit()
 })
 
