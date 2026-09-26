@@ -276,7 +276,16 @@ suite('side by side — one question, two conversations', async ({ check, sectio
     state().compareStartConfig
   )
   check('and says it is for both', /both sides/.test(toasts().join()), toasts())
-  state().setCompareStartConfig({ reasoning: { mode: 'high', budgetTokens: 8000 } })
+  // Think harder, twice: from automatic onto the ladder, then one rung up.
+  const thinkHarder = () => buildActions().find((action) => action.id === 'reasoning.more').run()
+  thinkHarder()
+  thinkHarder()
+  check(
+    'the thinking shortcut sets the shared question too, rather than asking for one side',
+    state().compareStartConfig.reasoning?.mode === 'low',
+    state().compareStartConfig
+  )
+  check('and says it is for both', /for both sides/.test(toasts().join()), toasts())
 
   section('one question, asked of both')
   await state().startCompare('Which is larger, 9.11 or 9.9?')
@@ -288,7 +297,7 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   )
   check(
     'with what was set up for the question they share',
-    pairsMade[0][2]?.webAccessEnabled === true && pairsMade[0][2]?.reasoning?.mode === 'high',
+    pairsMade[0][2]?.webAccessEnabled === true && pairsMade[0][2]?.reasoning?.mode === 'low',
     pairsMade[0][2]
   )
   const [a, b] = [state().compare[0].threadId, state().compare[1].threadId]
@@ -430,6 +439,33 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   buildActions().find((action) => action.id === 'model.picker').run()
   check('changing model does not open the default-model picker', state().overlay === null, state().overlay)
   check('it points at the sides instead', /top of that side/.test(toasts().join()), toasts())
+
+  /*
+   * The rest of what acts on "the" thread. Each of these used to act on
+   * nothing without a word — the transcript they read is empty side by side —
+   * or on the default model, which need be neither side.
+   */
+  const sentBefore = sent.length
+  for (const id of [
+    'provider.picker',
+    'message.regenerate',
+    'message.copyLast',
+    'message.editLast',
+    'context.compact',
+    'prompt.inspect',
+    'stats.thread'
+  ]) {
+    useStore.setState({ toast: null, overlay: null })
+    await buildActions().find((action) => action.id === id).run()
+    check(
+      `${id} says to open one side, rather than doing nothing`,
+      /open one side on its own/.test(toasts().join()),
+      toasts()
+    )
+    check(`${id} opens nothing about a thread that is not open`, state().overlay === null, state().overlay)
+  }
+  check('and nothing was sent by any of them', sent.length === sentBefore, sent.slice(sentBefore))
+  check('nor was anyone put in the editor', state().editingMessageId === null)
 
   section('opening a thread closes it')
   await state().selectThread(a)

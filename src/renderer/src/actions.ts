@@ -1,8 +1,9 @@
-import type { ExportFormat, Settings, Thread, ThreadConfig } from '@shared/types'
+import type { ExportFormat, Settings, ThreadConfig } from '@shared/types'
 import {
   EFFORTS,
   REASONING_LABELS,
   resolveReasoning,
+  type ReasoningConfig,
   type ReasoningMode
 } from '@shared/reasoning'
 import { threadLabel } from './format'
@@ -66,12 +67,15 @@ export async function exportThread(threadId: string, format: ExportFormat): Prom
  */
 function stepReasoning(
   store: ReturnType<typeof useStore.getState>,
-  thread: Thread | null,
+  configured: ReasoningConfig | null | undefined,
   settings: Settings | null,
-  threadId: string,
-  by: 1 | -1
+  /** Where the new level goes: the thread, or the question both sides share. */
+  write: (reasoning: ReasoningConfig) => void,
+  by: 1 | -1,
+  /** Said after the level, so a change made for both sides says so. */
+  whose = ''
 ): void {
-  const current = resolveReasoning(thread?.config.reasoning, settings?.reasoning)
+  const current = resolveReasoning(configured, settings?.reasoning)
   if (current.mode === 'budget') {
     store.showToast('This thread thinks to a token budget; change it in the composer')
     return
@@ -85,9 +89,12 @@ function stepReasoning(
     return
   }
 
-  void store.updateThread(threadId, { config: { reasoning: { ...current, mode: next } } })
-  store.showToast(`Thinking: ${REASONING_LABELS[next].toLowerCase()}`)
+  write({ ...current, mode: next })
+  store.showToast(`Thinking: ${REASONING_LABELS[next].toLowerCase()}${whose}`)
 }
+
+/** What an action about "the" thread says side by side, where there are two. */
+const ONE_SIDE = 'Side by side, open one side on its own for that'
 
 /**
  * Every user-facing action, in one place. The keybind handler and the command
@@ -102,13 +109,30 @@ export function buildActions(): AppAction[] {
     if (!activeThreadId) {
       // Side by side there are two threads and neither is "the" one, so the
       // shortcut is told which is meant by opening it.
-      store.showToast(
-        store.compare ? 'Side by side, open one side on its own for that' : 'Open a thread first'
-      )
+      store.showToast(store.compare ? ONE_SIDE : 'Open a thread first')
       return
     }
     return fn(activeThreadId)
   }
+
+  /**
+   * For what works on the open thread's transcript or its model, and has an
+   * answer of its own when no thread is open.
+   *
+   * That answer is the wrong one side by side. The last-message actions read
+   * the open transcript, which is empty there, and returned without a word;
+   * the provider picker and the inspectors fell back to the default model or
+   * to nothing, which may be neither side. Which side was meant is not
+   * something to guess, so they say what `requireThread` says.
+   */
+  const openThreadOnly =
+    (fn: () => void | Promise<void>) => (): void | Promise<void> => {
+      if (store.compare) {
+        store.showToast(ONE_SIDE)
+        return
+      }
+      return fn()
+    }
 
   /**
    * A thread setting's shortcut, reaching the question side by side is about
@@ -122,6 +146,25 @@ export function buildActions(): AppAction[] {
     ) =>
     () =>
       store.compare && !store.compare[0].threadId ? shared(store.compareStartConfig) : otherwise()
+
+  /** One rung of thinking, for the open thread or for both sides at once. */
+  const stepOne = (id: string, by: 1 | -1): void =>
+    stepReasoning(
+      store,
+      thread?.config.reasoning,
+      settings,
+      (reasoning) => void store.updateThread(id, { config: { reasoning } }),
+      by
+    )
+  const stepAll = (config: Partial<ThreadConfig>, by: 1 | -1): void =>
+    stepReasoning(
+      store,
+      config.reasoning,
+      settings,
+      (reasoning) => store.setCompareStartConfig({ reasoning }),
+      by,
+      ' for both sides'
+    )
 
   /** The other half of the open thread's comparison, if it is still here. */
   const partner =
@@ -385,14 +428,14 @@ export function buildActions(): AppAction[] {
        * So it asks the same thing the transcript asks — what is at the end of
        * the conversation — and does what that calls for.
        */
-      run: () => {
+      run: openThreadOnly(() => {
         const last = [...store.messages]
           .reverse()
           .find((m) => m.role === 'assistant' || m.role === 'user')
         if (!last) return
         if (last.role === 'user') void store.resendFrom(last.id)
         else void store.regenerate(last.id)
-      }
+      })
     },
     {
       id: 'message.editLast',
@@ -408,22 +451,22 @@ export function buildActions(): AppAction[] {
        * not show a message of more than a line. Now both say which message,
        * and the row does the editing.
        */
-      run: () => {
+      run: openThreadOnly(() => {
         const last = [...store.messages].reverse().find((m) => m.role === 'user')
         if (!last) return
         store.editMessage(last.id)
-      }
+      })
     },
     {
       id: 'message.copyLast',
       label: 'Copy the last reply',
       group: 'Messages',
-      run: () => {
+      run: openThreadOnly(() => {
         const last = [...store.messages].reverse().find((m) => m.role === 'assistant')
         if (!last) return
         void navigator.clipboard.writeText(last.content)
         store.showToast('Copied the last reply')
-      }
+      })
     },
     {
       id: 'code.copyHovered',
@@ -474,13 +517,13 @@ export function buildActions(): AppAction[] {
       label: 'Delete the last message',
       group: 'Messages',
       hidden: true,
-      run: () => {
+      run: openThreadOnly(() => {
         const last = store.messages[store.messages.length - 1]
         if (!last) return
         void window.deepPink.messages
           .remove(last.id)
           .then(() => store.refreshTranscript())
-      }
+      })
     },
 
     // Model & routing
@@ -502,7 +545,7 @@ export function buildActions(): AppAction[] {
       id: 'provider.picker',
       label: 'Choose the provider for this model',
       group: 'Model',
-      run: () => store.setOverlay('providers')
+      run: openThreadOnly(() => store.setOverlay('providers'))
     },
     {
       id: 'titleModel.picker',
@@ -568,13 +611,19 @@ export function buildActions(): AppAction[] {
       id: 'reasoning.more',
       label: 'Think harder in this thread',
       group: 'Capabilities',
-      run: requireThread((id) => stepReasoning(store, thread, settings, id, 1))
+      run: beforeSideBySide(
+        (config) => stepAll(config, 1),
+        requireThread((id) => stepOne(id, 1))
+      )
     },
     {
       id: 'reasoning.less',
       label: 'Think less in this thread',
       group: 'Capabilities',
-      run: requireThread((id) => stepReasoning(store, thread, settings, id, -1))
+      run: beforeSideBySide(
+        (config) => stepAll(config, -1),
+        requireThread((id) => stepOne(id, -1))
+      )
     },
     { id: 'mcp.panel', label: 'MCP servers', group: 'Capabilities', run: () => store.setOverlay('mcp') },
     {
@@ -590,7 +639,7 @@ export function buildActions(): AppAction[] {
       id: 'context.compact',
       label: 'Compact the context now',
       group: 'Capabilities',
-      run: () => void store.compact()
+      run: openThreadOnly(() => void store.compact())
     },
 
     // Transparency
@@ -598,13 +647,13 @@ export function buildActions(): AppAction[] {
       id: 'prompt.inspect',
       label: 'Inspect the system prompt',
       group: 'Transparency',
-      run: () => store.setOverlay('prompt')
+      run: openThreadOnly(() => store.setOverlay('prompt'))
     },
     {
       id: 'stats.thread',
       label: 'Thread statistics',
       group: 'Transparency',
-      run: () => store.setOverlay('threadStats')
+      run: openThreadOnly(() => store.setOverlay('threadStats'))
     },
     {
       id: 'stats.global',
