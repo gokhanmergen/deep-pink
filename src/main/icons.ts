@@ -166,6 +166,60 @@ function candidates(slug: string): string[] {
  * 404 route, and every site that serves its app shell for an unknown path. A
  * 200 carrying `text/html` is a miss wearing a hit's clothes.
  */
+/**
+ * What kind of picture these bytes are, from the bytes, or null if none.
+ *
+ * The content type above is the first check and it is not enough. An `.ico`
+ * is asked for with a type to fall back on, because servers label real icons
+ * every way there is — and a site that answers every path with its app shell
+ * answered `/favicon.ico` with a page. xiaomi.com does, and its "icon" was
+ * nine kilobytes of HTML stored as `image/x-icon` and drawn as a broken
+ * picture wherever a MiMo model appeared.
+ *
+ * So the bytes decide, and the type they announce is the one the data URL
+ * carries: an SVG has to be labelled as one to be drawn at all, and a PNG
+ * served from an `.ico` path should not be called an icon.
+ */
+export function imageMime(bytes: Buffer): string | null {
+  const at = (i: number, ...values: number[]): boolean =>
+    values.every((value, offset) => bytes[i + offset] === value)
+
+  if (at(0, 0x89, 0x50, 0x4e, 0x47)) return 'image/png'
+  // An icon, or a cursor, which some favicons are.
+  if (at(0, 0x00, 0x00, 0x01, 0x00) || at(0, 0x00, 0x00, 0x02, 0x00)) return 'image/x-icon'
+  if (at(0, 0x47, 0x49, 0x46, 0x38)) return 'image/gif'
+  if (at(0, 0xff, 0xd8, 0xff)) return 'image/jpeg'
+  if (bytes.length >= 12 && bytes.toString('latin1', 0, 4) === 'RIFF' &&
+      bytes.toString('latin1', 8, 12) === 'WEBP') {
+    return 'image/webp'
+  }
+
+  // SVG is text, and so is an HTML page — which is exactly the confusion this
+  // exists to settle. Only a document whose first element is `<svg>` counts.
+  const head = bytes
+    .toString('utf8', 0, Math.min(bytes.length, 2048))
+    .replace(/^﻿/, '')
+    .trimStart()
+    .toLowerCase()
+  if (head.startsWith('<svg')) return 'image/svg+xml'
+  if (/^(<\?xml[^>]*>\s*|<!--[\s\S]*?-->\s*|<!doctype svg[^>]*>\s*)+<svg/.test(head)) {
+    return 'image/svg+xml'
+  }
+  return null
+}
+
+/**
+ * Whether a data URL remembered from before holds a picture.
+ *
+ * Every mark found was cached for good, including the pages mistaken for one
+ * before the bytes were checked — so a cache written by an older build would
+ * go on drawing them. They are asked for again instead.
+ */
+export function isUsableIcon(url: string): boolean {
+  const match = /^data:[^;,]*;base64,(.*)$/s.exec(url)
+  return match !== null && imageMime(Buffer.from(match[1], 'base64')) !== null
+}
+
 /** Found it, or looked and did not — which are not the same as failing to look. */
 interface Lookup {
   url: string | null
@@ -185,7 +239,9 @@ async function asDataUrl(url: string, fallbackMime?: string): Promise<Lookup> {
     // politely rather than having an icon — ai21.com serves a 200 of 0 bytes.
     if (!bytes.length || bytes.length > 512 * 1024) return { url: null, reachable: true }
 
-    const mime = type.startsWith('image/') ? type : fallbackMime
+    // Whatever it was labelled, a page is not a picture. See `imageMime`.
+    const mime = imageMime(bytes)
+    if (!mime) return { url: null, reachable: true }
     return { url: `data:${mime};base64,${bytes.toString('base64')}`, reachable: true }
   } catch {
     // Offline, or the host does not resolve. Nothing was learned about whether
@@ -341,7 +397,9 @@ export async function iconForAuthor(slug: string): Promise<string | null> {
   const known = load()
   const cached = known[slug]
 
-  if (cached) {
+  // A remembered page is not an answer; it falls through and is looked for again.
+  const unusable = cached?.url ? !isUsableIcon(cached.url) : false
+  if (cached && !unusable) {
     if (cached.url) return cached.url
     // A miss is only worth keeping if it was reached by looking everywhere we
     // look now, and if it is recent.

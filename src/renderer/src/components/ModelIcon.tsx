@@ -54,10 +54,20 @@ export function ModelIcon({
   className?: string
 }): React.JSX.Element | null {
   const [url, setUrl] = useState<string | null>(null)
+  /*
+   * A mark the browser could not draw.
+   *
+   * The main process checks what it stores, so this should not happen — but a
+   * broken-picture glyph is the one outcome worse than the letter, and it was
+   * what a MiMo model showed for as long as a page sat in the cache posing as
+   * Xiaomi's icon. Whatever the reason, the letter is the answer.
+   */
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     if (!model) return
     let cancelled = false
+    setFailed(false)
     void iconFor(model).then((found) => {
       if (!cancelled) setUrl(found)
     })
@@ -73,7 +83,7 @@ export function ModelIcon({
   // Until the answer arrives, and for ever where there is no mark. Rendered
   // rather than left empty so nothing moves when one resolves and the other
   // does not.
-  if (!url) {
+  if (!url || failed) {
     return (
       <span className={`${classes} model-icon--letter`} style={{ width: size, height: size }} title={model}>
         {initialOf(model)}
@@ -90,6 +100,7 @@ export function ModelIcon({
       alt=""
       title={model}
       draggable={false}
+      onError={() => setFailed(true)}
     />
   )
 }
