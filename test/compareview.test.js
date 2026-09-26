@@ -36,6 +36,12 @@ suite(
     if (!win) return
     await settle(6000)
     const run = (js) => win.webContents.executeJavaScript(js)
+    /*
+     * The key `mod` means where this is running: Cmd on macOS, Ctrl elsewhere.
+     * Always sending Ctrl passed on the Linux machine CI runs on and pressed
+     * nothing at all on a Mac, which read as the shortcut being broken.
+     */
+    const modKey = process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'
 
     const view = () =>
       run(`(() => {
@@ -192,7 +198,7 @@ suite(
 
     section('closing it')
     await run(`window.dispatchEvent(new KeyboardEvent('keydown', {
-      key: '\\\\', ctrlKey: true, bubbles: true
+      key: '\\\\', ${modKey}: true, bubbles: true
     }))`)
     await settle(700)
     const closed = await view()
