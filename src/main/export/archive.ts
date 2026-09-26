@@ -193,7 +193,12 @@ function toConfig(value: unknown): ThreadConfig {
     chartsEnabled: typeof raw['chartsEnabled'] === 'boolean' ? raw['chartsEnabled'] : null,
     // Restored only when it is the shape this app writes; an export from a
     // build that predates reasoning modes simply follows the global default.
-    reasoning: readReasoning(raw['reasoning'])
+    reasoning: readReasoning(raw['reasoning']),
+    // An archive is one thread, and it is read back under a new id. Its
+    // partner is not in it, and pointing at the partner it had — which on the
+    // same machine may still be there — would make a pair only one half of
+    // which knows about.
+    compareWith: null
   }
 }
 

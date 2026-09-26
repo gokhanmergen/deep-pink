@@ -236,6 +236,15 @@ export interface ThreadConfig {
    * three bullet points wants none of it and none of the bill.
    */
   reasoning: ReasoningConfig | null
+  /**
+   * The other half of a side-by-side comparison, when this thread is one.
+   *
+   * Two ordinary threads, started with the same message and answered by
+   * different models, and after that each its own conversation. Kept on both
+   * so either can reopen the pair. A partner that has since been deleted is
+   * simply not there, and the thread carries on as an ordinary one.
+   */
+  compareWith: string | null
 }
 
 /* ------------------------------------------------------------------ *

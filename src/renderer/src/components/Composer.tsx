@@ -7,7 +7,7 @@ import {
   type StagedFile
 } from './attachFiles'
 import { formatBytes } from '../format'
-import type { AttachedRepo } from '@shared/types'
+import type { AttachedRepo, PendingAttachment } from '@shared/types'
 import { useStore } from '../store'
 import {
   ArrowUp,
@@ -35,12 +35,45 @@ import {
 
 export const COMPOSER_ID = 'composer-input'
 
+/**
+ * Where what is typed goes, when it is not the open thread.
+ *
+ * Side by side there is no open thread, and there are up to three composers:
+ * one for the question both sides are asked, and then one per side. Each is
+ * this same composer pointed somewhere else — the same box, attachments and
+ * settings bar — rather than a second, smaller one that would drift from it.
+ */
+export interface ComposerTarget {
+  /**
+   * The thread whose settings the bar shows and changes. Null before one
+   * exists, which leaves those settings to be changed once it does.
+   */
+  threadId: string | null
+  /** Where the unsent text is kept among the drafts. */
+  draftKey: string
+  generating: boolean
+  /**
+   * Whether it was taken. False leaves what was typed where it is — the
+   * question both sides share is often written before the second model has
+   * been chosen, and refusing it should not also throw it away.
+   */
+  send: (content: string, attachments: PendingAttachment[]) => boolean
+  abort: () => void
+  /** The model button, or none where the model is chosen somewhere else. */
+  chooseModel: (() => void) | null
+  placeholder: string
+  /** Whether it takes focus when it appears, which only one of several can. */
+  autoFocus: boolean
+}
+
 interface ComposerProps {
   compact?: boolean
   onInteract?: () => void
+  /** Somewhere other than the open thread. See `ComposerTarget`. */
+  target?: ComposerTarget
 }
 
-export function Composer({ compact = false, onInteract }: ComposerProps): React.JSX.Element {
+export function Composer({ compact = false, onInteract, target }: ComposerProps): React.JSX.Element {
   const [images, setImages] = useState<StagedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [attachMenu, setAttachMenu] = useState<{ x: number; y: number } | null>(null)
@@ -53,11 +86,20 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
 
   const settings = useStore((s) => s.settings)
   const showToast = useStore((s) => s.showToast)
-  const generating = useStore((s) => s.generating)
+  const openGenerating = useStore((s) => s.generating)
   const send = useStore((s) => s.send)
   const abort = useStore((s) => s.abort)
-  const activeThreadId = useStore((s) => s.activeThreadId)
-  const value = useStore((s) => (s.activeThreadId ? (s.drafts[s.activeThreadId] ?? '') : ''))
+  const openThreadId = useStore((s) => s.activeThreadId)
+  /*
+   * The thread this composer writes into, and where its unsent text is kept.
+   *
+   * Named `activeThreadId` still because everything below was written against
+   * the open thread, and for the ordinary composer it still is that.
+   */
+  const activeThreadId = target ? target.threadId : openThreadId
+  const draftKey = target ? target.draftKey : openThreadId
+  const generating = target ? target.generating : openGenerating
+  const value = useStore((s) => (draftKey ? (s.drafts[draftKey] ?? '') : ''))
   const setDraft = useStore((s) => s.setDraft)
   const updateThread = useStore((s) => s.updateThread)
   const threads = useStore((s) => s.threads)
@@ -72,7 +114,10 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
 
   // Web access works by giving the model tools. A model that cannot call tools
   // will simply ignore them, which looks exactly like search being broken.
-  const activeModel = thread?.config.model ?? settings?.defaultModel
+  // No single model before a comparison has begun — each side has its own, and
+  // a warning about the default would be about neither of them.
+  const activeModel =
+    target && !target.threadId ? null : (thread?.config.model ?? settings?.defaultModel)
   const modelInfo = models.find((m) => m.id === activeModel)
   const toolsUnsupported = webOn && modelInfo != null && !modelInfo.supportsTools
   const imagesUnsupported =
@@ -119,7 +164,7 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
   // settings field, or a message they are editing. At layout time, for the same
   // reason as the dialog: animation frames stall in a background window.
   useLayoutEffect(() => {
-    if (!activeThreadId) return
+    if (target ? !target.autoFocus : !activeThreadId) return
     const active = document.activeElement
     const busyElsewhere =
       active instanceof HTMLElement &&
@@ -129,7 +174,7 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
 
     textareaRef.current?.focus()
     onInteract?.()
-  }, [activeThreadId, onInteract])
+  }, [draftKey, onInteract])
 
   const add = useCallback(async (files: File[]): Promise<void> => {
     if (!files.length) return
@@ -141,7 +186,12 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
   // Images can be pasted while the transcript or another non-editable part of
   // the window has focus. Treat that like pasting into the composer, then leave
   // ordinary text pastes to the control the user is already typing in.
+  //
+  // Only for the open thread's composer. Side by side there are two, and a
+  // picture pasted onto neither of them belongs to no side in particular.
+  const targeted = Boolean(target)
   useEffect(() => {
+    if (targeted) return
     const onPaste = (event: ClipboardEvent): void => {
       if (event.defaultPrevented) return
       const files = attachableFilesFrom(event.clipboardData)
@@ -169,7 +219,7 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
 
     window.addEventListener('paste', onPaste, true)
     return () => window.removeEventListener('paste', onPaste, true)
-  }, [add, onInteract])
+  }, [add, onInteract, targeted])
 
   // Attached directories live on the thread, not the message, so they persist
   // across turns and follow you when you come back to the conversation.
@@ -265,15 +315,20 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
     const content = value.trim()
     // An image on its own is a perfectly good message.
     if ((!content && !images.length) || generating) return
-    if (activeThreadId) setDraft(activeThreadId, '')
-    setImages([])
-    void send(content, images.map(({ mime, filename, data, width, height }) => ({
+    const attachments = images.map(({ mime, filename, data, width, height }) => ({
       mime,
       filename,
       data,
       width,
       height
-    })))
+    }))
+    if (target) {
+      if (!target.send(content, attachments)) return
+    } else {
+      void send(content, attachments)
+    }
+    if (draftKey) setDraft(draftKey, '')
+    setImages([])
   }
 
   const keybinds = settings?.keybinds ?? {}
@@ -486,17 +541,21 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
           )}
 
           <textarea
-            id={COMPOSER_ID}
+            // The id is how the shortcuts find "the" composer, and side by side
+            // there is not one.
+            id={target ? undefined : COMPOSER_ID}
             ref={textareaRef}
             className="composer__textarea"
             placeholder={
-              generating ? 'Generating…' : 'Send a message — paste or drop images to attach'
+              generating
+                ? 'Generating…'
+                : (target?.placeholder ?? 'Send a message — paste or drop images to attach')
             }
             value={value}
             rows={1}
             onChange={(event) => {
               onInteract?.()
-              if (activeThreadId) setDraft(activeThreadId, event.target.value)
+              if (draftKey) setDraft(draftKey, event.target.value)
             }}
             onKeyDown={(event) => {
               onInteract?.()
@@ -578,24 +637,32 @@ export function Composer({ compact = false, onInteract }: ComposerProps): React.
               </button>
             )}
 
-            <button
-              className="btn"
-              onClick={() => setOverlay('models')}
-              title={`Model — ${formatBinding(keybinds['model.picker'] ?? 'mod+m')}`}
-              type="button"
-            >
-              {/* The house's own mark rather than a generic chip. This is the
-                  one place the model is named now, so it is worth the pixels
-                  that say which one without being read. */}
-              <ModelIcon model={thread?.config.model ?? settings?.defaultModel} size={14} />
-              <span className="btn__label">
-                {(thread?.config.model ?? settings?.defaultModel ?? '').split('/').pop() ||
-                  'Choose model'}
-              </span>
-            </button>
+            {/* Side by side, each side's model is at the top of that side,
+                where it can be read beside the other's. */}
+            {(!target || target.chooseModel) && (
+              <button
+                className="btn"
+                onClick={() => (target?.chooseModel ? target.chooseModel() : setOverlay('models'))}
+                title={`Model — ${formatBinding(keybinds['model.picker'] ?? 'mod+m')}`}
+                type="button"
+              >
+                {/* The house's own mark rather than a generic chip. This is the
+                    one place the model is named now, so it is worth the pixels
+                    that say which one without being read. */}
+                <ModelIcon model={thread?.config.model ?? settings?.defaultModel} size={14} />
+                <span className="btn__label">
+                  {(thread?.config.model ?? settings?.defaultModel ?? '').split('/').pop() ||
+                    'Choose model'}
+                </span>
+              </button>
+            )}
 
             {generating ? (
-              <button className="btn btn--danger" onClick={() => void abort()} type="button">
+              <button
+                className="btn btn--danger"
+                onClick={() => (target ? target.abort() : void abort())}
+                type="button"
+              >
                 <Square size={12} strokeWidth={2.5} />
                 Stop
               </button>

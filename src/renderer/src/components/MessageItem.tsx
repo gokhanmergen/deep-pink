@@ -6,6 +6,7 @@ import { Markdown } from './Markdown'
 import { TextAttachment } from './TextAttachment'
 import { ImageAttachments } from './ImageAttachments'
 import { useStore } from '../store'
+import { useTranscriptActions } from '../transcriptActions'
 import { estimateHeight } from '../messageHeight'
 
 /**
@@ -38,6 +39,8 @@ export const MessageItem = memo(function MessageItem({
   // row is being edited.
   const editing = useStore((s) => s.editingMessageId === message.id)
   const editMessage = useStore((s) => s.editMessage)
+  // Which conversation an edit re-asks in — see `transcriptActions`.
+  const actions = useTranscriptActions()
   const [draft, setDraft] = useState(message.content)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -125,13 +128,13 @@ export const MessageItem = memo(function MessageItem({
      * one would be answering the app.
      */
     if (changed && message.role === 'user') {
-      await useStore.getState().resendFrom(message.id)
+      await actions.resendFrom(message.id)
       return
     }
 
     // Re-reads the loaded range in place rather than reopening the thread,
     // which would throw away everything scrolled back to.
-    await useStore.getState().refreshTranscript()
+    await actions.refresh()
   }
 
   return (

@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import type {
   Attachment,
   Folder,
+  LiveStream,
   McpServerStatus,
   Message,
   MessagePage,
   OpenRouterModel,
   SearchHit,
   PendingAttachment,
+  SendMessageRequest,
   Settings,
   SettingsPatch,
   StreamEvent,
@@ -39,6 +41,50 @@ export type Overlay =
   | 'keybinds'
   /** The four questions asked on a first launch, and from Settings after. */
   | 'wizard'
+  /** The model one side of a comparison is asked with. */
+  | 'compareModelLeft'
+  | 'compareModelRight'
+
+/** Which side of a comparison: the left pane, or the right. */
+export type CompareSide = 0 | 1
+
+/**
+ * One side of a side-by-side comparison: a thread, and as much of its
+ * transcript as has been read in.
+ *
+ * The same few things the store keeps for the open thread, kept twice. Not the
+ * open thread's own fields reused, because both sides are live at once — two
+ * replies arriving together, each with its own range and its own cost.
+ */
+export interface ComparePane {
+  /** Null until the first message is sent, which is what makes the threads. */
+  threadId: string | null
+  /**
+   * The model this side will be asked with, while there is no thread yet to
+   * keep it. Once there is one, the thread's own config is the answer.
+   */
+  model: string | null
+  messages: Message[]
+  /** Where the loaded range begins. Opaque, as `messageWindowStart` is. */
+  startSeq: number | null
+  hasOlder: boolean
+  loadingOlder: boolean
+  generating: boolean
+  totals: ThreadTotals | null
+}
+
+function emptyPane(threadId: string | null, model: string | null): ComparePane {
+  return {
+    threadId,
+    model,
+    messages: [],
+    startSeq: null,
+    hasOlder: false,
+    loadingOlder: false,
+    generating: false,
+    totals: null
+  }
+}
 
 /**
  * A section of the settings panel, named so other parts of the app can ask for
@@ -250,6 +296,15 @@ interface State {
   sync: SyncState | null
   /** Where the current run has got to, or null between runs. */
   syncProgress: SyncProgress | null
+  /**
+   * Two conversations side by side, or null for the ordinary single view.
+   *
+   * While it is open no thread is `activeThreadId`. Everything that acts on
+   * "the open thread" — the shortcuts, the palette, the inspector — would
+   * otherwise act on one of the two sides without saying which, so with
+   * nothing open they say so instead. Opening any thread closes it.
+   */
+  compare: [ComparePane, ComparePane] | null
 
   init: () => Promise<void>
   refreshThreads: () => Promise<void>
@@ -323,6 +378,34 @@ interface State {
    */
   resendFrom: (messageId: string) => Promise<void>
   abort: () => Promise<void>
+  /**
+   * Opens the side-by-side view: empty, to start a new comparison, or on a
+   * pair that already exists, with the thread named first on the left.
+   */
+  openCompare: (pair?: [string, string]) => Promise<void>
+  /**
+   * Back to one conversation — the side given, or the other if that one never
+   * began, or a new chat if neither did.
+   */
+  closeCompare: (keep?: CompareSide) => Promise<void>
+  setCompareModel: (side: CompareSide, model: string) => Promise<void>
+  /** Sends the shared first message to both sides, making their threads. */
+  startCompare: (content: string, attachments?: PendingAttachment[]) => Promise<void>
+  /** After the first message, each side is its own conversation. */
+  sendToPane: (side: CompareSide, content: string, attachments?: PendingAttachment[]) => Promise<void>
+  abortPane: (side: CompareSide) => Promise<void>
+  /** `regenerate` and `resendFrom`, for one side of a comparison. */
+  regenerateInPane: (side: CompareSide, messageId: string) => Promise<void>
+  resendFromInPane: (side: CompareSide, messageId: string) => Promise<void>
+  /** Re-reads one side's range in place, as `refreshTranscript` does. */
+  refreshPane: (side: CompareSide) => Promise<void>
+  /** `loadOlderMessages`, for one side. */
+  loadOlderInPane: (side: CompareSide) => Promise<boolean>
+  /**
+   * Puts a tool call in front of the reader for approval, or behind the one
+   * already there.
+   */
+  requestApproval: (approval: PendingApproval) => void
   compact: () => Promise<void>
   saveSettings: (patch: SettingsPatch) => Promise<void>
   refreshModels: (force?: boolean) => Promise<void>
@@ -570,6 +653,16 @@ export function forgetPlace(threadId: string): void {
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
+ * Tool calls waiting behind the one on screen.
+ *
+ * There was a single slot, and a second request replaced the first — whose
+ * turn then waited forever on an answer nobody could give, since the engine
+ * holds a call until it is approved or denied. With two sides of a comparison
+ * running at once, two requests together is ordinary rather than rare.
+ */
+const waitingApprovals: PendingApproval[] = []
+
+/**
  * Guards against subscribing to the main process more than once.
  *
  * React's StrictMode invokes effects twice, and any future remount would do the
@@ -590,6 +683,7 @@ export function disposeStore(): void {
   }
   emitted.clear()
   threadOfMessage.clear()
+  waitingApprovals.length = 0
   initialised = false
 }
 
@@ -631,6 +725,7 @@ export const useStore = create<State>((set, get) => ({
   imageViewer: null,
   sync: null,
   syncProgress: null,
+  compare: null,
 
   async init() {
     if (initialised) return
@@ -691,6 +786,7 @@ export const useStore = create<State>((set, get) => ({
            * rebuild it from wherever the range happens to start.
            */
           if (get().activeThreadId) await get().refreshTranscript()
+          if (get().compare) await Promise.all([get().refreshPane(0), get().refreshPane(1)])
         })()
       })
     )
@@ -713,6 +809,11 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectThread(id) {
+    // Opening a thread is leaving the comparison, wherever it was opened from —
+    // the list, a search hit, a new chat. Both sides are threads in the list
+    // already, so nothing is lost by it.
+    if (id && get().compare) set({ compare: null })
+
     // Two reasons a thread does not survive being left.
     //
     // A thread is created the moment the button is pressed, so leaving one
@@ -820,25 +921,9 @@ export const useStore = create<State>((set, get) => ({
     // message that no longer exists.
     if (!messages.length && place) forgetPlace(id)
 
-    // A reply may have been arriving while this thread was not on screen. The
-    // stored row only catches up periodically, so take the text the main
-    // process has accumulated — otherwise the reply resumes mid-sentence.
-    const caughtUp = live.length
-      ? messages.map((message) => {
-          const stream = live.find((s) => s.messageId === message.id)
-          if (!stream) return message
-          return {
-            ...message,
-            content: stream.content || message.content,
-            reasoning: stream.reasoning || message.reasoning,
-            status: 'streaming' as const
-          }
-        })
-      : messages
-
     set({
       activeThreadId: id,
-      messages: caughtUp,
+      messages: catchUp(messages, live),
       messageWindowStart: page.startSeq,
       hasOlderMessages: page.hasOlder,
       loadingOlder: false,
@@ -853,13 +938,7 @@ export const useStore = create<State>((set, get) => ({
     if (live.length) {
       const settled = await api.chat.liveStreams(id)
       if (get().activeThreadId !== id) return
-      set({
-        messages: get().messages.map((message) => {
-          const stream = settled.find((s) => s.messageId === message.id)
-          if (!stream || stream.content.length <= message.content.length) return message
-          return { ...message, content: stream.content, reasoning: stream.reasoning || message.reasoning }
-        })
-      })
+      set({ messages: settleLive(get().messages, settled) })
     }
   },
 
@@ -1031,6 +1110,11 @@ export const useStore = create<State>((set, get) => ({
     if (get().activeThreadId === id) {
       await get().selectThread(remaining[0]?.id ?? null)
     }
+
+    // Half a comparison is one conversation, and it is shown as one.
+    const compare = get().compare
+    const side = compare?.findIndex((pane) => pane.threadId === id) ?? -1
+    if (compare && side >= 0) await get().closeCompare(side === 0 ? 1 : 0)
   },
 
   async updateThread(id, patch) {
@@ -1140,29 +1224,7 @@ export const useStore = create<State>((set, get) => ({
     }
 
     // Paint the user's message immediately rather than waiting on the round trip.
-    const optimistic: Message = {
-      id: `optimistic-${Date.now()}`,
-      threadId,
-      role: 'user',
-      content,
-      reasoning: null,
-      reasoningChars: 0,
-      createdAt: Date.now(),
-      model: null,
-      provider: null,
-      status: 'complete',
-      error: null,
-      toolCalls: null,
-      toolResult: null,
-      systemPromptSnapshot: null,
-      hasPromptSnapshot: false,
-      keyPoints: [],
-      isCompactionSummary: false,
-      compactedInto: null,
-      usage: null,
-      attachments: []
-    }
-    set({ messages: [...get().messages, optimistic], generating: true })
+    set({ messages: [...get().messages, optimisticMessage(threadId, content)], generating: true })
 
     await api.chat.send({ threadId, content, attachments: pending })
     await get().refreshThreads()
@@ -1200,10 +1262,206 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async abort() {
+    // Side by side, the one shortcut for stopping stops both: there is no
+    // open thread to mean one of them, and a comparison is one question.
+    if (get().compare) {
+      await Promise.all([get().abortPane(0), get().abortPane(1)])
+      return
+    }
     const threadId = get().activeThreadId
     if (!threadId) return
     await api.chat.abort(threadId)
     set({ generating: false })
+  },
+
+  async openCompare(pair) {
+    const current = get().threads.find((t) => t.id === get().activeThreadId) ?? null
+    const model = current?.config.model ?? get().settings?.defaultModel ?? null
+
+    // Leaving the thread you were in the way leaving one always goes: an empty
+    // chat does not survive it. See `compare` for why nothing stays open.
+    await get().selectThread(null)
+
+    if (!pair) {
+      // The model you were talking to on the left, since it is usually the one
+      // being compared against. The right is chosen, because there is no
+      // sensible guess at what somebody wants to compare it with.
+      set({ compare: [emptyPane(null, model), emptyPane(null, null)] })
+      return
+    }
+
+    set({ compare: [emptyPane(pair[0], null), emptyPane(pair[1], null)] })
+    await Promise.all([loadPane(0, set, get), loadPane(1, set, get)])
+  },
+
+  async closeCompare(keep = 0) {
+    const compare = get().compare
+    if (!compare) return
+    const other = keep === 0 ? 1 : 0
+    const kept = compare[keep].threadId ?? compare[other].threadId
+    set({ compare: null })
+    if (kept) await get().selectThread(kept)
+    else await get().createThread()
+  },
+
+  async setCompareModel(side, model) {
+    const pane = get().compare?.[side]
+    if (!pane) return
+    // Once the side has a thread, the thread keeps its model, exactly as any
+    // conversation does — changing it mid-way is changing it for what follows.
+    if (pane.threadId) {
+      await get().updateThread(pane.threadId, { config: { model } })
+      return
+    }
+    patchPane(set, get, side, null, { model })
+  },
+
+  async startCompare(content, pending = []) {
+    const compare = get().compare
+    if (!compare || compare[0].threadId || compare[1].threadId) return
+    const [left, right] = [compare[0].model, compare[1].model]
+    if (!left || !right) {
+      get().showToast('Choose a model for each side first', 'error')
+      return
+    }
+
+    const [a, b] = await api.threads.createPair(left, right)
+
+    // Closed, or begun some other way, while the pair was being made. Nothing
+    // has been said in either, so they go rather than wait for the sweep.
+    const now = get().compare
+    if (!now || now[0].threadId || now[1].threadId) {
+      void api.threads.remove(a.id)
+      void api.threads.remove(b.id)
+      return
+    }
+
+    // The question shown on both sides at once, before either has answered.
+    set({
+      compare: [
+        { ...emptyPane(a.id, left), messages: [optimisticMessage(a.id, content)], generating: true },
+        { ...emptyPane(b.id, right), messages: [optimisticMessage(b.id, content)], generating: true }
+      ]
+    })
+    await get().refreshThreads()
+
+    // Together rather than one after the other: the point of the comparison is
+    // that neither waits for the other, and how long each takes is part of
+    // what is being compared.
+    await Promise.all([
+      sendInPane(0, { threadId: a.id, content, attachments: pending }, set, get),
+      sendInPane(1, { threadId: b.id, content, attachments: pending }, set, get)
+    ])
+  },
+
+  async sendToPane(side, content, pending = []) {
+    const pane = get().compare?.[side]
+    if (!pane?.threadId || pane.generating) return
+    const threadId = pane.threadId
+    patchPane(set, get, side, threadId, (p) => ({
+      messages: [...p.messages, optimisticMessage(threadId, content)],
+      generating: true
+    }))
+    await sendInPane(side, { threadId, content, attachments: pending }, set, get)
+  },
+
+  async abortPane(side) {
+    const threadId = get().compare?.[side].threadId
+    if (!threadId) return
+    await api.chat.abort(threadId)
+    patchPane(set, get, side, threadId, { generating: false })
+  },
+
+  async regenerateInPane(side, messageId) {
+    const pane = get().compare?.[side]
+    if (!pane?.threadId) return
+    const index = pane.messages.findIndex((m) => m.id === messageId)
+    const previous = pane.messages[index - 1]
+    if (index < 0 || !previous) return
+
+    // As `regenerate`: the reply goes now, and the turn runs again from the
+    // message before it.
+    patchPane(set, get, side, pane.threadId, (p) => ({
+      messages: p.messages.slice(0, index),
+      generating: true
+    }))
+    await sendInPane(
+      side,
+      { threadId: pane.threadId, content: '', regenerateFromMessageId: previous.id },
+      set,
+      get
+    )
+  },
+
+  async resendFromInPane(side, messageId) {
+    const pane = get().compare?.[side]
+    if (!pane?.threadId) return
+    const index = pane.messages.findIndex((m) => m.id === messageId)
+    if (index < 0) return
+
+    patchPane(set, get, side, pane.threadId, (p) => ({
+      messages: p.messages.slice(0, index + 1),
+      generating: true
+    }))
+    await sendInPane(
+      side,
+      { threadId: pane.threadId, content: '', regenerateFromMessageId: messageId },
+      set,
+      get
+    )
+  },
+
+  async refreshPane(side) {
+    const pane = get().compare?.[side]
+    if (!pane?.threadId) return
+    const threadId = pane.threadId
+    const [page, totals] = await Promise.all([
+      api.messages.from(threadId, pane.startSeq),
+      api.messages.totals(threadId)
+    ])
+    patchPane(set, get, side, threadId, (p) => ({
+      messages: mergeStreamed(page.messages, p.messages),
+      startSeq: page.startSeq,
+      hasOlder: page.hasOlder,
+      totals
+    }))
+  },
+
+  async loadOlderInPane(side) {
+    const pane = get().compare?.[side]
+    if (!pane?.threadId || !pane.hasOlder || pane.loadingOlder) return false
+    const threadId = pane.threadId
+    const from = pane.startSeq
+
+    patchPane(set, get, side, threadId, { loadingOlder: true })
+    try {
+      const page = await api.messages.page(threadId, pageSize(get), from)
+      // The window moved underneath the request; the page belongs elsewhere.
+      if (get().compare?.[side].startSeq !== from) return false
+      if (!page.messages.length) {
+        patchPane(set, get, side, threadId, { hasOlder: false })
+        return false
+      }
+      return patchPane(set, get, side, threadId, (p) => ({
+        messages: [...page.messages, ...p.messages],
+        startSeq: page.startSeq,
+        hasOlder: page.hasOlder
+      }))
+    } catch {
+      // As `loadOlderMessages`: nothing on screen is harmed, and scrolling
+      // asks again.
+      return false
+    } finally {
+      patchPane(set, get, side, threadId, { loadingOlder: false })
+    }
+  },
+
+  requestApproval(approval) {
+    if (get().pendingApproval) {
+      waitingApprovals.push(approval)
+      return
+    }
+    set({ pendingApproval: approval })
   },
 
   async compact() {
@@ -1325,7 +1583,7 @@ export const useStore = create<State>((set, get) => ({
   async approveTool(approved) {
     const pending = get().pendingApproval
     if (!pending) return
-    set({ pendingApproval: null })
+    set({ pendingApproval: waitingApprovals.shift() ?? null })
     await api.chat.approveTool(pending.toolCall.id, approved)
   },
 
@@ -1487,6 +1745,332 @@ function mergeStreamed(persisted: Message[], onScreen: Message[]): Message[] {
       usage: stored.usage ?? painted.usage
     }
   })
+}
+
+/**
+ * A thread's messages, with any reply still arriving brought up to date.
+ *
+ * A reply may have been arriving while the thread was not on screen. The
+ * stored row only catches up periodically, so the text the main process has
+ * accumulated is taken instead — otherwise the reply resumes mid-sentence.
+ */
+function catchUp(messages: Message[], live: LiveStream[]): Message[] {
+  if (!live.length) return messages
+  return messages.map((message) => {
+    const stream = live.find((s) => s.messageId === message.id)
+    if (!stream) return message
+    return {
+      ...message,
+      content: stream.content || message.content,
+      reasoning: stream.reasoning || message.reasoning,
+      status: 'streaming' as const
+    }
+  })
+}
+
+/**
+ * The second pass of the same, for what arrived while the first was loading.
+ *
+ * Deltas that came in during the read were dropped, because nothing was on
+ * screen to receive them. The buffer holds whole text rather than increments,
+ * so taking it again closes the gap and is harmless if nothing changed.
+ */
+function settleLive(messages: Message[], settled: LiveStream[]): Message[] {
+  return messages.map((message) => {
+    const stream = settled.find((s) => s.messageId === message.id)
+    if (!stream || stream.content.length <= message.content.length) return message
+    return { ...message, content: stream.content, reasoning: stream.reasoning || message.reasoning }
+  })
+}
+
+/** Your message, painted before the round trip that stores it. */
+function optimisticMessage(threadId: string, content: string): Message {
+  return {
+    id: `optimistic-${Date.now()}`,
+    threadId,
+    role: 'user',
+    content,
+    reasoning: null,
+    reasoningChars: 0,
+    createdAt: Date.now(),
+    model: null,
+    provider: null,
+    status: 'complete',
+    error: null,
+    toolCalls: null,
+    toolResult: null,
+    systemPromptSnapshot: null,
+    hasPromptSnapshot: false,
+    keyPoints: [],
+    isCompactionSummary: false,
+    compactedInto: null,
+    usage: null,
+    attachments: []
+  }
+}
+
+/** The empty reply a `start` event puts on screen for the deltas to fill. */
+function streamingPlaceholder(messageId: string, threadId: string): Message {
+  return {
+    id: messageId,
+    threadId,
+    role: 'assistant',
+    content: '',
+    reasoning: null,
+    reasoningChars: 0,
+    createdAt: Date.now(),
+    model: null,
+    provider: null,
+    status: 'streaming',
+    error: null,
+    toolCalls: null,
+    toolResult: null,
+    systemPromptSnapshot: null,
+    hasPromptSnapshot: false,
+    keyPoints: [],
+    isCompactionSummary: false,
+    compactedInto: null,
+    usage: null,
+    attachments: []
+  }
+}
+
+/**
+ * The stored row a `done` event carries, over what was painted while it
+ * streamed. The streamed text is authoritative for what the user already saw.
+ */
+function finishedMessage(painted: Message, stored: Message): Message {
+  return {
+    ...stored,
+    content: stored.content || painted.content,
+    reasoning: stored.reasoning ?? painted.reasoning,
+    usage: stored.usage ?? painted.usage
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Side by side
+ * ------------------------------------------------------------------ */
+
+/**
+ * Changes one side of a comparison, if it is still showing the thread it was.
+ *
+ * Almost everything here is a round trip, and in the time one takes the side
+ * can have been closed, or the comparison closed and another opened. A result
+ * for a thread that is no longer on that side belongs to nobody, and written
+ * in anyway it would put one conversation's messages in another's column.
+ *
+ * Returns whether it applied.
+ */
+function patchPane(
+  set: Setter,
+  get: Getter,
+  side: CompareSide,
+  threadId: string | null,
+  patch: Partial<ComparePane> | ((pane: ComparePane) => Partial<ComparePane>)
+): boolean {
+  const compare = get().compare
+  if (!compare || compare[side].threadId !== threadId) return false
+  const pane = compare[side]
+  const next: [ComparePane, ComparePane] = [compare[0], compare[1]]
+  next[side] = { ...pane, ...(typeof patch === 'function' ? patch(pane) : patch) }
+  set({ compare: next })
+  return true
+}
+
+/** Reads a side's thread in from the end, as `selectThread` does for the open one. */
+async function loadPane(side: CompareSide, set: Setter, get: Getter): Promise<void> {
+  const threadId = get().compare?.[side].threadId
+  if (!threadId) return
+
+  const { page, totals, generating, live } = await api.messages.open(threadId, pageSize(get), null)
+  const applied = patchPane(set, get, side, threadId, {
+    messages: catchUp(page.messages, live),
+    startSeq: page.startSeq,
+    hasOlder: page.hasOlder,
+    loadingOlder: false,
+    totals,
+    generating
+  })
+
+  if (applied && live.length) {
+    const settled = await api.chat.liveStreams(threadId)
+    patchPane(set, get, side, threadId, (pane) => ({
+      messages: settleLive(pane.messages, settled)
+    }))
+  }
+}
+
+/**
+ * Re-reads a side's range and lays what is still streaming back on top — what
+ * `readWindow` and `mergeStreamed` do together for the open thread.
+ */
+async function rereadPane(
+  side: CompareSide,
+  threadId: string,
+  set: Setter,
+  get: Getter
+): Promise<void> {
+  const from = get().compare?.[side].startSeq ?? null
+  const page = await api.messages.from(threadId, from)
+  patchPane(set, get, side, threadId, (pane) => ({
+    messages: mergeStreamed(page.messages, pane.messages),
+    startSeq: page.startSeq,
+    hasOlder: page.hasOlder
+  }))
+}
+
+async function refreshPaneTotals(
+  side: CompareSide,
+  threadId: string,
+  set: Setter,
+  get: Getter
+): Promise<void> {
+  const totals = await api.messages.totals(threadId)
+  patchPane(set, get, side, threadId, { totals })
+}
+
+/**
+ * Sends a turn on one side and settles that side once it is over.
+ *
+ * `chat.send` returns when the turn has finished or failed, and a turn that
+ * failed before its first event never told this side it had started — a
+ * missing key, a model that no longer exists. So the end of the call is taken
+ * as the moment to ask the main process what is true, rather than trusting
+ * the events to have said it: the stored rows, and whether anything is still
+ * running.
+ */
+async function sendInPane(
+  side: CompareSide,
+  request: SendMessageRequest,
+  set: Setter,
+  get: Getter
+): Promise<void> {
+  await api.chat.send(request)
+  const [still] = await Promise.all([
+    api.chat.isGenerating(request.threadId),
+    rereadPane(side, request.threadId, set, get)
+  ])
+  patchPane(set, get, side, request.threadId, { generating: still })
+  void refreshPaneTotals(side, request.threadId, set, get)
+  await get().refreshThreads()
+}
+
+/**
+ * Applies an event to whichever side of a comparison it belongs to.
+ *
+ * The same work `handleStreamEvent` does for the open thread, against a side's
+ * own transcript. Returns whether the event was one side's, so the caller can
+ * stop there — it cannot also be the open thread's, because nothing is open
+ * while a comparison is.
+ */
+function routeToPane(event: StreamEvent, set: Setter, get: Getter): boolean {
+  const compare = get().compare
+  if (!compare || event.type === 'title') return false
+
+  const side = ([0, 1] as const).find((candidate) => {
+    const pane = compare[candidate]
+    if (!pane.threadId) return false
+    if ('threadId' in event && event.threadId) return event.threadId === pane.threadId
+    return 'messageId' in event && pane.messages.some((m) => m.id === event.messageId)
+  })
+  if (side === undefined) return false
+
+  const threadId = compare[side].threadId as string
+  const patch = (change: (pane: ComparePane) => Partial<ComparePane>): void => {
+    patchPane(set, get, side, threadId, change)
+  }
+  const patchOne = (messageId: string, change: (message: Message) => Message): void =>
+    patch((pane) => ({ messages: patchMessage(pane.messages, messageId, change) }))
+
+  switch (event.type) {
+    case 'start':
+      patch((pane) =>
+        pane.messages.some((m) => m.id === event.messageId)
+          ? { generating: true }
+          : {
+              generating: true,
+              messages: [
+                ...pane.messages.filter((m) => !m.id.startsWith('optimistic-')),
+                streamingPlaceholder(event.messageId, threadId)
+              ]
+            }
+      )
+      void rereadPane(side, threadId, set, get)
+      break
+
+    case 'aborted':
+      patch((pane) => ({
+        generating: false,
+        messages: pane.messages.filter((m) => m.id !== event.messageId)
+      }))
+      break
+
+    case 'content':
+      patchOne(event.messageId, (m) => ({ ...m, content: m.content + event.delta }))
+      break
+
+    case 'reasoning':
+      patchOne(event.messageId, (m) => ({ ...m, reasoning: (m.reasoning ?? '') + event.delta }))
+      break
+
+    case 'tool-call':
+      patchOne(event.messageId, (m) => ({ ...m, toolCalls: event.toolCalls }))
+      break
+
+    case 'tool-approval-request':
+      get().requestApproval({ toolCall: event.toolCall, serverName: event.serverName })
+      break
+
+    case 'tool-result':
+      void rereadPane(side, threadId, set, get)
+      break
+
+    case 'image':
+      patchOne(event.messageId, (m) =>
+        m.attachments.some((a) => a.id === event.attachment.id)
+          ? m
+          : { ...m, attachments: [...m.attachments, event.attachment] }
+      )
+      break
+
+    case 'usage':
+      patchOne(event.messageId, (m) => ({ ...m, usage: event.usage }))
+      void refreshPaneTotals(side, threadId, set, get)
+      break
+
+    case 'done': {
+      const stillWorking = Boolean(event.message.toolCalls?.length)
+      patch((pane) => ({
+        messages: patchMessage(pane.messages, event.messageId, (m) => finishedMessage(m, event.message)),
+        generating: stillWorking
+      }))
+      void refreshPaneTotals(side, threadId, set, get)
+      break
+    }
+
+    case 'error':
+      patch((pane) => ({
+        generating: false,
+        messages: event.messageId
+          ? patchMessage(pane.messages, event.messageId, (m) => ({
+              ...m,
+              status: 'error',
+              error: event.error
+            }))
+          : pane.messages
+      }))
+      get().showToast(event.error, 'error')
+      break
+
+    case 'compaction-done':
+      // As for the open thread: what the summary replaced is not where the
+      // loaded range said it was, so the side is read again from the end.
+      void loadPane(side, set, get)
+      get().showToast(`Compacted — about ${event.freedTokens.toLocaleString()} tokens freed`)
+      break
+  }
+  return true
 }
 
 /**
@@ -1702,6 +2286,10 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
     return
   }
 
+  // A side of a comparison is never the open thread, so what belongs to one
+  // goes there and nowhere else.
+  if (routeToPane(event, set, get)) return
+
   // Threads can generate concurrently, so an event only applies here if it
   // names this thread or a message already on screen. A message-less error is
   // a failure of the request itself and always surfaces.
@@ -1722,32 +2310,13 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
         break
       }
 
-      const placeholder: Message = {
-        id: event.messageId,
-        threadId: event.threadId,
-        role: 'assistant',
-        content: '',
-        reasoning: null,
-      reasoningChars: 0,
-        createdAt: Date.now(),
-        model: null,
-        provider: null,
-        status: 'streaming',
-        error: null,
-        toolCalls: null,
-        toolResult: null,
-        systemPromptSnapshot: null,
-      hasPromptSnapshot: false,
-        keyPoints: [],
-      isCompactionSummary: false,
-        compactedInto: null,
-        usage: null,
-        attachments: []
-      }
       // Drop the optimistic echo of the user's message; the real row is on disk.
       set({
         generating: true,
-        messages: [...state.messages.filter((m) => !m.id.startsWith('optimistic-')), placeholder]
+        messages: [
+          ...state.messages.filter((m) => !m.id.startsWith('optimistic-')),
+          streamingPlaceholder(event.messageId, event.threadId)
+        ]
       })
 
       // The main process writes this row before it emits, so the database
@@ -1800,7 +2369,7 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       break
 
     case 'tool-approval-request':
-      set({ pendingApproval: { toolCall: event.toolCall, serverName: event.serverName } })
+      get().requestApproval({ toolCall: event.toolCall, serverName: event.serverName })
       break
 
     case 'tool-result':
@@ -1854,13 +2423,9 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       break
 
     case 'done': {
-      const merged = patchMessage(state.messages, event.messageId, (m) => ({
-        ...event.message,
-        // The streamed text is authoritative for what the user already saw.
-        content: event.message.content || m.content,
-        reasoning: event.message.reasoning ?? m.reasoning,
-        usage: event.message.usage ?? m.usage
-      }))
+      const merged = patchMessage(state.messages, event.messageId, (m) =>
+        finishedMessage(m, event.message)
+      )
       const stillWorking = event.message.toolCalls != null && event.message.toolCalls.length > 0
       set({ messages: merged, generating: stillWorking })
       void get().refreshTotals()

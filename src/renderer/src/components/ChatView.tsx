@@ -5,7 +5,17 @@ import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
 import { Composer } from './Composer'
-import { ArrowDown, BarChart3, FileText, Ghost, PanelLeft, Plus, RefreshCw, Route } from 'lucide-react'
+import {
+  ArrowDown,
+  BarChart3,
+  Columns2,
+  FileText,
+  Ghost,
+  PanelLeft,
+  Plus,
+  RefreshCw,
+  Route
+} from 'lucide-react'
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, threadLabel } from '../format'
@@ -160,6 +170,7 @@ export function ChatView(): React.JSX.Element {
   const showToast = useStore((s) => s.showToast)
   const compact = useStore((s) => s.compact)
   const resendFrom = useStore((s) => s.resendFrom)
+  const openCompare = useStore((s) => s.openCompare)
   // Subscribed to so the top-up below re-runs when either changes; the values
   // it acts on are read from the store, which is never a frame behind.
   const hasOlderMessages = useStore((s) => s.hasOlderMessages)
@@ -167,6 +178,11 @@ export function ChatView(): React.JSX.Element {
   const threadTotals = useStore((s) => s.threadTotals)
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
+  /** The other side, when this thread was one side of a comparison. */
+  const partner =
+    thread?.config.compareWith && threads.some((t) => t.id === thread.config.compareWith)
+      ? thread.config.compareWith
+      : null
 
   // Whether *this* is the place doing the renaming — the row in the list is
   // the other one, and only one of them has the input.
@@ -1042,6 +1058,22 @@ export function ChatView(): React.JSX.Element {
             <span className="btn__label">Temporary</span>
           </button>
         )}
+
+        {/* Back to the pair this was one side of, or a new comparison. Here
+            rather than only in the palette, because a way of working nobody
+            can see is one nobody finds. */}
+        <button
+          className="btn"
+          data-on={Boolean(partner)}
+          onClick={() => void (thread && partner ? openCompare([thread.id, partner]) : openCompare())}
+          title={`${
+            partner ? 'Open beside the model it was compared with' : 'Compare two models side by side'
+          } — ${formatBinding(keybinds['compare.toggle'] ?? 'mod+\\')}`}
+          type="button"
+        >
+          <Columns2 {...ICON} />
+          <span className="btn__label">{partner ? 'Side by side' : 'Compare'}</span>
+        </button>
 
         {thread && (
           <>

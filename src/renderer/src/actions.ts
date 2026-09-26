@@ -100,15 +100,46 @@ export function buildActions(): AppAction[] {
 
   const requireThread = (fn: (id: string) => void | Promise<void>) => () => {
     if (!activeThreadId) {
-      store.showToast('Open a thread first')
+      // Side by side there are two threads and neither is "the" one, so the
+      // shortcut is told which is meant by opening it.
+      store.showToast(
+        store.compare ? 'Side by side, open one side on its own for that' : 'Open a thread first'
+      )
       return
     }
     return fn(activeThreadId)
   }
 
+  /** The other half of the open thread's comparison, if it is still here. */
+  const partner =
+    thread?.config.compareWith && threads.some((t) => t.id === thread.config.compareWith)
+      ? thread.config.compareWith
+      : null
+
   return [
     // Threads
     { id: 'thread.new', label: 'New thread', group: 'Threads', run: () => void store.createThread() },
+    {
+      /**
+       * One binding in and out, like the temporary switch.
+       *
+       * From a thread that was one side of a comparison it reopens that
+       * comparison rather than starting a new one, because that is almost
+       * certainly why somebody pressed it there.
+       */
+      id: 'compare.toggle',
+      label: store.compare
+        ? 'Close side by side'
+        : partner
+          ? 'Open side by side with its pair'
+          : 'Compare two models side by side',
+      group: 'Threads',
+      run: () => {
+        if (store.compare) return store.closeCompare(0)
+        if (thread && partner) return store.openCompare([thread.id, partner])
+        return store.openCompare()
+      }
+    },
     {
       /**
        * One switch, both ways.
@@ -439,7 +470,20 @@ export function buildActions(): AppAction[] {
     },
 
     // Model & routing
-    { id: 'model.picker', label: 'Change model', group: 'Model', run: () => store.setOverlay('models') },
+    {
+      id: 'model.picker',
+      label: 'Change model',
+      group: 'Model',
+      run: () => {
+        // With no thread open the picker sets the default, which is not what
+        // somebody looking at two models meant by "change model".
+        if (store.compare) {
+          store.showToast('Each side has its own model — choose it at the top of that side')
+          return
+        }
+        store.setOverlay('models')
+      }
+    },
     {
       id: 'provider.picker',
       label: 'Choose the provider for this model',

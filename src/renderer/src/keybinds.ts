@@ -150,7 +150,8 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
       { id: 'thread.export', label: 'Export thread as Markdown' },
       { id: 'thread.exportArchive', label: 'Export thread as an archive' },
       { id: 'thread.next', label: 'Next thread' },
-      { id: 'thread.prev', label: 'Previous thread' }
+      { id: 'thread.prev', label: 'Previous thread' },
+      { id: 'compare.toggle', label: 'Compare two models side by side, or close it' }
     ]
   },
   {

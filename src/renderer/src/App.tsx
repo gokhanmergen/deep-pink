@@ -6,6 +6,7 @@ import { matchesParsed, parseBinding } from './keybinds'
 import { COMPOSER_ID } from './components/Composer'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
+import { CompareView } from './components/CompareView'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchOverlay } from './components/SearchOverlay'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -57,6 +58,7 @@ export function App(): React.JSX.Element {
     setOverlay('wizard')
   }, [Boolean(settings)])
   const sidebarVisible = useStore((s) => s.sidebarVisible)
+  const comparing = useStore((s) => s.compare !== null)
   const openSettings = useStore((s) => s.openSettings)
   const closeOverlay = useStore((s) => s.closeOverlay)
   const init = useStore((s) => s.init)
@@ -273,7 +275,7 @@ export function App(): React.JSX.Element {
 
       <div className="app" data-sidebar={sidebarVisible ? 'visible' : 'hidden'}>
         {sidebarVisible && <Sidebar />}
-        <ChatView />
+        {comparing ? <CompareView /> : <ChatView />}
       </div>
 
       {!settings.hasApiKey && overlay !== 'settings' && (
@@ -299,6 +301,8 @@ export function App(): React.JSX.Element {
       {overlay === 'keyPointModel' && <ModelPicker mode="keyPoint" onClose={close} />}
       {overlay === 'quickQuestionModel' && <ModelPicker mode="quickQuestion" onClose={close} />}
       {overlay === 'pregenTitleModel' && <ModelPicker mode="pregenTitle" onClose={close} />}
+      {overlay === 'compareModelLeft' && <ModelPicker mode="compareLeft" onClose={close} />}
+      {overlay === 'compareModelRight' && <ModelPicker mode="compareRight" onClose={close} />}
       {overlay === 'providers' && <ProviderPicker onClose={close} />}
       {overlay === 'prompt' && <SystemPromptInspector onClose={close} />}
       {overlay === 'threadStats' && <ThreadStatsPanel onClose={close} />}

@@ -10,9 +10,18 @@ interface Props {
    * 'chat' sets the model for the open thread, 'default' sets the one new
    * threads start with, 'title' sets the model that names threads once they
    * have been answered, and 'pregenTitle' the one that names them from the
-   * question while the answer is still arriving.
+   * question while the answer is still arriving. 'compareLeft' and
+   * 'compareRight' set one side of a side-by-side comparison.
    */
-  mode: 'chat' | 'title' | 'pregenTitle' | 'default' | 'keyPoint' | 'quickQuestion'
+  mode:
+    | 'chat'
+    | 'title'
+    | 'pregenTitle'
+    | 'default'
+    | 'keyPoint'
+    | 'quickQuestion'
+    | 'compareLeft'
+    | 'compareRight'
   onClose: () => void
 }
 
@@ -33,6 +42,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const saveSettings = useStore((s) => s.saveSettings)
   const refreshModels = useStore((s) => s.refreshModels)
   const showToast = useStore((s) => s.showToast)
+  const compare = useStore((s) => s.compare)
+  const setCompareModel = useStore((s) => s.setCompareModel)
+  const side = mode === 'compareLeft' ? 0 : mode === 'compareRight' ? 1 : null
 
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -74,8 +86,19 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     case 'chat':
       current = thread?.config.model ?? settings?.defaultModel
       break
+    case 'compareLeft':
+    case 'compareRight': {
+      const pane = side === null ? null : compare?.[side]
+      current =
+        (pane?.threadId ? threads.find((t) => t.id === pane.threadId)?.config.model : null) ??
+        pane?.model ??
+        undefined
+      break
+    }
   }
   const searchPlaceholder = {
+    compareLeft: 'Model for the left side…',
+    compareRight: 'Model for the right side…',
     chat: 'Search models…',
     title: 'Model for generating thread names…',
     pregenTitle: 'Model for the first name, written from the question…',
@@ -117,7 +140,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   }, [cursor])
 
   const choose = async (modelId: string): Promise<void> => {
-    if (mode === 'keyPoint') {
+    if (side !== null) {
+      await setCompareModel(side, modelId)
+    } else if (mode === 'keyPoint') {
       await saveSettings({ keyPointModel: modelId })
       showToast(`Key sentences will be picked by ${modelShortName(modelId)}`)
     } else if (mode === 'quickQuestion') {

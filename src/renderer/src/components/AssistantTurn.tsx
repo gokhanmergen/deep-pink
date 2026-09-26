@@ -6,6 +6,7 @@ import { Markdown } from './Markdown'
 import { ImageAttachments } from './ImageAttachments'
 import { LongText } from './LongText'
 import { useStore } from '../store'
+import { useTranscriptActions } from '../transcriptActions'
 import { isEmptyAssistantMessage } from '../turns'
 import { estimateTurnHeight } from '../messageHeight'
 import { sentencesIn, strokesFor, takeKeyPointWish, type Stroke } from '../keyPoint'
@@ -377,10 +378,9 @@ export const AssistantTurn = memo(function AssistantTurn({
   isLast,
   near
 }: Props): React.JSX.Element {
-  const regenerate = useStore((s) => s.regenerate)
+  // Which conversation Retry and Branch act on — see `transcriptActions`.
+  const actions = useTranscriptActions()
   const showToast = useStore((s) => s.showToast)
-  const setOverlay = useStore((s) => s.setOverlay)
-  const activeThreadId = useStore((s) => s.activeThreadId)
   const setHighlight = useStore((s) => s.setHighlight)
   // The answer rather than the id, so only the turn that holds the highlighted
   // message hears about it.
@@ -422,18 +422,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   const copy = (): void => {
     void navigator.clipboard.writeText(text)
     showToast('Copied the reply')
-  }
-
-  const branch = async (): Promise<void> => {
-    if (!activeThreadId) return
-    const thread = await window.deepPink.threads.branch(
-      activeThreadId,
-      messages[messages.length - 1].id
-    )
-    if (!thread) return
-    await useStore.getState().refreshThreads()
-    await useStore.getState().selectThread(thread.id)
-    showToast('Branched into a new thread')
   }
 
   const toolCount = messages.filter((m) => m.role === 'tool').length
@@ -565,21 +553,26 @@ export const AssistantTurn = memo(function AssistantTurn({
               </button>
               <button
                 className="btn btn--ghost"
-                onClick={() => void regenerate(first.id)}
+                onClick={() => void actions.regenerate(first.id)}
                 title="Regenerate"
                 type="button"
               >
                 <RefreshCw {...ICON} />
                 Retry
               </button>
-              <button className="btn btn--ghost" onClick={() => void branch()} title="Branch" type="button">
+              <button
+                className="btn btn--ghost"
+                onClick={() => void actions.branch(messages[messages.length - 1].id)}
+                title="Branch"
+                type="button"
+              >
                 <GitBranch {...ICON} />
                 Branch
               </button>
-              {attributed.hasPromptSnapshot && (
+              {attributed.hasPromptSnapshot && actions.inspectPrompt && (
                 <button
                   className="btn btn--ghost"
-                  onClick={() => setOverlay('prompt')}
+                  onClick={actions.inspectPrompt}
                   title="What went into the context for this turn"
                   type="button"
                 >

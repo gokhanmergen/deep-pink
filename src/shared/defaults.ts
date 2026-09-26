@@ -111,6 +111,9 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   'thread.exportArchive': 'mod+alt+x',
   'thread.next': 'alt+down',
   'thread.prev': 'alt+up',
+  // Two models, one question, side by side — and back again. Backslash for a
+  // split, as editors have it.
+  'compare.toggle': 'mod+\\',
 
   // Folders
   'folder.new': 'mod+shift+n',

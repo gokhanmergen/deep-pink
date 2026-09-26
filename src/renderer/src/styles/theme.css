@@ -2376,6 +2376,90 @@ svg.lucide {
 }
 
 /* ------------------------------------------------------------------ *
+ * Side by side
+ * ------------------------------------------------------------------ */
+
+/*
+ * Measured against itself rather than the window, because what decides
+ * whether two columns fit is the room left once the sidebar has had its share
+ * — the same window is wide enough with the sidebar hidden and not with it.
+ */
+.compare {
+  container-type: inline-size;
+}
+
+.compare__panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.compare__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.compare__pane + .compare__pane {
+  border-left: 1px solid var(--border);
+}
+
+/* Which model, what it has cost, and the way out to it alone. Quieter than the
+   bar over the window: it labels a column rather than the conversation. */
+.compare__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 40px;
+  padding: var(--s1) var(--s3);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.compare__head .btn {
+  min-width: 0;
+}
+
+/* A side with no model yet is the one thing on screen asking for something. */
+.compare__head .btn[data-unset='true'] {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/* Half the window each, so the room that frames one conversation is halved. */
+.compare .transcript {
+  padding-top: var(--s5);
+}
+
+.compare .transcript__inner {
+  padding: 0 var(--s4);
+}
+
+.compare .composer {
+  padding: var(--s2) var(--s4) var(--s3);
+}
+
+.compare__empty {
+  height: auto;
+  min-height: 40vh;
+}
+
+/* Too narrow for two columns side by side: one above the other instead. */
+@container (max-width: 720px) {
+  .compare__panes {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .compare__pane + .compare__pane {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Markdown
  * ------------------------------------------------------------------ */
 

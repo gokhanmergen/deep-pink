@@ -114,7 +114,8 @@ export const EMPTY_THREAD_CONFIG: ThreadConfig = {
   repoPaths: [],
   disabledPromptSegments: [],
   chartsEnabled: null,
-  reasoning: null
+  reasoning: null,
+  compareWith: null
 }
 
 function jsonOrNull(value: unknown): string | null {
@@ -418,6 +419,24 @@ export function createThread(
   return getThread(id)!
 }
 
+/**
+ * Two threads to be asked the same thing side by side, one per model.
+ *
+ * Made together and linked to each other in one transaction, so there is never
+ * a moment at which one half of a pair exists and points at nothing. Made at
+ * the moment the first message is sent rather than when the view is opened,
+ * because until then there is nothing to keep: opening the view and walking
+ * away should leave no trace in the list.
+ */
+export function createComparePair(leftModel: string, rightModel: string): [Thread, Thread] {
+  return getDb().transaction((): [Thread, Thread] => {
+    const left = createThread('', { model: leftModel })
+    const right = createThread('', { model: rightModel, compareWith: left.id })
+    const linked = updateThread(left.id, { config: { compareWith: right.id } }) ?? left
+    return [linked, getThread(right.id) ?? right]
+  })()
+}
+
 export function getThread(id: string): Thread | null {
   const row = getDb().prepare('SELECT * FROM threads WHERE id = ?').get(id) as ThreadRow | undefined
   return row ? toThread(row) : null
@@ -692,7 +711,10 @@ export function branchThread(threadId: string, throughMessageId: string): Thread
   // of a temporary chat quietly outliving the other would be a surprise.
   const clone = createThread(
     source.title ? `${source.title} (branch)` : '',
-    source.config,
+    // A branch of one side of a comparison is a conversation of its own. The
+    // partner still points at the thread it was paired with, so a copy that
+    // claimed the same partner would be a pair of three.
+    { ...source.config, compareWith: null },
     source.temporary
   )
   // A branch belongs beside what it came from, so it is filed where that was.

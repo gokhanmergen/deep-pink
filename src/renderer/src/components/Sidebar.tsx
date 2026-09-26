@@ -6,6 +6,7 @@ import {
   Archive,
   BarChart3,
   Blocks,
+  Columns2,
   Command,
   FileDown,
   FileJson,
@@ -200,6 +201,10 @@ const ThreadRow = memo(function ThreadRow({
       <span className="thread-item__head">
         {thread.pinned && <Pin className="thread-item__pin" size={11} strokeWidth={2} />}
         {thread.temporary && <Ghost className="thread-item__ghost" size={12} strokeWidth={2} />}
+        {/* One side of a comparison. The model mark on the row says which. */}
+        {thread.config.compareWith && (
+          <Columns2 className="thread-item__ghost" size={12} strokeWidth={2} aria-label="Compared side by side" />
+        )}
         {/*
           * A name on its way is drawn as the shape of one.
           *
@@ -336,6 +341,12 @@ export function Sidebar(): React.JSX.Element {
   const openFolderIds = useStore((s) => s.openFolderIds)
   const draggingThreadId = useStore((s) => s.draggingThreadId)
   const activeThreadId = useStore((s) => s.activeThreadId)
+  // Side by side, both sides are what is open. Two values rather than the
+  // pair, so the list does not re-render every time a reply in either grows.
+  const compareLeft = useStore((s) => s.compare?.[0].threadId ?? null)
+  const compareRight = useStore((s) => s.compare?.[1].threadId ?? null)
+  const isOpen = (id: string): boolean =>
+    id === activeThreadId || id === compareLeft || id === compareRight
   const activeHasMessages = useStore((s) =>
     Boolean(s.activeThreadId && s.messages.some((message) => message.threadId === s.activeThreadId))
   )
@@ -1078,8 +1089,8 @@ export function Sidebar(): React.JSX.Element {
     <ThreadRow
       key={thread.id}
       thread={thread}
-      active={thread.id === activeThreadId}
-      wip={thread.id !== activeThreadId && Boolean(drafts[thread.id]?.trim())}
+      active={isOpen(thread.id)}
+      wip={!isOpen(thread.id) && Boolean(drafts[thread.id]?.trim())}
       generating={generatingThreadIds.includes(thread.id)}
       awaitingName={awaitingName(thread)}
       model={thread.config.model ?? defaultModel}
