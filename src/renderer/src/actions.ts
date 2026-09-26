@@ -132,7 +132,7 @@ export function buildActions(): AppAction[] {
         ? 'Close side by side'
         : partner
           ? 'Open side by side with its pair'
-          : 'Compare two models side by side',
+          : 'Open side by side',
       group: 'Threads',
       run: () => {
         if (store.compare) return store.closeCompare(0)

@@ -211,6 +211,10 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   section('opening it')
   const startedIn = state().activeThreadId
   check('the app starts in an ordinary chat', Boolean(startedIn), startedIn)
+  check(
+    'from there, the toggle offers it by its name',
+    buildActions().find((action) => action.id === 'compare.toggle').label === 'Open side by side'
+  )
   await state().openCompare()
   check('side by side is open', state().compare !== null)
   check('and no thread is "the" open one', state().activeThreadId === null, state().activeThreadId)

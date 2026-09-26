@@ -203,7 +203,7 @@ const ThreadRow = memo(function ThreadRow({
         {thread.temporary && <Ghost className="thread-item__ghost" size={12} strokeWidth={2} />}
         {/* One side of a comparison. The model mark on the row says which. */}
         {thread.config.compareWith && (
-          <Columns2 className="thread-item__ghost" size={12} strokeWidth={2} aria-label="Compared side by side" />
+          <Columns2 className="thread-item__ghost" size={12} strokeWidth={2} aria-label="Side by side" />
         )}
         {/*
           * A name on its way is drawn as the shape of one.

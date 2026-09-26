@@ -1067,12 +1067,15 @@ export function ChatView(): React.JSX.Element {
           data-on={Boolean(partner)}
           onClick={() => void (thread && partner ? openCompare([thread.id, partner]) : openCompare())}
           title={`${
-            partner ? 'Open beside the model it was compared with' : 'Compare two models side by side'
+            partner
+              ? 'Side by side with the model it was paired with'
+              : 'Side by side — two models, one question'
           } — ${formatBinding(keybinds['compare.toggle'] ?? 'mod+\\')}`}
           type="button"
         >
           <Columns2 {...ICON} />
-          <span className="btn__label">{partner ? 'Side by side' : 'Compare'}</span>
+          {/* One name whichever it does; lit when there is a pair to go back to. */}
+          <span className="btn__label">Side by side</span>
         </button>
 
         {thread && (

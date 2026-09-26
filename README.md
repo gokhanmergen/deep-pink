@@ -14,7 +14,7 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 - Pick any model from the full OpenRouter catalogue.
 - Choose the *specific upstream provider* for a model — pin one outright, set an order of preference, sort by price/throughput/latency, or refuse providers that train on your data. Scope the choice to one thread or to every use of that model.
 - Choose which model writes your thread names, and edit the prompt it uses.
-- **Side by side**, for comparing two models on the same question. Press **Compare** in the title bar — or `Ctrl/⌘ \` — and the window splits in two. Choose a model at the top of each side, write the first message once underneath both, and it goes to both at the same moment. From then on each side has its own composer and carries on by itself, because what either model is asked next depends on what it said. Both sides are ordinary threads in the list, marked as a pair and each showing its model; open either and **Side by side** in its title bar brings the pair back. The arrow at the top of a side carries on with just that one.
+- **Side by side**, for comparing two models on the same question. Press **Side by side** in the title bar — or `Ctrl/⌘ \` — and the window splits in two. Choose a model at the top of each side, write the first message once underneath both, and it goes to both at the same moment. From then on each side has its own composer and carries on by itself, because what either model is asked next depends on what it said. Both sides are ordinary threads in the list, marked as a pair and each showing its model; open either and **Side by side** in its title bar brings the pair back. The arrow at the top of a side carries on with just that one.
 
 **The conversation**
 
@@ -355,7 +355,7 @@ There is no telemetry, no crash reporting and no update check. The one thing tha
 | `mod K` | Command palette |
 | `mod P` | Search all threads |
 | `mod N` | New thread |
-| `mod \` | Compare two models side by side, or close it |
+| `mod \` | Open or close side by side |
 | `F2` / `⇧ F2` | Rename thread / regenerate its name |
 | `mod ⇧ N` | New folder |
 | `mod ⇧ F` | File this thread in a folder |

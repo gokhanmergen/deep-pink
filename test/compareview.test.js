@@ -132,6 +132,14 @@ suite(
     section('starting a new comparison')
     check('a new chat can be started', await clickByText('.sidebar__actions .btn', 'New thread'))
     await settle(700)
+    const labels = await run(
+      `[...document.querySelectorAll('.topbar .btn')].map((b) => b.textContent.trim())`
+    )
+    check(
+      'its top bar offers it by the one name it has everywhere',
+      labels.includes('Side by side') && !labels.some((l) => /compare/i.test(l)),
+      labels
+    )
     // `mod` is Ctrl off macOS, and the handler is on the window.
     await run(`window.dispatchEvent(new KeyboardEvent('keydown', {
       key: '\\\\', ctrlKey: true, bubbles: true
