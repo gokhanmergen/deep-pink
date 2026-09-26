@@ -305,6 +305,13 @@ interface State {
    * nothing open they say so instead. Opening any thread closes it.
    */
   compare: [ComparePane, ComparePane] | null
+  /**
+   * What the question both sides share is set up with — web access, thinking,
+   * a repository — before there are threads to hold it. Handed to both when
+   * they are made, and empty for every new comparison, as a new thread starts
+   * from the defaults.
+   */
+  compareStartConfig: Partial<ThreadConfig>
 
   init: () => Promise<void>
   refreshThreads: () => Promise<void>
@@ -316,6 +323,12 @@ interface State {
    */
   findKeyPoint: (messageId: string, reply: string, candidates: string[]) => Promise<void>
   createThread: () => Promise<Thread>
+  /**
+   * What "new thread" means to the reader: a chat, or a fresh side by side
+   * when that is the mode they are in. `createThread` is always the former,
+   * for the places that need a thread rather than a starting point.
+   */
+  newThread: () => Promise<void>
   deleteThread: (id: string) => Promise<void>
   /** Stops a temporary chat being temporary, so it outlives the session. */
   keepThread: (id: string) => Promise<void>
@@ -388,6 +401,13 @@ interface State {
    * began, or a new chat if neither did.
    */
   closeCompare: (keep?: CompareSide) => Promise<void>
+  /**
+   * Closing side by side as a choice of mode rather than of a conversation:
+   * new threads are single chats again from here.
+   */
+  leaveSideBySide: () => Promise<void>
+  /** Changes what the shared first message is set up with. */
+  setCompareStartConfig: (patch: Partial<ThreadConfig>) => void
   /**
    * A side's model. Before its first message — or from Settings, with side by
    * side closed — it is also remembered as what that side opens with.
@@ -730,6 +750,7 @@ export const useStore = create<State>((set, get) => ({
   sync: null,
   syncProgress: null,
   compare: null,
+  compareStartConfig: {},
 
   async init() {
     if (initialised) return
@@ -759,8 +780,11 @@ export const useStore = create<State>((set, get) => ({
      * sweeps up the one left open when the window was closed — both of which
      * already existed for the New Thread button, which has always worked this
      * way.
+     *
+     * Side by side, when that is the mode the app was left in: starting the
+     * app is the most common "new thread" of all.
      */
-    await get().createThread()
+    await get().newThread()
 
     unsubscribers.push(api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses })))
     unsubscribers.push(api.chat.onEvent((event) => handleStreamEvent(event, set, get)))
@@ -1087,6 +1111,11 @@ export const useStore = create<State>((set, get) => ({
     return thread
   },
 
+  async newThread() {
+    if (get().settings?.sideBySideNewThreads) await get().openCompare()
+    else await get().createThread()
+  },
+
   async keepThread(id) {
     const kept = await window.deepPink.threads.keep(id)
     if (!kept) return
@@ -1286,6 +1315,12 @@ export const useStore = create<State>((set, get) => ({
     // chat does not survive it. See `compare` for why nothing stays open.
     await get().selectThread(null)
 
+    // Going into side by side is choosing it as the way to work, so the next
+    // new thread comes this way too. Only closing it undoes that.
+    if (!get().settings?.sideBySideNewThreads) {
+      void get().saveSettings({ sideBySideNewThreads: true })
+    }
+
     if (!pair) {
       // The two chosen last time, which is what makes it quick to run again.
       // Before anything has been chosen, the model you were talking to goes on
@@ -1296,7 +1331,8 @@ export const useStore = create<State>((set, get) => ({
         compare: [
           emptyPane(null, settings?.sideBySideLeftModel || model),
           emptyPane(null, settings?.sideBySideRightModel || null)
-        ]
+        ],
+        compareStartConfig: {}
       })
       return
     }
@@ -1313,6 +1349,17 @@ export const useStore = create<State>((set, get) => ({
     set({ compare: null })
     if (kept) await get().selectThread(kept)
     else await get().createThread()
+  },
+
+  async leaveSideBySide() {
+    if (get().settings?.sideBySideNewThreads) {
+      await get().saveSettings({ sideBySideNewThreads: false })
+    }
+    await get().closeCompare(0)
+  },
+
+  setCompareStartConfig(patch) {
+    set({ compareStartConfig: { ...get().compareStartConfig, ...patch } })
   },
 
   async setCompareModel(side, model) {
@@ -1342,7 +1389,7 @@ export const useStore = create<State>((set, get) => ({
       return
     }
 
-    const [a, b] = await api.threads.createPair(left, right)
+    const [a, b] = await api.threads.createPair(left, right, get().compareStartConfig)
 
     // Closed, or begun some other way, while the pair was being made. Nothing
     // has been said in either, so they go rather than wait for the sweep.

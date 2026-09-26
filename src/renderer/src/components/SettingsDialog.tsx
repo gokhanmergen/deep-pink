@@ -866,6 +866,21 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               The two models side by side opens with. Choosing a model on a side before its first
               message changes these too, so the same comparison is ready the next time.
             </p>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.sideBySideNewThreads}
+                onChange={(event) =>
+                  void saveSettings({ sideBySideNewThreads: event.target.checked })
+                }
+              />
+              <span>Open new threads side by side</span>
+              <Revert path="sideBySideNewThreads" what="opening new threads side by side" />
+            </label>
+            <p className="field__hint">
+              Turns on when you open side by side and off when you close it, so a new thread
+              starts the way you were last working.
+            </p>
             <div className="field">
               <span className="field__label">
                 Left

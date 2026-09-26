@@ -127,10 +127,10 @@ suite('side by side — one question, two conversations', async ({ check, sectio
           threads.push(row)
           return { ...row }
         },
-        createPair: async (leftModel, rightModel) => {
-          pairsMade.push([leftModel, rightModel])
-          const a = threadRow(`pair-${pairsMade.length}-a`, { model: leftModel })
-          const b = threadRow(`pair-${pairsMade.length}-b`, { model: rightModel })
+        createPair: async (leftModel, rightModel, shared = {}) => {
+          pairsMade.push([leftModel, rightModel, shared])
+          const a = threadRow(`pair-${pairsMade.length}-a`, { ...shared, model: leftModel })
+          const b = threadRow(`pair-${pairsMade.length}-b`, { ...shared, model: rightModel })
           a.config.compareWith = b.id
           b.config.compareWith = a.id
           threads.push(a, b)
@@ -240,6 +240,11 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   )
   check('the right side waits to be chosen', state().compare[1].model === null)
   check('neither side has a thread yet', !state().compare[0].threadId && !state().compare[1].threadId)
+  check(
+    'and opening it makes it the way new threads start',
+    storedSettings.sideBySideNewThreads === true,
+    storedSettings.sideBySideNewThreads
+  )
 
   section('the first message needs both models')
   await state().startCompare('Which is larger, 9.11 or 9.9?')
@@ -260,6 +265,19 @@ suite('side by side — one question, two conversations', async ({ check, sectio
     storedSettings.sideBySideLeftModel
   )
 
+  section('the shared question is set up once, for both')
+  check('it starts from the defaults', Object.keys(state().compareStartConfig).length === 0)
+  // The shortcut the Extras menu names beside the switch, pressed before
+  // either side exists.
+  buildActions().find((action) => action.id === 'web.toggle').run()
+  check(
+    'the web shortcut turns web access on for the shared question',
+    state().compareStartConfig.webAccessEnabled === true,
+    state().compareStartConfig
+  )
+  check('and says it is for both', /both sides/.test(toasts().join()), toasts())
+  state().setCompareStartConfig({ reasoning: { mode: 'high', budgetTokens: 8000 } })
+
   section('one question, asked of both')
   await state().startCompare('Which is larger, 9.11 or 9.9?')
   check('one pair is made', pairsMade.length === 1, pairsMade)
@@ -268,7 +286,17 @@ suite('side by side — one question, two conversations', async ({ check, sectio
     pairsMade[0][0] === 'test/default' && pairsMade[0][1] === 'openai/two',
     pairsMade[0]
   )
+  check(
+    'with what was set up for the question they share',
+    pairsMade[0][2]?.webAccessEnabled === true && pairsMade[0][2]?.reasoning?.mode === 'high',
+    pairsMade[0][2]
+  )
   const [a, b] = [state().compare[0].threadId, state().compare[1].threadId]
+  check(
+    'so both threads start with web access on',
+    threads.filter((t) => t.id === a || t.id === b).every((t) => t.config.webAccessEnabled === true),
+    threads.map((t) => [t.id, t.config.webAccessEnabled])
+  )
   check('each side now has its thread', a === 'pair-1-a' && b === 'pair-1-b', [a, b])
   check('two sends, one per side', sent.length === 2, sent)
   check(
@@ -434,6 +462,23 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   await state().closeCompare(1)
   check('side by side is closed', state().compare === null)
   check('and the side kept is the one open', state().activeThreadId === b, state().activeThreadId)
+  check(
+    'which is reading one side, not leaving the mode',
+    storedSettings.sideBySideNewThreads === true
+  )
+
+  section('a new thread, while side by side is the mode')
+  await state().newThread()
+  check('opens side by side', state().compare !== null, state().activeThreadId)
+  check(
+    'fresh, with nothing said on either side',
+    !state().compare[0].threadId && !state().compare[1].threadId
+  )
+  check(
+    'and the shared set-up starts again from the defaults',
+    Object.keys(state().compareStartConfig).length === 0,
+    state().compareStartConfig
+  )
 
   section('deleting one side while both are open')
   await state().openCompare([a, b])
@@ -456,11 +501,14 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   await state().setCompareModel(0, 'anthropic/one')
   check('choosing the left before sending remembers it too', storedSettings.sideBySideLeftModel === 'anthropic/one')
 
-  section('closing before anything was said')
+  section('closing it, before anything was said')
   const madeBefore = made
-  await state().closeCompare()
+  await state().leaveSideBySide()
+  check('new threads are single chats again', storedSettings.sideBySideNewThreads === false)
   check('a new chat is opened, since there is nothing to go back to', made === madeBefore + 1)
   check('and it is the open one', state().activeThreadId === `made-${made}`, state().activeThreadId)
+  await state().newThread()
+  check('and the next new thread is a single chat', state().compare === null && made === madeBefore + 2)
 
   section('chosen from Settings, with side by side closed')
   await state().setCompareModel(1, 'mistral/three')

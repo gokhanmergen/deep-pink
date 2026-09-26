@@ -363,7 +363,7 @@ export function Sidebar(): React.JSX.Element {
   const filter = useStore((s) => s.sidebarFilter)
   const hits = useStore((s) => s.searchHits)
   const selectThread = useStore((s) => s.selectThread)
-  const createThread = useStore((s) => s.createThread)
+  const newThread = useStore((s) => s.newThread)
   const setSidebarFilter = useStore((s) => s.setSidebarFilter)
   const openSettings = useStore((s) => s.openSettings)
   const runSearch = useStore((s) => s.runSearch)
@@ -1180,7 +1180,7 @@ export function Sidebar(): React.JSX.Element {
         <button
           className="btn btn--primary"
           style={{ flex: 1, justifyContent: 'center' }}
-          onClick={() => void createThread()}
+          onClick={() => void newThread()}
           type="button"
         >
           <Plus {...ICON} />

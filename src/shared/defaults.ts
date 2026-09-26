@@ -247,6 +247,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // something to guess. Chosen once, the first time, and remembered after.
   sideBySideLeftModel: '',
   sideBySideRightModel: '',
+  sideBySideNewThreads: false,
   titlePrompt: DEFAULT_TITLE_PROMPT,
   baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
   includeDateTimeInPrompt: false,

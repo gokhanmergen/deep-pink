@@ -129,9 +129,6 @@ suite(
     check('the one kept', alone.title === 'Compared, right side', alone.title)
     check('with the ordinary composer back', alone.mainComposer)
 
-    section('starting a new comparison')
-    check('a new chat can be started', await clickByText('.sidebar__actions .btn', 'New thread'))
-    await settle(700)
     const labels = await run(
       `[...document.querySelectorAll('.topbar .btn')].map((b) => b.textContent.trim())`
     )
@@ -140,18 +137,34 @@ suite(
       labels.includes('Side by side') && !labels.some((l) => /compare/i.test(l)),
       labels
     )
-    // `mod` is Ctrl off macOS, and the handler is on the window.
-    await run(`window.dispatchEvent(new KeyboardEvent('keydown', {
-      key: '\\\\', ctrlKey: true, bubbles: true
-    }))`)
+
+    section('a new thread, once side by side has been used')
+    check('a new thread can be started', await clickByText('.sidebar__actions .btn', 'New thread'))
     await settle(700)
 
     const fresh = await view()
-    check('the shortcut opens it', fresh.comparing, fresh)
+    check('it opens side by side, because that is the mode now', fresh.comparing, fresh)
     check('two empty columns', fresh.panes.length === 2 && fresh.panes.every((p) => p.composers === 0), fresh.panes)
     check('and one composer under both, for the question they share', fresh.composers === 1, fresh.composers)
     check('the left already has a model', fresh.panes[0]?.unset === null, fresh.panes[0])
     check('the right asks for one', fresh.panes[1]?.unset === 'true', fresh.panes[1])
+
+    // Neither thread exists yet, and these used to wait for one.
+    const shared = await run(`(() => {
+      const bar = document.querySelector('.compare > .composer .composer__bar')
+      const button = (text) =>
+        [...(bar?.querySelectorAll('.btn') ?? [])].find((b) => b.textContent.includes(text))
+      return {
+        attach: button('Attach') ? !button('Attach').disabled : null,
+        // The thinking button is labelled by its level; it is the one with a
+        // brain in it, found by what it is for.
+        thinking: [...(bar?.querySelectorAll('.btn') ?? [])]
+          .filter((b) => b.title === 'How hard to think, for this conversation')
+          .map((b) => !b.disabled)[0] ?? null
+      }
+    })()`)
+    check('Attach works before the first message', shared.attach === true, shared)
+    check('so does choosing how hard to think', shared.thinking === true, shared)
 
     check(
       'sending before both are chosen is refused, and says why',
@@ -183,8 +196,13 @@ suite(
     }))`)
     await settle(700)
     const closed = await view()
-    check('the same shortcut closes it', !closed.comparing, closed)
+    check('the shortcut closes it', !closed.comparing, closed)
     check('back to one conversation', closed.mainComposer, closed)
+
+    check('a new thread can be started', await clickByText('.sidebar__actions .btn', 'New thread'))
+    await settle(700)
+    const single = await view()
+    check('and it is a single chat again, since side by side was closed', !single.comparing, single)
   },
   { bootApp: true }
 )

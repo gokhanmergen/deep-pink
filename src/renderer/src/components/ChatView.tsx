@@ -164,7 +164,7 @@ export function ChatView(): React.JSX.Element {
   const setOverlay = useStore((s) => s.setOverlay)
   const updateThread = useStore((s) => s.updateThread)
   const toggleSidebar = useStore((s) => s.toggleSidebar)
-  const createThread = useStore((s) => s.createThread)
+  const newThread = useStore((s) => s.newThread)
   const keepThread = useStore((s) => s.keepThread)
   const makeThreadTemporary = useStore((s) => s.makeThreadTemporary)
   const showToast = useStore((s) => s.showToast)
@@ -1182,7 +1182,7 @@ export function ChatView(): React.JSX.Element {
               <div className="empty" style={{ height: '50vh' }}>
                 <div className="empty__title">Nothing open</div>
                 <p>Start a thread to begin.</p>
-                <button className="btn btn--primary" onClick={() => void createThread()} type="button">
+                <button className="btn btn--primary" onClick={() => void newThread()} type="button">
                   <Plus {...ICON} />
                   New thread
                 </button>

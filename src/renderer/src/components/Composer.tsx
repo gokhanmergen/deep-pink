@@ -7,7 +7,7 @@ import {
   type StagedFile
 } from './attachFiles'
 import { formatBytes } from '../format'
-import type { AttachedRepo, PendingAttachment } from '@shared/types'
+import type { AttachedRepo, PendingAttachment, ThreadConfig } from '@shared/types'
 import { useStore } from '../store'
 import {
   ArrowUp,
@@ -46,9 +46,18 @@ export const COMPOSER_ID = 'composer-input'
 export interface ComposerTarget {
   /**
    * The thread whose settings the bar shows and changes. Null before one
-   * exists, which leaves those settings to be changed once it does.
+   * exists, when `pendingConfig` holds them instead.
    */
   threadId: string | null
+  /**
+   * The settings a conversation will start with, while there is no thread to
+   * keep them — web access, thinking, a repository. Without it, the controls
+   * for them wait until there is a thread.
+   */
+  pendingConfig?: {
+    config: Partial<ThreadConfig>
+    update: (patch: Partial<ThreadConfig>) => void
+  }
   /** Where the unsent text is kept among the drafts. */
   draftKey: string
   generating: boolean
@@ -108,9 +117,22 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const models = useStore((s) => s.models)
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
-  const webOn = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
-  const chartsOn = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
-  const reasoning = resolveReasoning(thread?.config.reasoning, settings?.reasoning)
+
+  /*
+   * Where this conversation's settings are read from and written to: the
+   * thread, or — before there is one — what the target is holding for it.
+   */
+  const pending = target && !target.threadId ? (target.pendingConfig ?? null) : null
+  const config: Partial<ThreadConfig> | undefined = pending ? pending.config : thread?.config
+  const configurable = Boolean(pending || activeThreadId)
+  const writeConfig = (patch: Partial<ThreadConfig>): void => {
+    if (pending) pending.update(patch)
+    else if (activeThreadId) void updateThread(activeThreadId, { config: patch })
+  }
+
+  const webOn = config?.webAccessEnabled ?? settings?.web.enabled ?? false
+  const chartsOn = config?.chartsEnabled ?? settings?.chartsEnabled ?? false
+  const reasoning = resolveReasoning(config?.reasoning, settings?.reasoning)
 
   // Web access works by giving the model tools. A model that cannot call tools
   // will simply ignore them, which looks exactly like search being broken.
@@ -223,7 +245,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
 
   // Attached directories live on the thread, not the message, so they persist
   // across turns and follow you when you come back to the conversation.
-  const repoPaths = thread?.config.repoPaths ?? []
+  const repoPaths = config?.repoPaths ?? []
 
   useEffect(() => {
     if (!repoPaths.length) {
@@ -241,19 +263,16 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
 
   const attachRepo = async (): Promise<void> => {
     const path = await window.deepPink.repo.choose()
-    if (!path || !activeThreadId) return
+    if (!path || !configurable) return
     if (repoPaths.includes(path)) {
       showToast('That directory is already attached')
       return
     }
-    await updateThread(activeThreadId, { config: { repoPaths: [...repoPaths, path] } })
+    writeConfig({ repoPaths: [...repoPaths, path] })
   }
 
-  const detachRepo = async (path: string): Promise<void> => {
-    if (!activeThreadId) return
-    await updateThread(activeThreadId, {
-      config: { repoPaths: repoPaths.filter((p) => p !== path) }
-    })
+  const detachRepo = (path: string): void => {
+    writeConfig({ repoPaths: repoPaths.filter((p) => p !== path) })
   }
 
   /*
@@ -354,13 +373,11 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   }
 
   const toggleWeb = (): void => {
-    if (!activeThreadId) return
-    void updateThread(activeThreadId, { config: { webAccessEnabled: !webOn } })
+    writeConfig({ webAccessEnabled: !webOn })
   }
 
   const toggleCharts = (): void => {
-    if (!activeThreadId) return
-    void updateThread(activeThreadId, { config: { chartsEnabled: !chartsOn } })
+    writeConfig({ chartsEnabled: !chartsOn })
   }
 
   /**
@@ -413,10 +430,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       on: reasoning.mode === mode,
       hint: mode === 'auto' ? 'the model decides' : undefined,
       onSelect: () => {
-        if (!activeThreadId) return
-        void updateThread(activeThreadId, {
-          config: { reasoning: { ...reasoning, mode } }
-        })
+        writeConfig({ reasoning: { ...reasoning, mode } })
       }
     }))
 
@@ -487,7 +501,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                   </span>
                   <button
                     className="repochip__remove"
-                    onClick={() => void detachRepo(repo.path)}
+                    onClick={() => detachRepo(repo.path)}
                     title="Detach"
                     type="button"
                     aria-label={`Detach ${repo.name}`}
@@ -595,7 +609,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
               }}
               title="Attach images, text files, or a code repository"
               type="button"
-              disabled={!activeThreadId}
+              disabled={!configurable}
             >
               <Paperclip {...ICON} />
               Attach
@@ -613,7 +627,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                 }}
                 title="Web access and charts, for this thread"
                 type="button"
-                disabled={!activeThreadId}
+                disabled={!configurable}
               >
                 <SlidersHorizontal {...ICON} />
                 <span className="btn__label">Extras{extrasOn ? ` · ${extrasOn}` : ''}</span>
@@ -630,7 +644,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                 }}
                 title="How hard to think, for this conversation"
                 type="button"
-                disabled={!activeThreadId}
+                disabled={!configurable}
               >
                 <Brain {...ICON} />
                 <span className="btn__label">{shortReasoningLabel(reasoning)}</span>

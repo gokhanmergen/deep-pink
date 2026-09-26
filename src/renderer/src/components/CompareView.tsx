@@ -34,14 +34,19 @@ export function CompareView(): React.JSX.Element {
   // Both threads are made together, so one having begun is both having begun.
   const started = useStore((s) => Boolean(s.compare?.[0].threadId))
   const toggleSidebar = useStore((s) => s.toggleSidebar)
-  const closeCompare = useStore((s) => s.closeCompare)
+  const leaveSideBySide = useStore((s) => s.leaveSideBySide)
   const startCompare = useStore((s) => s.startCompare)
+  const startConfig = useStore((s) => s.compareStartConfig)
+  const setCompareStartConfig = useStore((s) => s.setCompareStartConfig)
 
   const keybinds = settings?.keybinds ?? {}
 
   const startTarget = useMemo<ComposerTarget>(
     () => ({
       threadId: null,
+      // Web access, thinking and the rest, set once for both. Neither thread
+      // exists yet, so the store holds them and both start with them.
+      pendingConfig: { config: startConfig, update: setCompareStartConfig },
       draftKey: COMPARE_DRAFT,
       generating: false,
       send: (content, attachments) => {
@@ -60,7 +65,7 @@ export function CompareView(): React.JSX.Element {
       placeholder: 'Ask both models the same thing — paste or drop images to attach',
       autoFocus: true
     }),
-    [startCompare]
+    [startCompare, startConfig, setCompareStartConfig]
   )
 
   return (
@@ -78,8 +83,10 @@ export function CompareView(): React.JSX.Element {
         <span className="topbar__title">Side by side</span>
         <button
           className="btn"
-          onClick={() => void closeCompare(0)}
-          title={`Back to one conversation — ${formatBinding(keybinds['compare.toggle'] ?? 'mod+\\')}`}
+          onClick={() => void leaveSideBySide()}
+          title={`Back to one conversation, and new threads as single chats — ${formatBinding(
+            keybinds['compare.toggle'] ?? 'mod+\\'
+          )}`}
           type="button"
         >
           <X {...ICON} />

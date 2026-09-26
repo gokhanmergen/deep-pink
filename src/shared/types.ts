@@ -599,6 +599,15 @@ export interface Settings {
    */
   sideBySideLeftModel: string
   sideBySideRightModel: string
+  /**
+   * Whether a new thread opens side by side.
+   *
+   * Switched on by going into side by side and off by closing it, so the
+   * mode somebody is working in is the mode the next conversation starts in.
+   * Carrying on with one side, or opening a thread from the list, is reading
+   * rather than choosing a mode, and leaves it alone.
+   */
+  sideBySideNewThreads: boolean
   titlePrompt: string
   baseSystemPrompt: string
   includeDateTimeInPrompt: boolean

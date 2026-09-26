@@ -73,9 +73,16 @@ const api = {
     remove: (id: string): Promise<void> => ipcRenderer.invoke('threads:delete', id),
     branch: (id: string, messageId: string): Promise<Thread | null> =>
       ipcRenderer.invoke('threads:branch', id, messageId),
-    /** Two linked threads for a side-by-side comparison, one per model. */
-    createPair: (leftModel: string, rightModel: string): Promise<[Thread, Thread]> =>
-      ipcRenderer.invoke('threads:createPair', leftModel, rightModel),
+    /**
+     * Two linked threads for a side-by-side comparison, one per model, each
+     * starting with `shared` — what was set up for both before they existed.
+     */
+    createPair: (
+      leftModel: string,
+      rightModel: string,
+      shared?: Partial<ThreadConfig>
+    ): Promise<[Thread, Thread]> =>
+      ipcRenderer.invoke('threads:createPair', leftModel, rightModel, shared),
     /** Files a thread in a folder, or takes it out with null. */
     setFolder: (id: string, folderId: string | null): Promise<Thread | null> =>
       ipcRenderer.invoke('threads:setFolder', id, folderId)

@@ -427,11 +427,19 @@ export function createThread(
  * the moment the first message is sent rather than when the view is opened,
  * because until then there is nothing to keep: opening the view and walking
  * away should leave no trace in the list.
+ *
+ * `shared` is what was set up for both before either existed — web access,
+ * thinking, a repository — and each side starts with it. The model and the
+ * link are each side's own, so they are laid over it rather than taken from it.
  */
-export function createComparePair(leftModel: string, rightModel: string): [Thread, Thread] {
+export function createComparePair(
+  leftModel: string,
+  rightModel: string,
+  shared: Partial<ThreadConfig> = {}
+): [Thread, Thread] {
   return getDb().transaction((): [Thread, Thread] => {
-    const left = createThread('', { model: leftModel })
-    const right = createThread('', { model: rightModel, compareWith: left.id })
+    const left = createThread('', { ...shared, model: leftModel, compareWith: null })
+    const right = createThread('', { ...shared, model: rightModel, compareWith: left.id })
     const linked = updateThread(left.id, { config: { compareWith: right.id } }) ?? left
     return [linked, getThread(right.id) ?? right]
   })()

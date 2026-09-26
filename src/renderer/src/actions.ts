@@ -1,4 +1,4 @@
-import type { ExportFormat, Settings, Thread } from '@shared/types'
+import type { ExportFormat, Settings, Thread, ThreadConfig } from '@shared/types'
 import {
   EFFORTS,
   REASONING_LABELS,
@@ -110,6 +110,19 @@ export function buildActions(): AppAction[] {
     return fn(activeThreadId)
   }
 
+  /**
+   * A thread setting's shortcut, reaching the question side by side is about
+   * to ask both — the same switch the menu under it offers. Once the sides
+   * have begun, each is its own thread and the shortcut is the ordinary one.
+   */
+  const beforeSideBySide =
+    (
+      shared: (config: Partial<ThreadConfig>) => void,
+      otherwise: () => void | Promise<void>
+    ) =>
+    () =>
+      store.compare && !store.compare[0].threadId ? shared(store.compareStartConfig) : otherwise()
+
   /** The other half of the open thread's comparison, if it is still here. */
   const partner =
     thread?.config.compareWith && threads.some((t) => t.id === thread.config.compareWith)
@@ -118,7 +131,8 @@ export function buildActions(): AppAction[] {
 
   return [
     // Threads
-    { id: 'thread.new', label: 'New thread', group: 'Threads', run: () => void store.createThread() },
+    // Side by side, when that is the mode — see `newThread`.
+    { id: 'thread.new', label: 'New thread', group: 'Threads', run: () => void store.newThread() },
     {
       /**
        * One binding in and out, like the temporary switch.
@@ -135,7 +149,7 @@ export function buildActions(): AppAction[] {
           : 'Open side by side',
       group: 'Threads',
       run: () => {
-        if (store.compare) return store.closeCompare(0)
+        if (store.compare) return store.leaveSideBySide()
         if (thread && partner) return store.openCompare([thread.id, partner])
         return store.openCompare()
       }
@@ -508,11 +522,18 @@ export function buildActions(): AppAction[] {
       id: 'web.toggle',
       label: 'Toggle web access for this thread',
       group: 'Capabilities',
-      run: requireThread((id) => {
-        const on = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
-        void store.updateThread(id, { config: { webAccessEnabled: !on } })
-        store.showToast(on ? 'Web access off' : 'Web access on')
-      })
+      run: beforeSideBySide(
+        (config) => {
+          const on = config.webAccessEnabled ?? settings?.web.enabled ?? false
+          store.setCompareStartConfig({ webAccessEnabled: !on })
+          store.showToast(on ? 'Web access off for both sides' : 'Web access on for both sides')
+        },
+        requireThread((id) => {
+          const on = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
+          void store.updateThread(id, { config: { webAccessEnabled: !on } })
+          store.showToast(on ? 'Web access off' : 'Web access on')
+        })
+      )
     },
     {
       id: 'sync.pause',
@@ -530,11 +551,18 @@ export function buildActions(): AppAction[] {
       id: 'charts.toggle',
       label: 'Toggle charts for this thread',
       group: 'Capabilities',
-      run: requireThread((id) => {
-        const on = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
-        void store.updateThread(id, { config: { chartsEnabled: !on } })
-        store.showToast(on ? 'Charts off' : 'Charts on')
-      })
+      run: beforeSideBySide(
+        (config) => {
+          const on = config.chartsEnabled ?? settings?.chartsEnabled ?? false
+          store.setCompareStartConfig({ chartsEnabled: !on })
+          store.showToast(on ? 'Charts off for both sides' : 'Charts on for both sides')
+        },
+        requireThread((id) => {
+          const on = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
+          void store.updateThread(id, { config: { chartsEnabled: !on } })
+          store.showToast(on ? 'Charts off' : 'Charts on')
+        })
+      )
     },
     {
       id: 'reasoning.more',

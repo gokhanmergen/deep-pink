@@ -250,8 +250,10 @@ export function registerIpc(): void {
   })
   // Not synced here: both are empty until the message that made them lands a
   // moment later, and `chat:send` syncs when that turn finishes.
-  ipcMain.handle('threads:createPair', (_e, leftModel: string, rightModel: string) =>
-    repo.createComparePair(leftModel, rightModel)
+  ipcMain.handle(
+    'threads:createPair',
+    (_e, leftModel: string, rightModel: string, shared?: Partial<ThreadConfig>) =>
+      repo.createComparePair(leftModel, rightModel, shared)
   )
   ipcMain.handle('threads:branch', (_e, id: string, messageId: string) => {
     const branched = repo.branchThread(id, messageId)
