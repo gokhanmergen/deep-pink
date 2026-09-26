@@ -589,6 +589,16 @@ export interface Settings {
   titlePregenEnabled: boolean
   /** The model that writes that first name. Empty falls back to `titleModel`. */
   titlePregenModel: string
+  /**
+   * The models side by side opens with, on the left and on the right.
+   *
+   * Whatever was last chosen for each side before its first message, and
+   * settable in Settings, so running the same comparison again does not begin
+   * with choosing the same two models again. Empty until something is chosen:
+   * the left then follows the model in use, and the right asks.
+   */
+  sideBySideLeftModel: string
+  sideBySideRightModel: string
   titlePrompt: string
   baseSystemPrompt: string
   includeDateTimeInPrompt: boolean

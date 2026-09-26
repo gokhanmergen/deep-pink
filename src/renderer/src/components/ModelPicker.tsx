@@ -89,10 +89,13 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     case 'compareLeft':
     case 'compareRight': {
       const pane = side === null ? null : compare?.[side]
+      // Opened from Settings there is no side on screen, only what one opens with.
+      const remembered =
+        side === 0 ? settings?.sideBySideLeftModel : settings?.sideBySideRightModel
       current =
         (pane?.threadId ? threads.find((t) => t.id === pane.threadId)?.config.model : null) ??
         pane?.model ??
-        undefined
+        (remembered || undefined)
       break
     }
   }
@@ -142,6 +145,12 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const choose = async (modelId: string): Promise<void> => {
     if (side !== null) {
       await setCompareModel(side, modelId)
+      // With a side on screen the column says so; from Settings nothing else would.
+      if (!compare) {
+        showToast(
+          `Side by side will open with ${modelShortName(modelId)} on the ${side === 0 ? 'left' : 'right'}`
+        )
+      }
     } else if (mode === 'keyPoint') {
       await saveSettings({ keyPointModel: modelId })
       showToast(`Key sentences will be picked by ${modelShortName(modelId)}`)

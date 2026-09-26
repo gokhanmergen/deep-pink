@@ -861,6 +861,54 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </div>
             </div>
 
+            <div className="section-title">Side by side</div>
+            <p className="muted" style={{ margin: '0 0 var(--s3)' }}>
+              The two models side by side opens with. Choosing a model on a side before its first
+              message changes these too, so the same comparison is ready the next time.
+            </p>
+            <div className="field">
+              <span className="field__label">
+                Left
+                <Revert
+                  path="sideBySideLeftModel"
+                  what="the left side’s model"
+                  format={() => 'following the model in use'}
+                />
+              </span>
+              <div className="row">
+                <button
+                  className="btn"
+                  onClick={() => setOverlay('compareModelLeft', 'settings')}
+                  type="button"
+                >
+                  {settings.sideBySideLeftModel
+                    ? modelShortName(settings.sideBySideLeftModel)
+                    : 'The model in use'}
+                </button>
+              </div>
+            </div>
+            <div className="field">
+              <span className="field__label">
+                Right
+                <Revert
+                  path="sideBySideRightModel"
+                  what="the right side’s model"
+                  format={() => 'being chosen each time'}
+                />
+              </span>
+              <div className="row">
+                <button
+                  className="btn"
+                  onClick={() => setOverlay('compareModelRight', 'settings')}
+                  type="button"
+                >
+                  {settings.sideBySideRightModel
+                    ? modelShortName(settings.sideBySideRightModel)
+                    : 'Choose a model'}
+                </button>
+              </div>
+            </div>
+
             <div className="section-title">Thread names</div>
             <label className="switch">
               <input

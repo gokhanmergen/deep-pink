@@ -78,6 +78,17 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   const stored = {}
   const threads = []
   let made = 0
+  /** Settings as the main process holds them, and every save made to them. */
+  let storedSettings = {
+    defaultModel: 'test/default',
+    sideBySideLeftModel: '',
+    sideBySideRightModel: '',
+    ui: {},
+    keybinds: {},
+    web: {},
+    compaction: {}
+  }
+  const settingsSaves = []
 
   const threadRow = (id, config = {}) => ({
     id,
@@ -102,13 +113,12 @@ suite('side by side — one question, two conversations', async ({ check, sectio
     deepPink: {
       platform: 'linux',
       settings: {
-        get: async () => ({
-          defaultModel: 'test/default',
-          ui: {},
-          keybinds: {},
-          web: {},
-          compaction: {}
-        })
+        get: async () => ({ ...storedSettings }),
+        save: async (patch) => {
+          settingsSaves.push(patch)
+          storedSettings = { ...storedSettings, ...patch }
+          return { ...storedSettings }
+        }
       },
       threads: {
         list: async () => threads.map((t) => ({ ...t, config: { ...t.config } })),
@@ -239,6 +249,16 @@ suite('side by side — one question, two conversations', async ({ check, sectio
 
   await state().setCompareModel(1, 'openai/two')
   check('the right side takes the model chosen', state().compare[1].model === 'openai/two')
+  check(
+    'and it is remembered for next time',
+    storedSettings.sideBySideRightModel === 'openai/two',
+    settingsSaves
+  )
+  check(
+    'the left, which was only a guess, is not written down',
+    storedSettings.sideBySideLeftModel === '',
+    storedSettings.sideBySideLeftModel
+  )
 
   section('one question, asked of both')
   await state().startCompare('Which is larger, 9.11 or 9.9?')
@@ -272,6 +292,20 @@ suite('side by side — one question, two conversations', async ({ check, sectio
     state().compare.map((pane) => pane.messages.map((m) => m.id))
   )
   check('the ordinary transcript is untouched', state().messages.length === 0, state().messages)
+
+  section('changing a side’s model once it has begun is that conversation’s business')
+  const savesBefore = settingsSaves.length
+  await state().setCompareModel(0, 'google/mid-way')
+  check(
+    'the thread takes it',
+    threads.find((t) => t.id === a)?.config.model === 'google/mid-way',
+    threads.find((t) => t.id === a)?.config
+  )
+  check(
+    'but what side by side opens with is left alone',
+    settingsSaves.length === savesBefore && storedSettings.sideBySideLeftModel === '',
+    settingsSaves.slice(savesBefore)
+  )
 
   section('each reply lands on its own side')
   stored[a].push(message({ id: 'ra', threadId: a, role: 'assistant', status: 'streaming' }))
@@ -407,10 +441,35 @@ suite('side by side — one question, two conversations', async ({ check, sectio
   check('side by side closes', state().compare === null)
   check('leaving the other side open on its own', state().activeThreadId === a, state().activeThreadId)
 
-  section('closing before anything was said')
+  section('the next one opens with the same two, without asking')
   await state().openCompare()
+  check(
+    'the right side has the model chosen last time',
+    state().compare[1].model === 'openai/two',
+    state().compare[1].model
+  )
+  check(
+    'the left still follows the thread you were in, since none was chosen for it',
+    state().compare[0].model === 'google/mid-way',
+    state().compare[0].model
+  )
+  await state().setCompareModel(0, 'anthropic/one')
+  check('choosing the left before sending remembers it too', storedSettings.sideBySideLeftModel === 'anthropic/one')
+
+  section('closing before anything was said')
   const madeBefore = made
   await state().closeCompare()
   check('a new chat is opened, since there is nothing to go back to', made === madeBefore + 1)
   check('and it is the open one', state().activeThreadId === `made-${made}`, state().activeThreadId)
+
+  section('chosen from Settings, with side by side closed')
+  await state().setCompareModel(1, 'mistral/three')
+  check('nothing opens', state().compare === null)
+  check('it is remembered', storedSettings.sideBySideRightModel === 'mistral/three', storedSettings)
+  await state().openCompare()
+  check(
+    'and side by side opens with both chosen',
+    state().compare[0].model === 'anthropic/one' && state().compare[1].model === 'mistral/three',
+    state().compare.map((pane) => pane.model)
+  )
 })

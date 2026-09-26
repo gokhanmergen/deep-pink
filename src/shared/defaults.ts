@@ -243,6 +243,10 @@ export const DEFAULT_SETTINGS: Settings = {
   // a reply arrives, which is why it is offered rather than assumed.
   titlePregenEnabled: false,
   titlePregenModel: 'google/gemini-2.5-flash-lite',
+  // Empty: which two models somebody wants to set against each other is not
+  // something to guess. Chosen once, the first time, and remembered after.
+  sideBySideLeftModel: '',
+  sideBySideRightModel: '',
   titlePrompt: DEFAULT_TITLE_PROMPT,
   baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
   includeDateTimeInPrompt: false,

@@ -388,6 +388,10 @@ interface State {
    * began, or a new chat if neither did.
    */
   closeCompare: (keep?: CompareSide) => Promise<void>
+  /**
+   * A side's model. Before its first message — or from Settings, with side by
+   * side closed — it is also remembered as what that side opens with.
+   */
   setCompareModel: (side: CompareSide, model: string) => Promise<void>
   /** Sends the shared first message to both sides, making their threads. */
   startCompare: (content: string, attachments?: PendingAttachment[]) => Promise<void>
@@ -1283,10 +1287,17 @@ export const useStore = create<State>((set, get) => ({
     await get().selectThread(null)
 
     if (!pair) {
-      // The model you were talking to on the left, since it is usually the one
-      // being compared against. The right is chosen, because there is no
-      // sensible guess at what somebody wants to compare it with.
-      set({ compare: [emptyPane(null, model), emptyPane(null, null)] })
+      // The two chosen last time, which is what makes it quick to run again.
+      // Before anything has been chosen, the model you were talking to goes on
+      // the left, since it is usually the one being measured; the right asks,
+      // because there is no sensible guess at what to set against it.
+      const settings = get().settings
+      set({
+        compare: [
+          emptyPane(null, settings?.sideBySideLeftModel || model),
+          emptyPane(null, settings?.sideBySideRightModel || null)
+        ]
+      })
       return
     }
 
@@ -1306,14 +1317,20 @@ export const useStore = create<State>((set, get) => ({
 
   async setCompareModel(side, model) {
     const pane = get().compare?.[side]
-    if (!pane) return
     // Once the side has a thread, the thread keeps its model, exactly as any
-    // conversation does — changing it mid-way is changing it for what follows.
-    if (pane.threadId) {
+    // conversation does — changing it mid-way is changing it for what follows,
+    // and says nothing about what the next comparison should start with.
+    if (pane?.threadId) {
       await get().updateThread(pane.threadId, { config: { model } })
       return
     }
-    patchPane(set, get, side, null, { model })
+    // Before the first message, or from Settings with nothing open, this is
+    // choosing what side by side starts with — and it is remembered, so the
+    // next one does not begin by asking the same question again.
+    if (pane) patchPane(set, get, side, null, { model })
+    await get().saveSettings(
+      side === 0 ? { sideBySideLeftModel: model } : { sideBySideRightModel: model }
+    )
   },
 
   async startCompare(content, pending = []) {
