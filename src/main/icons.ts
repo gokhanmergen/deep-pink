@@ -181,31 +181,114 @@ function candidates(slug: string): string[] {
  * served from an `.ico` path should not be called an icon.
  */
 export function imageMime(bytes: Buffer): string | null {
-  const at = (i: number, ...values: number[]): boolean =>
-    values.every((value, offset) => bytes[i + offset] === value)
-
-  if (at(0, 0x89, 0x50, 0x4e, 0x47)) return 'image/png'
-  // An icon, or a cursor, which some favicons are.
-  if (at(0, 0x00, 0x00, 0x01, 0x00) || at(0, 0x00, 0x00, 0x02, 0x00)) return 'image/x-icon'
-  if (at(0, 0x47, 0x49, 0x46, 0x38)) return 'image/gif'
-  if (at(0, 0xff, 0xd8, 0xff)) return 'image/jpeg'
-  if (bytes.length >= 12 && bytes.toString('latin1', 0, 4) === 'RIFF' &&
-      bytes.toString('latin1', 8, 12) === 'WEBP') {
-    return 'image/webp'
-  }
-
-  // SVG is text, and so is an HTML page — which is exactly the confusion this
-  // exists to settle. Only a document whose first element is `<svg>` counts.
-  const head = bytes
-    .toString('utf8', 0, Math.min(bytes.length, 2048))
-    .replace(/^﻿/, '')
-    .trimStart()
-    .toLowerCase()
-  if (head.startsWith('<svg')) return 'image/svg+xml'
-  if (/^(<\?xml[^>]*>\s*|<!--[\s\S]*?-->\s*|<!doctype svg[^>]*>\s*)+<svg/.test(head)) {
-    return 'image/svg+xml'
-  }
+  if (isPng(bytes)) return 'image/png'
+  if (isIco(bytes)) return 'image/x-icon'
+  if (isGif(bytes)) return 'image/gif'
+  if (isJpeg(bytes)) return 'image/jpeg'
+  if (isWebp(bytes)) return 'image/webp'
+  if (isSvg(bytes)) return 'image/svg+xml'
   return null
+}
+
+/*
+ * Each of these asks for the whole file, not only the first bytes of one.
+ *
+ * A signature says what a file set out to be, and a response cut off after it
+ * says so just as loudly — and a cached mark is never fetched again, so one
+ * that cannot be drawn stops every other source from ever being tried. So
+ * each checks the thing that is only there when the file is complete: the
+ * chunk that ends a PNG, the byte that ends a GIF, the marker that ends a
+ * JPEG, a WebP's own length, every image an icon's directory points at, and
+ * the element that closes an SVG. None of this decodes a picture; it is the
+ * cheapest check that a truncated one fails.
+ */
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+function startsWith(bytes: Buffer, at: number, values: number[]): boolean {
+  return bytes.length >= at + values.length && values.every((v, i) => bytes[at + i] === v)
+}
+
+/** The eight-byte signature, `IHDR` first, and `IEND` as the last chunk. */
+function isPng(bytes: Buffer): boolean {
+  return (
+    startsWith(bytes, 0, PNG_SIGNATURE) &&
+    bytes.length >= 8 + 25 + 12 &&
+    bytes.toString('latin1', 12, 16) === 'IHDR' &&
+    // The final chunk: a zero length, its type, and four bytes of checksum.
+    bytes.readUInt32BE(bytes.length - 12) === 0 &&
+    bytes.toString('latin1', bytes.length - 8, bytes.length - 4) === 'IEND'
+  )
+}
+
+/** A version the format has, and the trailer that closes every GIF. */
+function isGif(bytes: Buffer): boolean {
+  const version = bytes.toString('latin1', 0, 6)
+  return (
+    (version === 'GIF87a' || version === 'GIF89a') &&
+    bytes.length > 13 &&
+    bytes[bytes.length - 1] === 0x3b
+  )
+}
+
+/**
+ * Start-of-image, and end-of-image near the end — near rather than at,
+ * because some encoders pad after it, and a few bytes of that is harmless.
+ */
+function isJpeg(bytes: Buffer): boolean {
+  if (!startsWith(bytes, 0, [0xff, 0xd8, 0xff])) return false
+  const tail = bytes.subarray(Math.max(bytes.length - 32, 3))
+  for (let i = tail.length - 2; i >= 0; i--) {
+    if (tail[i] === 0xff && tail[i + 1] === 0xd9) return true
+  }
+  return false
+}
+
+/** A RIFF container that says it is WebP, and is as long as it says. */
+function isWebp(bytes: Buffer): boolean {
+  return (
+    bytes.length >= 20 &&
+    bytes.toString('latin1', 0, 4) === 'RIFF' &&
+    bytes.toString('latin1', 8, 12) === 'WEBP' &&
+    bytes.readUInt32LE(4) + 8 <= bytes.length
+  )
+}
+
+/**
+ * An icon or a cursor, which some favicons are: a directory of images, every
+ * one of which has to be inside the file for the directory to be telling the
+ * truth.
+ */
+function isIco(bytes: Buffer): boolean {
+  if (bytes.length < 6 || !startsWith(bytes, 0, [0x00, 0x00])) return false
+  if (!(bytes[2] === 1 || bytes[2] === 2) || bytes[3] !== 0) return false
+  const count = bytes.readUInt16LE(4)
+  if (count === 0 || bytes.length < 6 + count * 16) return false
+  for (let i = 0; i < count; i++) {
+    const entry = 6 + i * 16
+    const size = bytes.readUInt32LE(entry + 8)
+    const offset = bytes.readUInt32LE(entry + 12)
+    if (size === 0 || offset < 6 + count * 16 || offset + size > bytes.length) return false
+  }
+  return true
+}
+
+/**
+ * A document whose root is `<svg>`, and that closes it.
+ *
+ * SVG is text, and so is an HTML page — which is exactly the confusion this
+ * exists to settle — so only a document whose first element is `<svg>`
+ * counts. And a document cut short is still text that starts with `<svg`, so
+ * the root has to be closed too: `</svg>` at the end, or a root that closes
+ * itself.
+ */
+function isSvg(bytes: Buffer): boolean {
+  const text = bytes.toString('utf8').replace(/^﻿/, '').trim().toLowerCase()
+  const opens = /^(<\?xml[^>]*>\s*|<!--[\s\S]*?-->\s*|<!doctype svg[^>]*>\s*)*<svg[\s>/]/.test(text)
+  if (!opens) return false
+  // Comments after the root are allowed; they close nothing.
+  const body = text.replace(/(\s*<!--[\s\S]*?-->)+$/, '')
+  return body.endsWith('</svg>') || /^[^<]*(<[^>]*>\s*)*<svg\b[^>]*\/>$/.test(body)
 }
 
 /**
