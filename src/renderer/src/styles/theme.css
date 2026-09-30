@@ -726,6 +726,10 @@ svg.lucide {
   opacity: 1;
 }
 
+.sidebar__list[data-focusing='true'] .folder-group[data-open='true'] .folder {
+  opacity: 1;
+}
+
 /* Whatever you are pointing at, and whatever is already open, stay legible. */
 .sidebar__list[data-focusing='true'] .thread-item:hover,
 .sidebar__list[data-focusing='true'] .thread-item[data-active='true'],
@@ -4215,6 +4219,8 @@ svg.lucide {
   background: var(--bg-elevated);
   box-shadow: var(--shadow-2), var(--lift);
   animation: menu-in var(--quick) ease-out;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 @keyframes menu-in {
@@ -4286,6 +4292,55 @@ svg.lucide {
   font-size: 11px;
   color: var(--text-dim);
   font-family: var(--mono);
+}
+
+.folder-picker {
+  width: min(340px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-picker__title {
+  padding: 6px 9px;
+  font-weight: var(--w-ui);
+  font-size: 13px;
+}
+
+.folder-picker__search {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  margin: 4px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.folder-picker__search input {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.folder-picker__list {
+  max-height: min(320px, calc(100vh - 120px));
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.folder-picker .context-menu__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.folder-picker .context-menu__item svg {
+  flex: none;
 }
 
 /* ------------------------------------------------------------------ *

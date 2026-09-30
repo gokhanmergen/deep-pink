@@ -124,13 +124,13 @@ export function importArchive(
   let modelsCleared = 0
 
   /** A folder of that name, or a new one. Names are what an export carries. */
-  const folderIdFor = (name: string): string | null => {
+  const folderIdFor = (name: string, parentId: string | null): string | null => {
     const wanted = repo.normalizeFolderName(name)
     if (!wanted) return null
     const match = repo
       .listFolders()
-      .find((folder) => folder.name.toLowerCase() === wanted.toLowerCase())
-    return match ? match.id : (repo.createFolder(wanted)?.id ?? null)
+      .find((folder) => folder.parentId === parentId && folder.name.toLowerCase() === wanted.toLowerCase())
+    return match ? match.id : (repo.createFolder(wanted, parentId)?.id ?? null)
   }
 
   const insertOne = (archived: ArchivedThread): void => {
@@ -230,7 +230,8 @@ export function importArchive(
       archived.createdAt,
       archived.updatedAt,
       archived.pinned ? 1 : 0,
-      archived.folder ? folderIdFor(archived.folder) : null,
+      (archived.folderPath ?? (archived.folder ? [archived.folder] : []))
+        .reduce<string | null>((parentId, name) => folderIdFor(name, parentId), null),
       thread.id
     )
   }

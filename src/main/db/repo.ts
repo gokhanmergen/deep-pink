@@ -19,6 +19,7 @@ import type {
   Usage
 } from '@shared/types'
 import { COST_MARKERS } from '@shared/defaults'
+import { canMoveFolder } from '@shared/folders'
 import { getDb } from './index'
 import * as attachments from '../attachments'
 
@@ -41,6 +42,7 @@ interface ThreadRow {
 interface FolderRow {
   id: string
   name: string
+  parent_id: string | null
   created_at: number
   pinned: number
 }
@@ -241,6 +243,7 @@ function toFolder(row: FolderRow): Folder {
   return {
     id: row.id,
     name: row.name,
+    parentId: row.parent_id,
     createdAt: row.created_at,
     pinned: row.pinned === 1
   }
@@ -265,30 +268,32 @@ export function getFolder(id: string): Folder | null {
 }
 
 /** Creates a folder. An empty name is refused rather than stored blank. */
-export function createFolder(name: string): Folder | null {
+export function createFolder(name: string, parentId: string | null = null): Folder | null {
   const clean = normalizeFolderName(name)
-  if (!clean) return null
+  if (!clean || (parentId !== null && !getFolder(parentId))) return null
 
   const id = randomUUID()
   getDb()
     .prepare(
-      'INSERT INTO folders (id, name, created_at, updated_at, pinned) VALUES (?, ?, ?, ?, 0)'
+      'INSERT INTO folders (id, name, parent_id, created_at, updated_at, pinned) VALUES (?, ?, ?, ?, ?, 0)'
     )
-    .run(id, clean, Date.now(), Date.now())
+    .run(id, clean, parentId, Date.now(), Date.now())
   return getFolder(id)
 }
 
 export function updateFolder(
   id: string,
-  patch: { name?: string; pinned?: boolean }
+  patch: { name?: string; pinned?: boolean; parentId?: string | null }
 ): Folder | null {
   const existing = getFolder(id)
   if (!existing) return null
+  const parentId = patch.parentId === undefined ? existing.parentId : patch.parentId
+  if (patch.parentId !== undefined && !canMoveFolder(listFolders(), id, parentId)) return null
 
   const name = patch.name === undefined ? existing.name : normalizeFolderName(patch.name)
   getDb()
-    .prepare('UPDATE folders SET name = ?, pinned = ?, updated_at = ? WHERE id = ?')
-    .run(name || existing.name, (patch.pinned ?? existing.pinned) ? 1 : 0, Date.now(), id)
+    .prepare('UPDATE folders SET name = ?, pinned = ?, parent_id = ?, updated_at = ? WHERE id = ?')
+    .run(name || existing.name, (patch.pinned ?? existing.pinned) ? 1 : 0, parentId, Date.now(), id)
   return getFolder(id)
 }
 
@@ -300,7 +305,13 @@ export function updateFolder(
  * not a statement about whether it should exist.
  */
 export function deleteFolder(id: string): void {
-  getDb().prepare('DELETE FROM folders WHERE id = ?').run(id)
+  const db = getDb()
+  db.transaction(() => {
+    // Subfolders survive, with their contents intact, at the top level.
+    db.prepare('UPDATE folders SET parent_id = NULL, updated_at = MAX(updated_at + 1, ?) WHERE parent_id = ?')
+      .run(Date.now(), id)
+    db.prepare('DELETE FROM folders WHERE id = ?').run(id)
+  })()
 }
 
 /**

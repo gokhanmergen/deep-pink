@@ -589,7 +589,7 @@ suite(
     check(
       'offering everything that acts on one thread, in order',
       JSON.stringify(menuShown.items) ===
-        '["Rename","Pin","Regenerate name","Archive","Export as Markdown","Export as an archive","Delete"]',
+        '["Rename","Pin","Regenerate name","Archive","Export as Markdown","Export as an archive","Add to folder…","Delete"]',
       menuShown.items
     )
     check('positioned on screen', menuShown.onScreen === true, menuShown)

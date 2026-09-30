@@ -91,8 +91,9 @@ const api = {
   folders: {
     list: (): Promise<Folder[]> => ipcRenderer.invoke('folders:list'),
     /** Returns null when the name is empty once cleaned up. */
-    create: (name: string): Promise<Folder | null> => ipcRenderer.invoke('folders:create', name),
-    update: (id: string, patch: { name?: string; pinned?: boolean }): Promise<Folder | null> =>
+    create: (name: string, parentId: string | null = null): Promise<Folder | null> =>
+      ipcRenderer.invoke('folders:create', name, parentId),
+    update: (id: string, patch: { name?: string; pinned?: boolean; parentId?: string | null }): Promise<Folder | null> =>
       ipcRenderer.invoke('folders:update', id, patch),
     /** Deletes the folder; the threads it held return to the list. */
     remove: (id: string): Promise<void> => ipcRenderer.invoke('folders:delete', id)

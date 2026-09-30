@@ -93,9 +93,9 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
       },
       folders: {
         list: async () => storedFolders.map((f) => ({ ...f })),
-        create: async (name) => {
+        create: async (name, parentId = null) => {
           if (!name.trim()) return null
-          const folder = { id: `f${storedFolders.length + 1}`, name: name.trim(), createdAt: 0, pinned: false }
+          const folder = { id: `f${storedFolders.length + 1}`, name: name.trim(), parentId, createdAt: 0, pinned: false }
           storedFolders.push(folder)
           return { ...folder }
         },
@@ -106,6 +106,7 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
           return { ...folder }
         },
         remove: async (id) => {
+          for (const folder of storedFolders) if (folder.parentId === id) folder.parentId = null
           const at = storedFolders.findIndex((f) => f.id === id)
           if (at >= 0) storedFolders.splice(at, 1)
           if (thread.folderId === id) thread.folderId = null
@@ -654,6 +655,24 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   await state().moveThreadToFolder('t1', null)
   check('taking it out clears the folder', state().threads.find((t) => t.id === 't1').folderId === null)
 
+  const nested = await state().createFolder('Nested', created.id)
+  const deepest = await state().createFolder('Deepest', nested.id)
+  state().closeAllFolders()
+  await state().moveThreadToFolder('t1', deepest.id)
+  check('filing deep inside a closed tree opens every ancestor',
+    [created.id, nested.id, deepest.id].every((id) => state().openFolderIds.includes(id)),
+    state().openFolderIds)
+  await state().moveFolder(created.id, deepest.id)
+  check('the store refuses a folder move into its descendant',
+    state().folders.find((folder) => folder.id === created.id).parentId === null)
+  state().closeAllFolders()
+  await state().moveFolder(deepest.id, created.id)
+  check('moving a folder updates its parent and opens the destination',
+    state().folders.find((folder) => folder.id === deepest.id).parentId === created.id &&
+    state().openFolderIds.includes(created.id))
+  await state().deleteFolder(nested.id)
+  await state().deleteFolder(deepest.id)
+
   await state().moveThreadToFolder('t1', created.id)
   await state().renameFolder(created.id, 'Later')
   check('renaming lands on the folder', state().folders[0].name === 'Later')
@@ -805,12 +824,19 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   // What a pull looks like from in here: the database changed underneath, and
   // nothing on screen knows until the event says so.
   thread.title = 'Renamed on another machine'
+  storedFolders.push(
+    { id: 'synced-root', name: 'Synced root', parentId: null, createdAt: 0, pinned: false },
+    { id: 'synced-child', name: 'Synced child', parentId: 'synced-root', createdAt: 0, pinned: false }
+  )
   persisted.push(
     message({ id: 'from-elsewhere', threadId: 't1', role: 'user', content: 'said on the laptop' })
   )
   syncListeners.slice().forEach((fn) => fn())
   await settle(60)
 
+  check('synced folders and their hierarchy reach the sidebar',
+    state().folders.find((folder) => folder.id === 'synced-child')?.parentId === 'synced-root',
+    state().folders)
   check(
     'the thread list catches up',
     state().threads.find((t) => t.id === 't1')?.title === 'Renamed on another machine',

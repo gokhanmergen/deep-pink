@@ -88,6 +88,8 @@ export interface ArchivedThread {
   pinned: boolean
   /** By name: a folder id means nothing in someone else's library. */
   folder: string | null
+  /** Root to leaf, when the folder belongs to a hierarchy. */
+  folderPath?: string[]
   config: ThreadConfig
   messages: ArchivedMessage[]
 }
@@ -385,6 +387,9 @@ export function parseArchive(value: unknown): ArchiveReport {
       updatedAt: num(raw['updatedAt'], createdAt),
       pinned: bool(raw['pinned']),
       folder: strOrNull(raw['folder']),
+      ...(Array.isArray(raw['folderPath']) && raw['folderPath'].length > 0 &&
+        raw['folderPath'].every((name: unknown) => typeof name === 'string' && name.trim())
+        ? { folderPath: raw['folderPath'] as string[] } : {}),
       config: toConfig(raw['config']),
       messages
     })

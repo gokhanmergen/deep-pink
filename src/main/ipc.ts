@@ -271,12 +271,12 @@ export function registerIpc(): void {
   /* ---------------- folders ---------------- */
 
   ipcMain.handle('folders:list', (): Folder[] => repo.listFolders())
-  ipcMain.handle('folders:create', (_e, name: string) => {
-    const folder = repo.createFolder(name)
+  ipcMain.handle('folders:create', (_e, name: string, parentId: string | null = null) => {
+    const folder = repo.createFolder(name, parentId)
     syncSoon()
     return folder
   })
-  ipcMain.handle('folders:update', (_e, id: string, patch: { name?: string; pinned?: boolean }) => {
+  ipcMain.handle('folders:update', (_e, id: string, patch: { name?: string; pinned?: boolean; parentId?: string | null }) => {
     const folder = repo.updateFolder(id, patch)
     syncSoon()
     return folder

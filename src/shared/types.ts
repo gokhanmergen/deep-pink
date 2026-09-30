@@ -202,6 +202,8 @@ export interface Thread {
 export interface Folder {
   id: string
   name: string
+  /** The containing folder, or null at the top level. */
+  parentId: string | null
   createdAt: number
   /** Pinned to the top of the list, exactly as a thread is. */
   pinned: boolean

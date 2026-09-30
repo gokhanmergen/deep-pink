@@ -489,5 +489,12 @@ export const MIGRATIONS: string[] = [
          filed_at = MAX(filed_at, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
    WHERE json_valid(config)
      AND json_type(config, '$.docsEnabled') IS NOT NULL;
+  `,
+
+  /* 25 — folders can hold other folders */ `
+  -- Sync may deliver a child before its parent. Keep that relationship until
+  -- the parent arrives; the sidebar shows missing-parent folders at the root.
+  ALTER TABLE folders ADD COLUMN parent_id TEXT;
+  CREATE INDEX folders_parent ON folders(parent_id);
   `
 ]

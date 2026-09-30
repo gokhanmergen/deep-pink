@@ -27,6 +27,8 @@ import {
 } from 'lucide-react'
 import { ICON, ICON_LG } from '../icons'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { FolderPicker } from './FolderPicker'
+import { canMoveFolder, folderAncestors } from '@shared/folders'
 import { Logo } from './Logo'
 import { ExperimentalDot } from './Experimental'
 import { ModelIcon } from './ModelIcon'
@@ -36,6 +38,7 @@ import type { Folder, SearchHit, Thread } from '@shared/types'
 
 /** What a thread being dragged is carried as. */
 const THREAD_MIME = 'application/x-deep-pink-thread'
+const FOLDER_MIME = 'application/x-deep-pink-folder'
 
 /**
  * How many rows the list starts with, and how many it adds at a time.
@@ -319,6 +322,8 @@ interface FolderEntry {
   kind: 'folder'
   folder: Folder
   threads: Thread[]
+  children: FolderEntry[]
+  count: number
   /** When anything inside was last edited; the folder's own age when empty. */
   stamp: number
 }
@@ -383,6 +388,8 @@ export function Sidebar(): React.JSX.Element {
   const setVisibleThreads = useStore((s) => s.setVisibleThreads)
   const toggleFolder = useStore((s) => s.toggleFolder)
   const renameFolder = useStore((s) => s.renameFolder)
+  const createFolder = useStore((s) => s.createFolder)
+  const moveFolder = useStore((s) => s.moveFolder)
   const deleteFolder = useStore((s) => s.deleteFolder)
   const setFolderPinned = useStore((s) => s.setFolderPinned)
   const moveThreadToFolder = useStore((s) => s.moveThreadToFolder)
@@ -394,6 +401,8 @@ export function Sidebar(): React.JSX.Element {
   )
   /** The folder the pointer is over mid-drag, or '' for the list itself. */
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null)
+  const [folderPicker, setFolderPicker] = useState<{ x: number; y: number; thread: Thread } | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -552,15 +561,31 @@ export function Sidebar(): React.JSX.Element {
       contents.set(thread.folderId, list)
     }
 
-    const all: Entry[] = folders.map((folder) => {
+    const folderEntries = new Map<string, FolderEntry>(folders.map((folder) => {
       const inside = contents.get(folder.id) ?? []
-      return {
+      return [folder.id, {
         kind: 'folder',
         folder,
         threads: inside,
+        children: [],
+        count: inside.length,
         stamp: inside.length ? inside[0].updatedAt : folder.createdAt
-      }
-    })
+      }]
+    }))
+    const all: Entry[] = []
+    for (const entry of folderEntries.values()) {
+      const parent = entry.folder.parentId ? folderEntries.get(entry.folder.parentId) : null
+      if (parent && !folderAncestors(folders, parent.folder.id).includes(entry.folder.id)) {
+        parent.children.push(entry)
+      } else all.push(entry)
+    }
+    const summarise = (entry: FolderEntry): void => {
+      entry.children.forEach(summarise)
+      entry.count += entry.children.reduce((count, child) => count + child.count, 0)
+      entry.stamp = Math.max(entry.stamp, ...entry.children.map((child) => child.stamp))
+      entry.children.sort((a, b) => Number(b.folder.pinned) - Number(a.folder.pinned) || b.stamp - a.stamp)
+    }
+    for (const entry of all) if (entry.kind === 'folder') summarise(entry)
 
     for (const thread of loose) all.push({ kind: 'thread', thread, stamp: thread.updatedAt })
 
@@ -758,6 +783,7 @@ export function Sidebar(): React.JSX.Element {
         return
       }
       if (openFolderIds.includes(entry.folder.id)) {
+        entry.children.forEach(walk)
         for (const thread of entry.threads) ids.push(thread.id)
       }
     }
@@ -803,10 +829,15 @@ export function Sidebar(): React.JSX.Element {
   }
 
   /** Reads the dragged thread out of a drop, whichever type survived. */
-  const draggedThreadId = (event: React.DragEvent): string | null =>
-    event.dataTransfer.getData(THREAD_MIME) ||
-    event.dataTransfer.getData('text/plain') ||
-    draggingThreadId
+  const draggedThreadId = (event: React.DragEvent): string | null => {
+    if (draggingFolderId || event.dataTransfer.types.includes(FOLDER_MIME)) return null
+    const id = event.dataTransfer.getData(THREAD_MIME) || draggingThreadId ||
+      event.dataTransfer.getData('text/plain')
+    return threads.some((thread) => thread.id === id) ? id : null
+  }
+
+  const draggedFolderId = (event: React.DragEvent): string | null =>
+    event.dataTransfer.getData(FOLDER_MIME) || draggingFolderId
 
   // The button and the shortcut are the same action, so the two cannot drift.
   const runAction = (id: string): void => {
@@ -938,6 +969,23 @@ export function Sidebar(): React.JSX.Element {
           ]
         : []),
       {
+        id: 'file',
+        label: 'Add to folder…',
+        icon: <FolderPlus {...ICON} />,
+        onSelect: () => {
+          if (folders.length) {
+            if (menu) setFolderPicker({ x: menu.x, y: menu.y, thread })
+          } else {
+            void (async () => {
+              const name = await askPrompt({ title: 'New folder', placeholder: 'Folder name', confirmLabel: 'Create' })
+              if (!name?.trim()) return
+              const created = await createFolder(name)
+              if (created) await moveThreadToFolder(thread.id, created.id)
+            })()
+          }
+        }
+      },
+      {
         id: 'delete',
         label: 'Delete',
         icon: <Trash2 {...ICON} />,
@@ -961,6 +1009,23 @@ export function Sidebar(): React.JSX.Element {
   }
 
   const folderMenuItems = (folder: Folder): ContextMenuItem[] => [
+    {
+      id: 'new-subfolder',
+      label: 'New subfolder…',
+      icon: <FolderPlus {...ICON} />,
+      onSelect: () => {
+        void (async () => {
+          const name = await askPrompt({ title: `New subfolder in “${folder.name}”`, placeholder: 'Folder name', confirmLabel: 'Create' })
+          if (name?.trim()) await createFolder(name, folder.id)
+        })()
+      }
+    },
+    ...(folder.parentId ? [{
+      id: 'unfile',
+      label: 'Move to top level',
+      icon: <FolderMinus {...ICON} />,
+      onSelect: () => void moveFolder(folder.id, null)
+    }] : []),
     {
       id: 'pin',
       label: folder.pinned ? 'Unpin folder' : 'Pin folder',
@@ -994,11 +1059,13 @@ export function Sidebar(): React.JSX.Element {
       onSelect: () => {
         void (async () => {
           const inside = started.filter((t) => t.folderId === folder.id).length
+          const children = folders.filter((child) => child.parentId === folder.id).length
           const ok = await askConfirm({
             title: `Delete “${folder.name}”?`,
-            body: inside
+            body: (inside
               ? `The ${inside} thread${inside === 1 ? '' : 's'} inside return to the list. Nothing is deleted with it.`
-              : 'The folder is empty.',
+              : children ? 'No threads are directly inside this folder.' : 'The folder is empty.') +
+              (children ? ' Its subfolders move to the top level with their contents intact.' : ''),
             confirmLabel: 'Delete folder',
             danger: true
           })
@@ -1114,33 +1181,56 @@ export function Sidebar(): React.JSX.Element {
       <div
         className="folder-group"
         key={folder.id}
+        data-folder-id={folder.id}
         data-open={open}
         data-dropping={dropTarget === folder.id}
         onDragOver={(event) => {
-          if (!draggingThreadId) return
+          if (!draggingThreadId && !draggingFolderId) return
           event.preventDefault()
           event.stopPropagation()
+          if (draggingFolderId && !canMoveFolder(folders, draggingFolderId, folder.id)) {
+            event.dataTransfer.dropEffect = 'none'
+            setDropTarget(null)
+            return
+          }
           event.dataTransfer.dropEffect = 'move'
           setDropTarget(folder.id)
         }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null)
+        }}
         onDrop={(event) => {
           const threadId = draggedThreadId(event)
+          const folderId = draggedFolderId(event)
           event.preventDefault()
           event.stopPropagation()
           setDropTarget(null)
-          if (threadId) void moveThreadToFolder(threadId, folder.id)
+          if (folderId) void moveFolder(folderId, folder.id)
+          else if (threadId) void moveThreadToFolder(threadId, folder.id)
         }}
       >
         <button
           className="folder"
           data-open={open}
           aria-expanded={open}
+          draggable
+          onDragStart={(event) => {
+            event.stopPropagation()
+            event.dataTransfer.setData(FOLDER_MIME, folder.id)
+            event.dataTransfer.setData('text/plain', folder.id)
+            event.dataTransfer.effectAllowed = 'move'
+            setDraggingFolderId(folder.id)
+          }}
+          onDragEnd={() => {
+            setDraggingFolderId(null)
+            setDropTarget(null)
+          }}
           onClick={() => toggleFolder(folder.id)}
           onContextMenu={(event) => {
             event.preventDefault()
             setFolderMenu({ x: event.clientX, y: event.clientY, folder })
           }}
-          title={`${folder.name} — ${entry.threads.length} thread${entry.threads.length === 1 ? '' : 's'}`}
+          title={`${folder.name} — ${entry.count} thread${entry.count === 1 ? '' : 's'}`}
           type="button"
         >
           {open ? (
@@ -1150,15 +1240,15 @@ export function Sidebar(): React.JSX.Element {
           )}
           {folder.pinned && <Pin className="thread-item__pin" size={11} strokeWidth={2} />}
           <span className="folder__name">{folder.name}</span>
-          <span className="folder__count">{entry.threads.length}</span>
+          <span className="folder__count">{entry.count}</span>
         </button>
 
         {open && (
           <div className="folder__contents">
-            {entry.threads.length ? (
-              entry.threads.map((thread) => renderThread(thread, { inFolder: true }))
-            ) : (
-              <div className="folder__empty">Empty — drag a thread in</div>
+            {entry.children.map(renderFolder)}
+            {entry.threads.map((thread) => renderThread(thread, { inFolder: true }))}
+            {!entry.threads.length && !entry.children.length && (
+              <div className="folder__empty">Empty — drag a chat or folder in</div>
             )}
           </div>
         )}
@@ -1236,7 +1326,7 @@ export function Sidebar(): React.JSX.Element {
         data-focusing={focusing}
         data-dropping={dropTarget === ''}
         onDragOver={(event) => {
-          if (!draggingThreadId) return
+          if (!draggingThreadId && !draggingFolderId) return
           event.preventDefault()
           event.dataTransfer.dropEffect = 'move'
           setDropTarget('')
@@ -1246,9 +1336,11 @@ export function Sidebar(): React.JSX.Element {
         }}
         onDrop={(event) => {
           const threadId = draggedThreadId(event)
+          const folderId = draggedFolderId(event)
           event.preventDefault()
           setDropTarget(null)
-          if (threadId) void moveThreadToFolder(threadId, null)
+          if (folderId) void moveFolder(folderId, null)
+          else if (threadId) void moveThreadToFolder(threadId, null)
         }}
       >
         {filter.trim() ? (
@@ -1263,6 +1355,10 @@ export function Sidebar(): React.JSX.Element {
                   className="cmditem"
                   data-active={hit.threadId === activeThreadId}
                   onClick={() => void openHit(hit)}
+                  onContextMenu={(event) => {
+                    const thread = threads.find((thread) => thread.id === hit.threadId)
+                    if (thread) onThreadMenu(event, thread)
+                  }}
                   type="button"
                 >
                   <span style={{ minWidth: 0, flex: 1 }}>
@@ -1306,6 +1402,17 @@ export function Sidebar(): React.JSX.Element {
           items={folderMenuItems(folderMenu.folder)}
           onClose={() => setFolderMenu(null)}
         />
+      )}
+
+      {folderPicker && (
+        <FolderPicker x={folderPicker.x} y={folderPicker.y} folders={folders}
+          currentId={threads.find((thread) => thread.id === folderPicker.thread.id)?.folderId ?? null}
+          onClose={() => setFolderPicker(null)}
+          onChoose={(folder) => {
+            const threadId = folderPicker.thread.id
+            setFolderPicker(null)
+            void moveThreadToFolder(threadId, folder.id)
+          }} />
       )}
 
       {sync?.config.enabled && sync.ready && (

@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import type { ExportFormat } from '@shared/types'
+import { folderPath } from '@shared/folders'
 import * as attachments from '../attachments'
 import * as repo from '../db/repo'
 import {
@@ -59,7 +60,7 @@ export function markdownFor(threadId: string, appVersion: string): ExportedFile 
     contents: toMarkdown(thread, repo.getMessages(threadId), {
       appVersion,
       exportedAt: Date.now(),
-      folder: folder?.name ?? null
+      folder: folder ? folderPath(repo.listFolders(), folder.id).join(' / ') : null
     })
   }
 }
@@ -125,6 +126,7 @@ function archiveThread(threadId: string): ArchivedThread | null {
     updatedAt: thread.updatedAt,
     pinned: thread.pinned,
     folder: folder?.name ?? null,
+    ...(folder ? { folderPath: folderPath(repo.listFolders(), folder.id) } : {}),
     config: thread.config,
     messages: archived
   }

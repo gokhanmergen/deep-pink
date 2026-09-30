@@ -2,6 +2,8 @@ import { existsSync, writeFileSync } from 'node:fs'
 import type { SyncDirection, SyncScopes } from '@shared/types'
 import * as attachments from '../attachments'
 import { getDb } from '../db/index'
+import { folderAncestors } from '@shared/folders'
+import { listFolders } from '../db/repo'
 
 /**
  * The database as a set of records, and back again.
@@ -289,21 +291,29 @@ export function applyRecord(record: SyncRecord): void {
       break
     }
 
-    case 'folder':
+    case 'folder': {
+      const requestedParent = text(row['parent_id'])
+      // Keep references to parents arriving later, but refuse cycles even
+      // when independent moves from two machines would create one together.
+      const parentId = folderAncestors(listFolders(), requestedParent).includes(record.id)
+        ? null : requestedParent
       db.prepare(
-        `INSERT INTO folders (id, name, created_at, updated_at, pinned)
-         VALUES (@id, @name, @created_at, @updated_at, @pinned)
+        `INSERT INTO folders (id, name, parent_id, created_at, updated_at, pinned)
+         VALUES (@id, @name, @parent_id, @created_at, @updated_at, @pinned)
          ON CONFLICT (id) DO UPDATE SET
            name = excluded.name, created_at = excluded.created_at,
-           updated_at = excluded.updated_at, pinned = excluded.pinned`
+           updated_at = excluded.updated_at, pinned = excluded.pinned,
+           parent_id = excluded.parent_id`
       ).run({
         id: record.id,
         name: text(row['name']) ?? 'Folder',
+        parent_id: parentId,
         created_at: int(row['created_at']),
         updated_at: record.rev,
         pinned: int(row['pinned'])
       })
       break
+    }
 
     case 'attachment': {
       if (!messageExists(text(row['message_id']))) return

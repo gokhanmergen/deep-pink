@@ -21,6 +21,7 @@ import type {
   ToolCall
 } from '@shared/types'
 import { wantKeyPoint } from './keyPoint'
+import { canMoveFolder, folderAncestors } from '@shared/folders'
 
 export type Overlay =
   | null
@@ -369,7 +370,8 @@ interface State {
   retitleThread: (id: string) => Promise<void>
   refreshFolders: () => Promise<void>
   /** Creates a folder and opens it, so it is ready to be dropped into. */
-  createFolder: (name: string) => Promise<Folder | null>
+  createFolder: (name: string, parentId?: string | null) => Promise<Folder | null>
+  moveFolder: (id: string, parentId: string | null) => Promise<void>
   renameFolder: (id: string, name: string) => Promise<void>
   /** Deletes the folder. The threads it held return to the list. */
   deleteFolder: (id: string) => Promise<void>
@@ -803,6 +805,7 @@ export const useStore = create<State>((set, get) => ({
       api.sync.onChanged(() => {
         void (async () => {
           await get().refreshSettings()
+          await get().refreshFolders()
           await get().refreshThreads()
           /*
            * Re-read in place rather than reopened.
@@ -1180,13 +1183,36 @@ export const useStore = create<State>((set, get) => ({
     set({ folders: await api.folders.list() })
   },
 
-  async createFolder(name) {
-    const folder = await api.folders.create(name)
+  async createFolder(name, parentId = null) {
+    const folder = await api.folders.create(name, parentId)
     if (!folder) return null
     // Opened on creation: a new folder is empty, and an empty closed folder
     // gives no sign that the thing you just asked for exists.
-    set({ folders: [...get().folders, folder], openFolderIds: [...get().openFolderIds, folder.id] })
+    set({
+      folders: [...get().folders, folder],
+      openFolderIds: [...new Set([...get().openFolderIds, folder.id, ...folderAncestors(get().folders, parentId)])]
+    })
     return folder
+  },
+
+  async moveFolder(id, parentId) {
+    const current = get().folders.find((folder) => folder.id === id)
+    if (!current || current.parentId === parentId || !canMoveFolder(get().folders, id, parentId)) return
+    set({
+      folders: get().folders.map((folder) => folder.id === id ? { ...folder, parentId } : folder),
+      openFolderIds: [...new Set([...get().openFolderIds, ...folderAncestors(get().folders, parentId)])]
+    })
+    try {
+      const updated = await api.folders.update(id, { parentId })
+      if (!updated) {
+        await get().refreshFolders()
+        return
+      }
+      set({ folders: get().folders.map((folder) => folder.id === id ? updated : folder) })
+    } catch {
+      await get().refreshFolders()
+      get().showToast('Could not move the folder', 'error')
+    }
   },
 
   async renameFolder(id, name) {
@@ -1198,7 +1224,7 @@ export const useStore = create<State>((set, get) => ({
   async deleteFolder(id) {
     await api.folders.remove(id)
     set({
-      folders: get().folders.filter((f) => f.id !== id),
+      folders: await api.folders.list(),
       openFolderIds: get().openFolderIds.filter((open) => open !== id)
     })
     // The threads it held are still there, now carrying no folder.
@@ -1230,10 +1256,7 @@ export const useStore = create<State>((set, get) => ({
       threads: get().threads.map((t) => (t.id === threadId ? { ...t, folderId } : t)),
       // Dropping into a shut folder opens it, so the thread is not seen to
       // vanish on being filed.
-      openFolderIds:
-        folderId && !get().openFolderIds.includes(folderId)
-          ? [...get().openFolderIds, folderId]
-          : get().openFolderIds
+      openFolderIds: [...new Set([...get().openFolderIds, ...folderAncestors(get().folders, folderId)])]
     })
 
     const updated = await api.threads.setFolder(threadId, folderId)

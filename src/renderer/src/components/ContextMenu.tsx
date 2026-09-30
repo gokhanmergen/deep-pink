@@ -66,6 +66,18 @@ export function ContextMenu({ x, y, items, above = false, onClose }: Props): Rea
 
   const [cursor, setCursor] = useState(0)
 
+  useEffect(() => {
+    const menu = ref.current
+    const item = menu?.querySelector<HTMLElement>('[data-active="true"]')
+    if (!menu || !item) return
+    // Scroll only this menu. scrollIntoView can also scroll the page that
+    // anchored it, which would dismiss the menu immediately on opening.
+    if (item.offsetTop < menu.scrollTop) menu.scrollTop = item.offsetTop
+    else if (item.offsetTop + item.offsetHeight > menu.scrollTop + menu.clientHeight) {
+      menu.scrollTop = item.offsetTop + item.offsetHeight - menu.clientHeight
+    }
+  }, [cursor])
+
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
@@ -77,7 +89,10 @@ export function ContextMenu({ x, y, items, above = false, onClose }: Props): Rea
 
   useEffect(() => {
     // Anything that moves the menu away from what it points at closes it.
-    const close = (): void => onClose()
+    const close = (event: Event): void => {
+      if (event.target instanceof Node && ref.current?.contains(event.target)) return
+      onClose()
+    }
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         event.stopPropagation()
