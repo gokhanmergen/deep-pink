@@ -396,11 +396,12 @@ function keepingMachineSettings(key: string, incoming: string): string {
   const mine = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as
     | { value: string }
     | undefined
-  if (!mine) return incoming
-
   try {
-    const local = JSON.parse(mine.value) as Record<string, unknown>
     const next = JSON.parse(incoming) as Record<string, unknown>
+    // An older install may still sync this retired feature's preferences.
+    delete next.quickQuestion
+    if (!mine) return JSON.stringify(next)
+    const local = JSON.parse(mine.value) as Record<string, unknown>
 
     for (const path of MACHINE_SETTINGS) {
       const [group, name] = path.split('.')

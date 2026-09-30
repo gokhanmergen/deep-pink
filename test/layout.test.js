@@ -996,6 +996,9 @@ suite(
     await run(`[...document.querySelectorAll('.sidebar__footer .btn')]
       .find((b) => b.textContent.trim() === 'Settings').click()`)
     await settle(500)
+    const settingsTabs = await run(`[...document.querySelectorAll('.tab')].map((t) => t.textContent.trim())`)
+    check('settings still offers model preferences', settingsTabs.includes('Models'), settingsTabs)
+    check('settings no longer offers the retired popup', !settingsTabs.includes('Quick Question'), settingsTabs)
     await run(`[...document.querySelectorAll('.tab')].find((t) => t.textContent.trim() === 'Data').click()`)
     await settle(800)
 

@@ -29,7 +29,6 @@ import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
 import { getCredits, listEndpoints, listModels } from './providers/openrouter'
-import { installedLauncherPath } from './nativeLauncher'
 import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { keyPointCeiling } from '@shared/defaults'
 import { loadSettings, saveSettings } from './settings'
@@ -41,9 +40,6 @@ const MCP_STATUS_EVENT = 'mcp:status'
 const SYNC_EVENT = 'sync:event'
 const UPDATE_EVENT = 'updates:changed'
 const SYNC_PROGRESS = 'sync:progress'
-function quickQuestionLauncherPath(): string | null {
-  return installedLauncherPath()
-}
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -470,8 +466,7 @@ export function registerIpc(): void {
     chromium: process.versions.chrome,
     node: process.versions.node,
     platform: process.platform,
-    arch: process.arch,
-    quickQuestionLauncherPath: quickQuestionLauncherPath()
+    arch: process.arch
   }))
 
   /* ---------------- attached repositories ---------------- */

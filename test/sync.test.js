@@ -716,7 +716,11 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
     rev: Date.now() + 60_000,
     data: {
       key: 'settings',
-      value: JSON.stringify({ temperature: 0.2, ui: { zoomLevel: -1, fontSize: 18 } })
+      value: JSON.stringify({
+        temperature: 0.2,
+        ui: { zoomLevel: -1, fontSize: 18 },
+        quickQuestion: { keepRunning: true }
+      })
     }
   })
 
@@ -724,6 +728,21 @@ suite('sync — a bucket that is told nothing', async ({ check, section, subject
   check('the settings that arrived are taken', merged.temperature === 0.2, merged)
   check('all of them, not only the ones already here', merged.ui.fontSize === 18, merged.ui)
   check('but this window keeps its own zoom', merged.ui.zoomLevel === 2, merged.ui)
+  check('an older machine cannot restore retired popup settings', !('quickQuestion' in merged), merged)
+
+  getDb().exec("DELETE FROM settings WHERE key = 'settings'")
+  syncRecords.applyRecord({
+    kind: 'setting',
+    id: 'settings',
+    rev: Date.now() + 120_000,
+    data: {
+      key: 'settings',
+      value: JSON.stringify({ temperature: 0.3, quickQuestion: { keepRunning: true } })
+    }
+  })
+  const firstSettings = repo.getSetting('settings', {})
+  check('a first sync also drops retired popup settings', !('quickQuestion' in firstSettings), firstSettings)
+  check('other settings still arrive on first sync', firstSettings.temperature === 0.3, firstSettings)
 
   /* ---------------------------------------------------------------- */
   section('pausing')

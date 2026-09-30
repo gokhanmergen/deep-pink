@@ -24,25 +24,14 @@ function suite(suiteName, body, options = {}) {
   app.setPath('userData', tmpDir)
 
   if (options.bootApp) {
-    // The app starts its native IPC server before creating the window. Give
-    // each test its own socket, just as it has its own database.
-    const runtimeDir = path.join(tmpDir, 'runtime')
-    fs.mkdirSync(runtimeDir, { mode: 0o700 })
-    // Preserve access to the compositor while isolating the app's IPC socket.
-    if (process.env.XDG_RUNTIME_DIR && process.env.WAYLAND_DISPLAY &&
-      !path.isAbsolute(process.env.WAYLAND_DISPLAY)) {
-      fs.symlinkSync(path.join(process.env.XDG_RUNTIME_DIR, process.env.WAYLAND_DISPLAY),
-        path.join(runtimeDir, process.env.WAYLAND_DISPLAY))
-    }
-    process.env.XDG_RUNTIME_DIR = runtimeDir
     const built = path.join(__dirname, '..', '..', 'out', 'main', 'index.js')
     if (!fs.existsSync(built)) {
       console.error(`\n${RED}${suiteName} needs a build — run electron-vite build first.${RESET}`)
       app.exit(1)
       return
     }
-    // Registers its own whenReady handler first. Startup is asynchronous, so
-    // the suite also waits for its window below before seeding fixtures.
+    // Registers its own whenReady handler first. The suite waits for its
+    // window below before seeding fixtures.
     require(built)
   }
 

@@ -4,8 +4,6 @@ import { closeDb, getDb } from './db/index'
 import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
 import { registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
-import { startLocalIpc, stopLocalIpc } from './localIpc'
-import { prepareNativeLauncher } from './nativeLauncher'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
@@ -22,50 +20,9 @@ import { reportUncaught } from './report'
 reportUncaught()
 
 const isDev = !app.isPackaged
-const launchedAsNativeIpcServer = process.argv.includes('--ipc-server')
 let mainWindow: BrowserWindow | null = null
-let appIsQuitting = false
-let nativeIpcClientCount = 0
-let nativeServiceIdleTimer: NodeJS.Timeout | null = null
 let backgroundTasksStarted = false
 let canOpenWindows = false
-let pendingLaunch = false
-
-function scheduleNativeServiceExit(delay: number): void {
-  if (nativeServiceIdleTimer) clearTimeout(nativeServiceIdleTimer)
-  nativeServiceIdleTimer = null
-  if (
-    appIsQuitting ||
-    process.platform !== 'linux' ||
-    nativeIpcClientCount > 0 ||
-    loadSettings().quickQuestion.keepRunning ||
-    (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible())
-  ) {
-    return
-  }
-
-  nativeServiceIdleTimer = setTimeout(() => {
-    nativeServiceIdleTimer = null
-    if (
-      !appIsQuitting &&
-      process.platform === 'linux' &&
-      nativeIpcClientCount === 0 &&
-      !loadSettings().quickQuestion.keepRunning &&
-      (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible())
-    ) {
-      app.quit()
-    }
-  }, delay)
-}
-
-function nativeIpcClientCountChanged(count: number): void {
-  nativeIpcClientCount = count
-  if (nativeServiceIdleTimer) {
-    clearTimeout(nativeServiceIdleTimer)
-    nativeServiceIdleTimer = null
-  }
-  if (count === 0) scheduleNativeServiceExit(300)
-}
 
 function startBackgroundTasks(): void {
   if (backgroundTasksStarted) return
@@ -100,13 +57,6 @@ function createWindow(): BrowserWindow {
   })
   mainWindow = win
 
-  // In background mode the close button means "put the main window away".
-  win.on('close', (event) => {
-    if (!appIsQuitting && loadSettings().quickQuestion.keepRunning) {
-      event.preventDefault()
-      win.hide()
-    }
-  })
   win.on('closed', () => {
     if (mainWindow === win) {
       mainWindow = null
@@ -170,10 +120,6 @@ function createWindow(): BrowserWindow {
 }
 
 function openMainWindow(): void {
-  if (nativeServiceIdleTimer) {
-    clearTimeout(nativeServiceIdleTimer)
-    nativeServiceIdleTimer = null
-  }
   startBackgroundTasks()
   const win = createWindow()
   if (win.isMinimized()) win.restore()
@@ -192,19 +138,12 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 }
 
-app.on('second-instance', (_event, commandLine) => {
-  // The native popup starts the Electron service on demand. If this process
-  // already owns the single-instance lock, its IPC socket is already the only
-  // thing the second process needs to discover.
-  if (commandLine.includes('--ipc-server')) return
-  if (!canOpenWindows) {
-    pendingLaunch = true
-    return
-  }
+app.on('second-instance', () => {
+  if (!canOpenWindows) return
   openMainWindow()
 })
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   // Open the database first — everything else assumes migrations have run.
   getDb()
 
@@ -236,34 +175,9 @@ app.whenReady().then(async () => {
   if (orphans) console.log(`Removed ${orphans} orphaned attachment file(s).`)
 
   registerIpc()
-  if (process.platform === 'linux') {
-    try {
-      await startLocalIpc({
-        openMainWindow,
-        onClientCountChange: nativeIpcClientCountChanged
-      })
-    } catch (error) {
-      console.error('Could not start the Deep Pink local IPC socket:', error)
-      if (launchedAsNativeIpcServer) {
-        app.quit()
-        return
-      }
-    }
-    // Settings can immediately show the window-manager binding, so copy the
-    // helper before exposing the main window instead of racing the settings UI.
-    await prepareNativeLauncher().catch((error) => {
-      console.error('Could not prepare the native Quick Question launcher:', error)
-    })
-  }
   canOpenWindows = true
-  if (pendingLaunch || !launchedAsNativeIpcServer) createWindow()
-  pendingLaunch = false
-  if (launchedAsNativeIpcServer) scheduleNativeServiceExit(30_000)
-
-  // Keep a launcher-only process lean. If it later opens the main window,
-  // these services start there; ordinary starts still defer them until after
-  // the first paint.
-  if (!launchedAsNativeIpcServer) startBackgroundTasks()
+  createWindow()
+  startBackgroundTasks()
 
   app.on('activate', () => {
     openMainWindow()
@@ -271,32 +185,15 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  // A native popup may still be connected after its user opens and closes the
-  // full app. Keep the IPC host alive until that client disconnects; the idle
-  // handler will quit it when background mode is off.
-  if (launchedAsNativeIpcServer) {
-    scheduleNativeServiceExit(300)
-    return
-  }
-  // If a GTK popup is still using this process, let its request finish. The
-  // last client disconnect schedules the normal idle shutdown.
-  if (process.platform === 'linux' && nativeIpcClientCount > 0) return
-  if (!appIsQuitting && loadSettings().quickQuestion.keepRunning) return
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', async () => {
-  appIsQuitting = true
-  if (nativeServiceIdleTimer) {
-    clearTimeout(nativeServiceIdleTimer)
-    nativeServiceIdleTimer = null
-  }
   // First, and synchronously: an async handler does not hold the app open, so
   // anything awaited before this may simply not happen. A temporary chat has to
   // be gone before the database closes, not merely scheduled to be.
   deleteTemporaryThreads()
 
-  await stopLocalIpc().catch(() => undefined)
   await mcp.disconnectAll().catch(() => undefined)
   await shutdownRepoWorker().catch(() => undefined)
   closeDb()

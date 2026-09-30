@@ -496,5 +496,14 @@ export const MIGRATIONS: string[] = [
   -- the parent arrives; the sidebar shows missing-parent folders at the root.
   ALTER TABLE folders ADD COLUMN parent_id TEXT;
   CREATE INDEX folders_parent ON folders(parent_id);
+  `,
+
+  /* 26 — remove the retired Quick Question settings */ `
+  UPDATE settings
+     SET value = json_remove(value, '$.quickQuestion'),
+         updated_at = MAX(updated_at + 1, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER))
+   WHERE key = 'settings'
+     AND json_valid(value)
+     AND json_type(value, '$.quickQuestion') IS NOT NULL;
   `
 ]

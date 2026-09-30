@@ -4,6 +4,7 @@
  */
 export { getDb } from '@/db/index'
 export { MIGRATIONS } from '@/db/schema'
+export { loadSettings, saveSettings } from '@/settings'
 export * as repo from '@/db/repo'
 export { streamChat, OpenRouterError } from '@/providers/openrouter'
 export { shouldCompact, toChatParams, sendMessage, reasoningFor } from '@/chat/engine'

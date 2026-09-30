@@ -1,7 +1,7 @@
 const { suite } = require('./support/harness')
 
 suite('storage — threads, messages, search, stats', async ({ check, section, subject, tmpDir }) => {
-  const { getDb, repo, shouldCompact, DEFAULT_SETTINGS } = subject
+  const { getDb, repo, shouldCompact, DEFAULT_SETTINGS, loadSettings, saveSettings, MIGRATIONS } = subject
   getDb()
 
   section('threads and messages')
@@ -906,6 +906,33 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   repo.setSetting('probe', { nested: { value: 7 } })
   check('settings survive a round trip', repo.getSetting('probe', null).nested.value === 7)
   check('missing settings fall back', repo.getSetting('absent', 'fallback') === 'fallback')
+
+  section('upgrading from Quick Question')
+  const previousSettings = repo.getSetting('settings', {})
+  repo.setSetting('settings', {
+    temperature: 0.7,
+    quickQuestion: { keepRunning: true, model: 'test/retired' }
+  })
+  const upgraded = loadSettings()
+  check('old popup preferences are absent when settings are loaded', !('quickQuestion' in upgraded))
+  check('other preferences survive the upgrade', upgraded.temperature === 0.7)
+  saveSettings({ temperature: 0.6, quickQuestion: { keepRunning: true } })
+  const savedUpgrade = repo.getSetting('settings', {})
+  check('saving also drops preferences sent by an older caller', !('quickQuestion' in savedUpgrade))
+  check('the requested preference is still saved', savedUpgrade.temperature === 0.6)
+
+  repo.setSetting('settings', { temperature: 0.7, quickQuestion: { keepRunning: true } })
+  const futureRevision = Date.now() + 60_000
+  getDb().prepare("UPDATE settings SET updated_at = ? WHERE key = 'settings'").run(futureRevision)
+  getDb().exec(MIGRATIONS[25])
+  const migratedSettings = repo.getSetting('settings', {})
+  check('migration removes saved popup settings without needing a save', !('quickQuestion' in migratedSettings))
+  check('migration keeps unrelated preferences', migratedSettings.temperature === 0.7)
+  check(
+    'the cleanup advances the revision even with a future timestamp',
+    getDb().prepare("SELECT updated_at FROM settings WHERE key = 'settings'").get().updated_at > futureRevision
+  )
+  repo.setSetting('settings', previousSettings)
 
   section('how full the context is, and when that means compacting')
   /*

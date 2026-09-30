@@ -33,7 +33,7 @@
       };
 
       # `nix develop` — everything `just dev`, `just test` and
-      # `just package-linux` need, including the GTK development files.
+      # `just package-linux` need, including the Electron runtime and display tools.
       devShells = forSystems devSystems (pkgs: {
         default = pkgs.mkShell {
           packages = [
@@ -47,11 +47,9 @@
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.electron
             pkgs.gtk3
-            pkgs.gtk-layer-shell
             # What encrypted key storage is built on here; macOS has the
             # Keychain and needs nothing installed.
             pkgs.libsecret
-            pkgs.pkg-config
             # The suites that boot the real window need a display; on a
             # headless machine, `xvfb-run --auto-servernum just test`.
             pkgs.xvfb-run

@@ -28,11 +28,12 @@ function alreadyExperimenting(stored: Partial<Settings>): boolean {
 
 /** Stored settings merged over defaults, so new options appear on upgrade. */
 export function loadSettings(): Settings {
-  const raw = getSetting<Partial<Settings> & { docsEnabled?: unknown }>(KEY, {})
-  // Older settings can still carry this removed feature's switch. Drop it as
+  const raw = getSetting<Partial<Settings> & { docsEnabled?: unknown; quickQuestion?: unknown }>(KEY, {})
+  // Older settings can still carry retired features. Drop these fields as
   // the settings are read so the next save also removes it from storage.
-  const { docsEnabled: _legacyDocsEnabled, ...stored } = raw
+  const { docsEnabled: _legacyDocsEnabled, quickQuestion: _legacyQuickQuestion, ...stored } = raw
   void _legacyDocsEnabled
+  void _legacyQuickQuestion
   const keybinds = { ...DEFAULT_KEYBINDS, ...stored.keybinds }
   delete keybinds['docs.toggle']
   return {
@@ -48,7 +49,6 @@ export function loadSettings(): Settings {
     modelProviderRouting: stored.modelProviderRouting ?? {},
     web: { ...DEFAULT_SETTINGS.web, ...stored.web },
     compaction: { ...DEFAULT_SETTINGS.compaction, ...stored.compaction },
-    quickQuestion: { ...DEFAULT_SETTINGS.quickQuestion, ...stored.quickQuestion },
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...stored.ui,
@@ -60,7 +60,12 @@ export function loadSettings(): Settings {
   }
 }
 
-export function saveSettings(patch: SettingsPatch): Settings {
+export function saveSettings(input: SettingsPatch): Settings {
+  // Ignore this field if an older caller still sends it.
+  const { quickQuestion: _legacyQuickQuestion, ...patch } = input as SettingsPatch & {
+    quickQuestion?: unknown
+  }
+  void _legacyQuickQuestion
   const current = loadSettings()
   const next: Settings = {
     ...current,
@@ -69,7 +74,6 @@ export function saveSettings(patch: SettingsPatch): Settings {
     modelProviderRouting: patch.modelProviderRouting ?? current.modelProviderRouting,
     web: { ...current.web, ...patch.web },
     compaction: { ...current.compaction, ...patch.compaction },
-    quickQuestion: { ...current.quickQuestion, ...patch.quickQuestion },
     ui: {
       ...current.ui,
       ...patch.ui,

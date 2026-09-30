@@ -11,10 +11,6 @@ files:
   - package.json
   - '!**/*.map'
 
-extraResources:
-  - from: build/native
-    to: native
-
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
 
@@ -101,7 +97,6 @@ pacman:
     - c-ares
     - ffmpeg
     - gtk3
-    - gtk-layer-shell
     - libevent
     - libvpx
     - libxslt
@@ -116,7 +111,6 @@ pacman:
 deb:
   depends:
     - libgtk-3-0
-    - libgtk-layer-shell0
     - libnotify4
     - libnss3
     - libxss1
@@ -128,7 +122,6 @@ deb:
 rpm:
   depends:
     - libsecret
-    - gtk-layer-shell
 
 mac:
   category: public.app-category.productivity

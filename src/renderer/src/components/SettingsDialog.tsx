@@ -15,7 +15,6 @@ import {
   Sparkles,
   Trash2,
   Cpu,
-  Zap,
   Undo2,
   X
 } from 'lucide-react'
@@ -61,10 +60,6 @@ interface TabDef {
   experimental?: boolean
 }
 
-function shellQuoteArg(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`
-}
-
 /**
  * The sections, down the side.
  *
@@ -76,7 +71,6 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     tabs: [
       { id: 'account', label: 'Account', icon: <KeyRound {...ICON} /> },
       { id: 'models', label: 'Models', icon: <Cpu {...ICON} /> },
-      { id: 'quickQuestion', label: 'Quick Question', icon: <Zap {...ICON} /> },
       { id: 'prompts', label: 'Prompts', icon: <MessageSquareText {...ICON} /> }
     ]
   },
@@ -1094,94 +1088,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             <p className="field__hint">
               Off, the trace is not sent back. It is still done and still billed — to stop paying
               for it, ask for less of it above.
-            </p>
-          </>
-        )}
-
-        {tab === 'quickQuestion' && (
-          <>
-            <div className="section-title">
-              Quick Question model
-              <Revert path="quickQuestion.model" what="the Quick Question model" />
-            </div>
-            <div className="field">
-              <div className="row">
-                <button
-                  className="btn"
-                  onClick={() => setOverlay('quickQuestionModel', 'settings')}
-                  type="button"
-                >
-                  {modelShortName(settings.quickQuestion.model)}
-                </button>
-              </div>
-            </div>
-
-            <div className="section-title">
-              Prompt
-              <Revert path="quickQuestion.systemPrompt" what="the Quick Question prompt" />
-            </div>
-            <div className="field">
-              <DebouncedTextarea
-                className="textarea"
-                rows={6}
-                value={settings.quickQuestion.systemPrompt}
-                onCommit={(next) => void saveSettings({ quickQuestion: { systemPrompt: next } })}
-              />
-              <p className="field__hint">
-                Quick Question adds a fixed one-paragraph limit after these instructions.
-              </p>
-            </div>
-
-            <div className="section-title">Web access</div>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={settings.quickQuestion.webAccessEnabled}
-                onChange={(event) =>
-                  void saveSettings({
-                    quickQuestion: { webAccessEnabled: event.target.checked }
-                  })
-                }
-              />
-              <span>Enable web access by default</span>
-              <Revert
-                path="quickQuestion.webAccessEnabled"
-                what="Quick Question web access"
-              />
-            </label>
-            <p className="field__hint">
-              Uses the search backend selected in Web access settings.
-            </p>
-
-            <div className="section-title">Launcher</div>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={settings.quickQuestion.keepRunning}
-                onChange={(event) =>
-                  void saveSettings({ quickQuestion: { keepRunning: event.target.checked } })
-                }
-              />
-              <span>Keep Quick Question running in the background</span>
-              <Revert path="quickQuestion.keepRunning" what="background Quick Question" />
-            </label>
-            <p className="field__hint">
-              {settings.quickQuestion.keepRunning
-                ? 'The model service stays available after you close the main window. '
-                : 'Turn this on to keep the model service available after closing the main window. '}
-              {info?.platform === 'linux' && info.quickQuestionLauncherPath ? (
-                <>
-                  Bind your window manager shortcut to{' '}
-                  <code className="mono">
-                    {shellQuoteArg(info.quickQuestionLauncherPath)}
-                  </code>
-                  . This opens the native popup directly.
-                </>
-              ) : info?.platform === 'linux' ? (
-                <>The native popup launcher is unavailable in this build.</>
-              ) : info ? (
-                <>The native popup launcher is currently available on Linux only.</>
-              ) : null}
             </p>
           </>
         )}

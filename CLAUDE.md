@@ -16,7 +16,7 @@ whole app, so a full pass ties this machine up for a long time. I run them in
 the cloud.
 
 Verify with `just typecheck` and `just build`, which catch what can be caught
-locally. `just build` compiles the GTK launcher on Linux. Write and update tests
+locally. Write and update tests
 as part of the work — just do not execute them, and say plainly in the summary
 that they were written but not run.
 

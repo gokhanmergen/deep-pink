@@ -299,7 +299,6 @@ export function App(): React.JSX.Element {
       {overlay === 'defaultModel' && <ModelPicker mode="default" onClose={close} />}
       {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}
       {overlay === 'keyPointModel' && <ModelPicker mode="keyPoint" onClose={close} />}
-      {overlay === 'quickQuestionModel' && <ModelPicker mode="quickQuestion" onClose={close} />}
       {overlay === 'pregenTitleModel' && <ModelPicker mode="pregenTitle" onClose={close} />}
       {overlay === 'compareModelLeft' && <ModelPicker mode="compareLeft" onClose={close} />}
       {overlay === 'compareModelRight' && <ModelPicker mode="compareRight" onClose={close} />}

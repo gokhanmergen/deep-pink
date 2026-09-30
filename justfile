@@ -9,7 +9,7 @@ install:
 install-ci:
     pnpm install --frozen-lockfile
 
-dev: launcher
+dev:
     pnpm dev
 
 preview: build
@@ -24,15 +24,11 @@ test:
 version kind:
     pnpm version {{kind}}
 
-launcher:
-    bash scripts/build-native-launcher.sh
-
-# Build the app and, on Linux, compile its native GTK Quick Question popup.
+# Build the app.
 build:
     pnpm run build
-    if [[ "$(uname -s)" == "Linux" ]]; then just launcher; fi
 
-# Build all Linux packages with the GTK launcher included.
+# Build all Linux packages.
 package-linux: build
     pnpm exec electron-builder --linux
 
@@ -42,4 +38,3 @@ package-mac arch="arm64":
 
 clean:
     rm -rf out release
-    rm -f build/native/deep-pink-launcher

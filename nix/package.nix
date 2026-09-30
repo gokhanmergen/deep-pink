@@ -6,12 +6,10 @@
   electron,
   fetchPnpmDeps,
   gtk3,
-  gtk-layer-shell,
   just,
   makeDesktopItem,
   makeWrapper,
   nodejs,
-  pkg-config,
   pnpmConfigHook,
   pnpm_11,
 }:
@@ -61,8 +59,6 @@ stdenv.mkDerivation (finalAttrs: {
       ../.npmrc
       ../electron.vite.config.ts
       ../justfile
-      ../native/launcher.c
-      ../scripts/build-native-launcher.sh
       ../tsconfig.json
       ../tsconfig.node.json
       ../tsconfig.web.json
@@ -88,7 +84,6 @@ stdenv.mkDerivation (finalAttrs: {
     copyDesktopItems
     makeWrapper
     nodejs
-    pkg-config
     pnpmConfigHook
     pnpm_11
     just
@@ -96,7 +91,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   # What the prebuilt SQLite binding links against. Without it the app starts,
   # fails to open its database and never draws a window.
-  buildInputs = [ (lib.getLib stdenv.cc.cc) gtk3 gtk-layer-shell ];
+  buildInputs = [ (lib.getLib stdenv.cc.cc) gtk3 ];
 
   __structuredAttrs = true;
   strictDeps = true;
@@ -132,8 +127,6 @@ stdenv.mkDerivation (finalAttrs: {
 
     mkdir -p $out/share/deep-pink
     cp -r out node_modules package.json $out/share/deep-pink/
-    mkdir -p $out/share/deep-pink/build
-    cp -r build/native $out/share/deep-pink/build/
 
     # `--inherit-argv0` so the process is called what the launcher called it,
     # and the Wayland flags only when the session is actually Wayland: XWayland
@@ -141,7 +134,6 @@ stdenv.mkDerivation (finalAttrs: {
     makeWrapper ${electron}/bin/electron $out/bin/deep-pink \
       --inherit-argv0 \
       --add-flags $out/share/deep-pink \
-      --set DEEP_PINK_EXECUTABLE $out/bin/deep-pink \
       --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations}}"
 
     # Named for the app id, which is also what Electron reports as its

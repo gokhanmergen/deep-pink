@@ -19,7 +19,6 @@ interface Props {
     | 'pregenTitle'
     | 'default'
     | 'keyPoint'
-    | 'quickQuestion'
     | 'compareLeft'
     | 'compareRight'
   onClose: () => void
@@ -80,9 +79,6 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     case 'default':
       current = settings?.defaultModel
       break
-    case 'quickQuestion':
-      current = settings?.quickQuestion.model
-      break
     case 'chat':
       current = thread?.config.model ?? settings?.defaultModel
       break
@@ -106,8 +102,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     title: 'Model for generating thread names…',
     pregenTitle: 'Model for the first name, written from the question…',
     default: 'Model that new threads start with…',
-    keyPoint: 'Search models…',
-    quickQuestion: 'Model for Quick Question…'
+    keyPoint: 'Search models…'
   }[mode]
 
   const filtered = useMemo(() => {
@@ -154,9 +149,6 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     } else if (mode === 'keyPoint') {
       await saveSettings({ keyPointModel: modelId })
       showToast(`Key sentences will be picked by ${modelShortName(modelId)}`)
-    } else if (mode === 'quickQuestion') {
-      await saveSettings({ quickQuestion: { model: modelId } })
-      showToast(`Quick Question will use ${modelShortName(modelId)}`)
     } else if (mode === 'title') {
       await saveSettings({ titleModel: modelId })
       showToast(`Thread names will use ${modelShortName(modelId)}`)
