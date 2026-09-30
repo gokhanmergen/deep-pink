@@ -527,13 +527,13 @@ export interface McpServerStatus {
 
 export interface WebSearchSettings {
   enabled: boolean
-  /** 'openrouter' uses OpenRouter's :online plugin; 'searxng' hits a self-hosted instance. */
-  engine: 'openrouter' | 'searxng' | 'duckduckgo'
+  /** Local metasearch needs no service or key. 'duckduckgo' is a legacy alias for 'local'. */
+  engine: 'local' | 'openrouter' | 'searxng' | 'duckduckgo'
   searxngUrl: string
   maxResults: number
   /** Max characters of fetched page text handed back to the model. */
   fetchCharLimit: number
-  /** Domains the fetch tool will refuse. */
+  /** Domains excluded from search results and refused by the fetch tool. */
   blockedDomains: string[]
 }
 

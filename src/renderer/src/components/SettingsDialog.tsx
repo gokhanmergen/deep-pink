@@ -1152,10 +1152,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   })
                 }
               >
-                <option value="duckduckgo">DuckDuckGo (free, no key)</option>
-                <option value="searxng">SearXNG (your own instance)</option>
+                <option value="local">Built-in private search (free, automatic fallback)</option>
+                <option value="searxng">SearXNG + built-in fallback</option>
                 <option value="openrouter">OpenRouter web plugin (billed per search)</option>
               </select>
+              {settings.web.engine === 'local' && (
+                <p className="field__hint">
+                  Searches Brave, DuckDuckGo and Bing from this device, with automatic fallback.
+                  No account, API key or separate service needed. Requests send your search query
+                  and IP address, without cookies or chat history. Results are cached in memory
+                  until you close the app; older results are clearly marked if live search fails.
+                </p>
+              )}
             </div>
 
             {settings.web.engine === 'searxng' && (
@@ -1166,6 +1174,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   value={settings.web.searxngUrl}
                   onCommit={(next) => void saveSettings({ web: { searxngUrl: next } })}
                 />
+                <p className="field__hint">
+                  Use your own instance with the JSON search format enabled. A local instance
+                  can use http://localhost:8888. If it is slow, unavailable or returns too few results, search automatically
+                  falls back to Brave, DuckDuckGo and Bing directly from this device.
+                </p>
               </div>
             )}
 

@@ -37,7 +37,7 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 
 - Web access and charts share one **Extras** menu in the composer rather than a button each. They are the settings you change least — once a thread is set up you do not touch them again — and between them they were taking more of the composer than the box you type into. The button says how many are on, which is the part worth seeing at a glance.
 
-- Web search and web fetch as toggleable tools — per thread or globally. Backends: DuckDuckGo, your own SearXNG instance, or OpenRouter's `:online` plugin. Off by default.
+- Web search and web fetch as toggleable tools — per thread or globally. Free built-in metasearch combines Brave and DuckDuckGo with Bing fallback, without an API key or extra service. Timeouts, provider cooldowns and an in-memory cache keep individual outages from stopping search. Your own SearXNG instance is optional; OpenRouter's billed plugin remains an explicit choice. Off by default. [Search behavior and research](docs/web-search.md).
 - Full MCP support over stdio and streamable HTTP. Per-server tool toggles, and per-call approval prompts so nothing runs without you saying yes.
 - Context compaction: when a thread approaches the model's context window, the older part is replaced by a summary. The gauge under the title fills as the window does and offers to compact when it is time; turn confirmation off in Settings › Compaction and it happens by itself, before the turn goes out. The threshold, the prompt and the model are all yours to set; the original messages stay in the database. How full the window is comes from what the provider counted on the last turn, not from a guess — and a turn that came *before* a compaction is not counted, because measuring a conversation that has since been summarised away is what makes a thread compact itself over and over.
 
@@ -310,7 +310,7 @@ The app contacts exactly three kinds of host, all of them at your instruction:
 
 1. **OpenRouter**, to list models and run completions.
 2. **MCP servers** you configure — local processes or URLs you supply.
-3. **The web**, only when web access is on and only for the searches and fetches the model makes. Loopback, link-local and private addresses are always refused.
+3. **The web**, only when web access is on and only for the searches and fetches the model makes. Built-in search sends queries from your device to search engines without cookies, credentials, referrers or chat history. The search cache stays in memory, never on disk or in sync. Queries and result snippets become part of your chat transcript, including optional encrypted chat sync, and are sent to the chat model when it uses the search tool. Loopback, link-local and private addresses are refused for page fetches and excluded from search results; a SearXNG instance you configure may use a local address.
 
 There is no telemetry, no crash reporting and no update check. The one thing that does identify anything is app attribution to OpenRouter — the header that puts a client on their public leaderboards. It names the app and its repository, never you, and it is on by default; Settings › Account turns it off and requests go out anonymously from then on.
 

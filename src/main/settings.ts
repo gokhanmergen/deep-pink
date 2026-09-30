@@ -47,7 +47,11 @@ export function loadSettings(): Settings {
       ...stored.defaultProviderRouting
     },
     modelProviderRouting: stored.modelProviderRouting ?? {},
-    web: { ...DEFAULT_SETTINGS.web, ...stored.web },
+    web: {
+      ...DEFAULT_SETTINGS.web,
+      ...stored.web,
+      engine: stored.web?.engine === 'duckduckgo' ? 'local' : stored.web?.engine ?? DEFAULT_SETTINGS.web.engine
+    },
     compaction: { ...DEFAULT_SETTINGS.compaction, ...stored.compaction },
     ui: {
       ...DEFAULT_SETTINGS.ui,
@@ -72,7 +76,11 @@ export function saveSettings(input: SettingsPatch): Settings {
     ...patch,
     defaultProviderRouting: { ...current.defaultProviderRouting, ...patch.defaultProviderRouting },
     modelProviderRouting: patch.modelProviderRouting ?? current.modelProviderRouting,
-    web: { ...current.web, ...patch.web },
+    web: {
+      ...current.web,
+      ...patch.web,
+      engine: patch.web?.engine === 'duckduckgo' ? 'local' : patch.web?.engine ?? current.web.engine
+    },
     compaction: { ...current.compaction, ...patch.compaction },
     ui: {
       ...current.ui,

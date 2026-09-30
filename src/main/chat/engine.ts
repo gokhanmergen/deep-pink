@@ -581,7 +581,8 @@ async function executeToolCall(
   settings: Settings,
   emit: Emit,
   repoPaths: string[] = [],
-  skills: Skill[] = []
+  skills: Skill[] = [],
+  signal?: AbortSignal
 ): Promise<ToolResult> {
   const startedAt = Date.now()
 
@@ -680,8 +681,8 @@ async function executeToolCall(
     if (call.name === 'web_search' || call.name === 'web_fetch') {
       const content =
         call.name === 'web_search'
-          ? await runWebSearch(args as { query?: string; max_results?: number }, settings.web)
-          : await runWebFetch(args as { url?: string; max_chars?: number }, settings.web)
+          ? await runWebSearch(args as { query?: string; max_results?: number }, settings.web, signal)
+          : await runWebFetch(args as { url?: string; max_chars?: number }, settings.web, signal)
 
       repo.recordToolInvocation({
         threadId,
@@ -1252,8 +1253,10 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
           settings,
           emit,
           thread.config.repoPaths ?? [],
-          skillsFor(thread, settings)
+          skillsFor(thread, settings),
+          controller.signal
         )
+        if (controller.signal.aborted) return
         const toolMessage = repo.insertMessage({
           threadId: thread.id,
           role: 'tool',
