@@ -20,7 +20,7 @@ export const DEFAULT_PROVIDER_ROUTING: ProviderRouting = {
 
 export const DEFAULT_WEB_SETTINGS: WebSearchSettings = {
   enabled: false,
-  engine: 'duckduckgo',
+  engine: 'local',
   searxngUrl: 'http://localhost:8888',
   maxResults: 5,
   fetchCharLimit: 20000,
