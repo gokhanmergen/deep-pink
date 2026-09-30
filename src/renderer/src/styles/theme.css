@@ -808,16 +808,8 @@ svg.lucide {
   margin: 0;
 }
 
-.skill .field,
-.skill .disclosure {
+.skill .field {
   margin: 0;
-}
-
-/* Instructions run long, and a skill is a card rather than a page: the body
-   scrolls inside the card instead of pushing everything below it away. */
-.skill .disclosure__content pre {
-  max-height: 260px;
-  overflow: auto;
 }
 
 .sidebar__footer .icon {
@@ -1716,6 +1708,55 @@ svg.lucide {
 
 .revert:focus-visible {
   opacity: 1;
+}
+
+.reply-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s2);
+  margin-bottom: var(--s5);
+}
+
+.reply-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px var(--s2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: var(--t-small);
+  font-weight: var(--w-ui);
+  transition: background var(--quick), border-color var(--quick), color var(--quick);
+}
+
+.reply-option:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.reply-option svg {
+  flex: none;
+  opacity: 0;
+}
+
+.reply-option[aria-pressed='true'] {
+  border-color: var(--accent-line);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.reply-option[aria-pressed='true'] svg {
+  opacity: 1;
+}
+
+@container panel (max-width: 740px) {
+  .reply-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* A field that belongs to the switch above it — indented so it reads as part

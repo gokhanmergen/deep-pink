@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import {
+  Check,
   Database,
   Pause,
   Play,
@@ -37,11 +38,7 @@ import type {
   SyncScopes
 } from '@shared/types'
 import {
-  BUILT_IN,
   asSkillName,
-  builtInById,
-  skillCatalogue,
-  toSkill,
   whyUnusable,
   type CustomSkill
 } from '@shared/skills'
@@ -50,7 +47,6 @@ import {
   REASONING_LABELS,
   type ReasoningMode
 } from '@shared/reasoning'
-import { CHARTS_PROMPT } from '@shared/charts'
 
 interface TabDef {
   id: Tab
@@ -396,88 +392,34 @@ function SkillsTab({
   const patch = (key: string, fields: Partial<CustomSkill>): void =>
     writeCustom(now().map((skill) => (skill.key === key ? { ...skill, ...fields } : skill)))
 
-  /** What is actually offered, which is what the catalogue is built from. */
-  const offered = [
-    ...(settings.chartsEnabled ? BUILT_IN : []),
-    ...custom.filter((skill) => skill.enabled && !whyUnusable(skill, custom)).map(toSkill)
-  ]
-  const catalogue = skillCatalogue(offered)
-  const heldOpen = offered.reduce((sum, skill) => sum + skill.instructions.length, 0)
-
   return (
     <>
       <div className="section-title">
         Skills
         <Experimental />
       </div>
-      <p className="field__hint">
-        A skill is a set of instructions the model does not have until it asks. Each needs a few
-        hundred tokens before a model can use it, and that text used to sit in the system prompt of
-        every turn for as long as the feature was switched on — which is why the only way to use
-        one was to turn it on when you wanted it and off when you did not. A model with a page of
-        chart grammar in front of it draws charts; with none it cannot draw one where a chart is
-        obviously right. Neither of those is the model judging the question.
-      </p>
-      <label className="switch">
-        <input
-          type="checkbox"
-          checked={settings.skillsOnDemand}
-          onChange={(event) => void saveSettings({ skillsOnDemand: event.target.checked })}
-        />
-        <span>Let the model ask for a skill when it wants one</span>
-        <Revert path="skillsOnDemand" what="how skills load" />
-      </label>
-      <p className="field__hint">
-        {settings.skillsOnDemand
-          ? 'The prompt carries one line per skill saying when it is worth having. The model calls load_skill for the rest if it decides this is one of those times, which costs a round trip and shows in the transcript as a step you can open.'
-          : 'Every switched-on skill has its full instructions in front of the model on every turn. No round trip, and no decision either.'}
-      </p>
+      <div className="field">
+        <FieldLabel path="skillsOnDemand" what="how skills load">Load instructions</FieldLabel>
+        <select
+          className="select"
+          aria-label="Load instructions"
+          value={settings.skillsOnDemand ? 'on-demand' : 'every-turn'}
+          onChange={(event) => void saveSettings({ skillsOnDemand: event.target.value === 'on-demand' })}
+        >
+          <option value="on-demand">On demand</option>
+          <option value="every-turn">Every turn</option>
+        </select>
+      </div>
 
       <div className="section-title">Built in</div>
-      <p className="field__hint">
-        The chart skill has a renderer behind it, so it cannot be edited, only switched. The
-        renderer still draws valid chart fences when this switch is off; the switch controls
-        whether the model is invited to make them.
-      </p>
-
       <SkillCard
         title="Charts"
         on={settings.chartsEnabled}
         onToggle={(next) => void saveSettings({ chartsEnabled: next })}
         revert={<Revert path="chartsEnabled" what="charts" />}
-      >
-        <p className="field__hint">{builtInById('charts')?.when}</p>
-        <div className="row row--wrap">
-          {['line', 'area', 'bar', 'column', 'scatter'].map((kind) => (
-            <span className="chip mono" key={kind}>
-              {kind}
-            </span>
-          ))}
-        </div>
-        <details className="disclosure">
-          <summary className="disclosure__summary">
-            <span className="chip">instructions</span>
-            <span>
-              {Math.ceil(CHARTS_PROMPT.length / 4).toLocaleString()}{' '}
-              {settings.skillsOnDemand ? 'tokens, and only once it asks' : 'tokens per turn'}
-            </span>
-          </summary>
-          <div className="disclosure__content">
-            <pre>{CHARTS_PROMPT}</pre>
-          </div>
-        </details>
-      </SkillCard>
+      />
 
-      <div className="section-title">Written here</div>
-      <p className="field__hint">
-        House style, the shape of a commit message, the format a report has to arrive in, the six
-        things to check before answering about the rota. The instructions people paste into a
-        system prompt and then carry on every turn forever — here they cost a line until the model
-        decides the question is one of those.
-      </p>
-
-      {custom.length === 0 && <p className="field__hint dim">None yet.</p>}
-
+      <div className="section-title">Custom skills</div>
       {custom.map((skill) => {
         const why = whyUnusable(skill, custom)
         const open = editing === skill.key
@@ -493,7 +435,7 @@ function SkillsTab({
             on={skill.enabled}
             onToggle={(next) => patch(skill.key, { enabled: next })}
           >
-            {!open && <p className="field__hint">{skill.when || 'No line yet.'}</p>}
+            {!open && skill.when && <p className="field__hint">{skill.when}</p>}
             <div className="row">
               <button
                 className="btn btn--ghost"
@@ -518,61 +460,39 @@ function SkillsTab({
             {open && (
               <>
                 <div className="field">
-                  <span className="field__label">What the model calls it</span>
+                  <span className="field__label">Name</span>
                   <DebouncedInput
                     className="input mono"
                     value={skill.name}
                     placeholder="commit_message"
                     onCommit={(next: string) => patch(skill.key, { name: next })}
                   />
-                  <p className="field__hint">
-                    Lowercase and no spaces, because it is an enum value the model picks from.
-                    Typed as <code>{skill.name || '…'}</code>, offered as{' '}
-                    <code>{asSkillName(skill.name) || '…'}</code>.
-                  </p>
                 </div>
-
                 <div className="field">
-                  <span className="field__label">When it is worth using</span>
+                  <span className="field__label">When to use</span>
                   <DebouncedTextarea
                     className="input"
                     rows={3}
                     value={skill.when}
-                    placeholder="Worth it when… Not worth it when…"
+                    placeholder="Use this skill when…"
                     onCommit={(next: string) => patch(skill.key, { when: next })}
                   />
-                  {/*
-                    * The only part that is always in context, which makes it
-                    * the whole of the judgement being asked for. A skill
-                    * described only by what it can do is one that gets used
-                    * because it exists.
-                    */}
-                  <p className="field__hint">
-                    The one line that is always in the prompt. Say when not to use it as well as
-                    when to — that is the part that stops it being used simply because it is there.
-                  </p>
                 </div>
-
                 <div className="field">
-                  <span className="field__label">The instructions</span>
+                  <span className="field__label">Instructions</span>
                   <DebouncedTextarea
                     className="input"
                     rows={10}
                     value={skill.instructions}
-                    placeholder="Everything the model needs once it has decided to use this."
+                    placeholder="Instructions for the model."
                     onCommit={(next: string) => patch(skill.key, { instructions: next })}
                   />
-                  <p className="field__hint">
-                    {Math.ceil(skill.instructions.length / 4).toLocaleString()} tokens, handed over
-                    when it asks.
-                  </p>
                 </div>
               </>
             )}
           </SkillCard>
         )
       })}
-
       <div className="row">
         <button
           className="btn"
@@ -584,34 +504,9 @@ function SkillsTab({
           type="button"
         >
           <Plus {...ICON} />
-          Write a skill
+          Add skill
         </button>
       </div>
-
-      <div className="section-title">What the model is told</div>
-      <details className="disclosure">
-        <summary className="disclosure__summary">
-          <span className="chip">system prompt</span>
-          <span>
-            {settings.skillsOnDemand ? (
-              <>
-                about {Math.ceil(catalogue.length / 4).toLocaleString()} tokens per turn, against{' '}
-                {Math.ceil(heldOpen / 4).toLocaleString()} held open
-              </>
-            ) : (
-              <>about {Math.ceil(heldOpen / 4).toLocaleString()} tokens per turn</>
-            )}
-          </span>
-        </summary>
-        <div className="disclosure__content">
-          <pre>
-            {settings.skillsOnDemand
-              ? catalogue || 'Nothing — no skill is switched on.'
-              : offered.map((skill) => skill.instructions).join('\n\n') ||
-                'Nothing — no skill is switched on.'}
-          </pre>
-        </div>
-      </details>
     </>
   )
 }
@@ -1156,14 +1051,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 <option value="searxng">SearXNG + built-in fallback</option>
                 <option value="openrouter">OpenRouter web plugin (billed per search)</option>
               </select>
-              {settings.web.engine === 'local' && (
-                <p className="field__hint">
-                  Searches Brave, DuckDuckGo and Bing from this device, with automatic fallback.
-                  No account, API key or separate service needed. Requests send your search query
-                  and IP address, without cookies or chat history. Results are cached in memory
-                  until you close the app; older results are clearly marked if live search fails.
-                </p>
-              )}
             </div>
 
             {settings.web.engine === 'searxng' && (
@@ -1175,9 +1062,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   onCommit={(next) => void saveSettings({ web: { searxngUrl: next } })}
                 />
                 <p className="field__hint">
-                  Use your own instance with the JSON search format enabled. A local instance
-                  can use http://localhost:8888. If it is slow, unavailable or returns too few results, search automatically
-                  falls back to Brave, DuckDuckGo and Bing directly from this device.
+                  Enable the JSON search format on your instance.
                 </p>
               </div>
             )}
@@ -1832,12 +1717,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span>Hide experimental features</span>
               <Revert path="hideExperimental" what="hiding the experimental features" />
             </label>
-            <p className="field__hint">
-              Web access, charts, the key point, MCP servers, reading a
-              repository and syncing to a bucket. Hidden means off as well as out of sight —
-              each keeps its own settings, so turning this back off returns everything to how
-              you left it.
-            </p>
 
             <div className="section-title">Interface</div>
             <div className="field">
@@ -1975,31 +1854,39 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               </span>
               <Revert path="ui.animations" what="animation" />
             </label>
-            <div className="section-title">Under a reply</div>
-            {(
-              [
-                ['cost', 'What it cost'],
-                ['took', 'How long it took'],
-                ['speed', 'How fast it wrote'],
-                ['start', 'How long before it started'],
-                ['sent', 'Tokens sent'],
-                ['back', 'Tokens in the reply'],
-                ['thinking', 'Tokens spent thinking'],
-                ['cached', 'Tokens served from cache']
-              ] as const
-            ).map(([key, label]) => (
-              <label className="switch" key={key}>
-                <input
-                  type="checkbox"
-                  checked={settings.ui.replyChips[key]}
-                  onChange={(event) =>
-                    void saveSettings({ ui: { replyChips: { [key]: event.target.checked } } })
+            <div className="section-title">
+              Under a reply
+              <Revert path="ui.replyChips" what="reply statistics" format={() => 'the default selection'} />
+            </div>
+            <div className="reply-options" role="group" aria-label="Reply statistics">
+              {(
+                [
+                  ['cost', 'Cost', 'What it cost'],
+                  ['took', 'Duration', 'How long it took'],
+                  ['speed', 'Speed', 'How fast it wrote'],
+                  ['start', 'Latency', 'How long before it started'],
+                  ['sent', 'Sent tokens', 'Tokens sent'],
+                  ['back', 'Reply tokens', 'Tokens in the reply'],
+                  ['thinking', 'Thinking tokens', 'Tokens spent thinking'],
+                  ['cached', 'Cached tokens', 'Tokens served from cache']
+                ] as const
+              ).map(([key, label, description]) => (
+                <button
+                  className="reply-option"
+                  key={key}
+                  type="button"
+                  aria-label={description}
+                  aria-pressed={settings.ui.replyChips[key]}
+                  title={description}
+                  onClick={() =>
+                    void saveSettings({ ui: { replyChips: { [key]: !settings.ui.replyChips[key] } } })
                   }
-                />
-                <span>{label}</span>
-                <Revert path={`ui.replyChips.${key}`} what={`“${label.toLowerCase()}”`} />
-              </label>
-            ))}
+                >
+                  <Check size={14} strokeWidth={2} aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
 
             <div className="section-title">Loading</div>
             <label className="switch">
