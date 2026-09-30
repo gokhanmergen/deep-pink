@@ -2169,7 +2169,8 @@ function routeToPane(event: StreamEvent, set: Setter, get: Getter): boolean {
 const threadOfMessage = new Map<string, string>()
 
 /**
- * What each working thread has emitted, counted as it arrives.
+ * What each working thread has emitted as answer text, counted as it arrives.
+ * Reasoning is kept in the transcript but excluded from the sidebar figures.
  *
  * Kept outside the store on purpose: this is written on every delta, and the
  * store is what the sidebar watches. The ticker below is what moves it across.
@@ -2263,15 +2264,13 @@ function runReconciler(set: Setter, get: Getter): void {
   }, RECONCILE_EVERY)
 }
 
-/** Counts what a delta added, wherever it is going. */
+/** Counts answer text, whichever thread the delta belongs to. */
 function countDelta(event: StreamEvent, set: Setter, get: Getter): void {
-  if (event.type !== 'content' && event.type !== 'reasoning') return
+  if (event.type !== 'content') return
   const threadId = threadOfMessage.get(event.messageId)
   if (!threadId) return
 
   const run = emitted.get(threadId)
-  // Reasoning counts: it is tokens the model produced and tokens you paid for,
-  // even though none of it is the answer.
   if (run) run.chars += event.delta.length
   else emitted.set(threadId, { chars: event.delta.length, startedAt: Date.now() })
   runStatsTicker(set, get)

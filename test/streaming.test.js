@@ -257,8 +257,19 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   emit({ type: 'start', messageId: 'a1', threadId: 't1' })
   await settle(60)
 
+  emit({ type: 'reasoning', messageId: 'a1', delta: 'Thinking through the answer.' })
+  await settle(350)
+  check('reasoning alone leaves the sidebar token count at zero', state().liveStats.t1?.tokens === 0,
+    state().liveStats.t1)
+
   emit({ type: 'content', messageId: 'a1', delta: '1. Install ' })
   emit({ type: 'content', messageId: 'a1', delta: 'via Mason' })
+  emit({ type: 'reasoning', messageId: 'a1', delta: ' More thinking.' })
+  await settle(350)
+  check('the sidebar counts only answer tokens when reasoning and text are interleaved',
+    state().liveStats.t1?.tokens === 5, state().liveStats.t1)
+  check('reasoning still appears in the transcript',
+    state().messages.find((m) => m.id === 'a1').reasoning === 'Thinking through the answer. More thinking.')
 
   const painted = state().messages
   check('exactly one assistant bubble exists', painted.filter((m) => m.id === 'a1').length === 1,
@@ -305,6 +316,12 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   await settle(30)
   check('a different thread does not paint here', state().messages.length === before,
     state().messages.map((m) => m.id))
+  emit({ type: 'reasoning', messageId: 'other', delta: 'Background reasoning.' })
+  emit({ type: 'content', messageId: 'other', delta: 'Answer text.' })
+  await settle(350)
+  check('a background thread also counts only answer tokens in the sidebar',
+    state().liveStats['some-other-thread']?.tokens === 3, state().liveStats['some-other-thread'])
+  emit({ type: 'aborted', messageId: 'other', threadId: 'some-other-thread' })
 
   /**
    * Away and back again, which is what reopening means now.
