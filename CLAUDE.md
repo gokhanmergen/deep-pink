@@ -1,13 +1,11 @@
 # Working in this repo
 
-## Never push unless asked
+## Push changes by default
 
-Commit as much as you like. **Do not `git push` unless I have asked for it in
-that message.** Not when the work looks finished, not when the tests pass, not
-because the last thing I asked for was a push. Every push is a separate
-instruction.
-
-If you think something ought to go out, say so and stop.
+After completing changes and the required local checks, **commit and push them
+every time.** This is standing authorization; no separate push request or
+confirmation is needed. Follow any explicit instruction to leave a particular
+change unpushed.
 
 ## Never run the test suites here
 
