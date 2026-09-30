@@ -164,7 +164,7 @@ function ServerEditor({
               </div>
               <div className="field">
                 <div className="spread">
-                  <span className="field__label">CA certificate (optional)</span>
+                  <span className="field__label">Trusted certificate (optional)</span>
                   <button className="btn btn--ghost" type="button" onClick={async () => {
                     try {
                       const pem = await window.deepPink.mcp.importCertificate()
@@ -182,9 +182,10 @@ function ServerEditor({
                   onCommit={(next) => onChange({ caCertificate: next.trim() || null })}
                 />
                 <span className="field__hint">
-                  Trust a local server’s PEM CA certificate for this connection.
-                  For Obsidian, export the CA certificate from the Local REST API settings
-                  and use https://127.0.0.1:27124/mcp/ as the URL.
+                  Import a public PEM CA or server certificate for this connection.
+                  For Obsidian, use https://127.0.0.1:27124/mcp/. If its CA reports
+                  “unsupported name constraint type”, import the public crypto.cert value
+                  from the plugin’s data.json as a PEM file. A regenerated server certificate must be imported again.
                 </span>
               </div>
             </>

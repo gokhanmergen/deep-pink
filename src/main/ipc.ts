@@ -424,7 +424,7 @@ export function registerIpc(): void {
   ipcMain.handle('mcp:disconnect', (_e, id: string) => mcp.disconnect(id))
   ipcMain.handle('mcp:importCertificate', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      title: 'Import the MCP server’s CA certificate',
+      title: 'Import the MCP server’s trusted certificate',
       properties: ['openFile'],
       filters: [{ name: 'PEM certificate', extensions: ['pem', 'crt', 'cer'] }]
     })

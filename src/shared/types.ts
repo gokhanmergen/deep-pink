@@ -483,7 +483,7 @@ export interface McpServerConfig {
   /** http */
   url: string | null
   headers: Record<string, string>
-  /** Optional PEM CA certificate trusted only for this server's HTTPS origin. */
+  /** Optional PEM CA or pinned server certificate, scoped to this HTTPS origin. */
   caCertificate?: string | null
   enabled: boolean
   /**

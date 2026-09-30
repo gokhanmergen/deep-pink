@@ -294,7 +294,9 @@ Open Settings (`Ctrl/⌘ ,`), paste an [OpenRouter key](https://openrouter.ai/ke
 
 ### Connecting Obsidian over MCP
 
-With **Local REST API with MCP** enabled in Obsidian, add an HTTP server in Deep Pink’s MCP panel. Use `https://127.0.0.1:27124/mcp/` (adjust the port if you changed it), and add a header as `Authorization=Bearer YOUR_API_KEY` using the key shown by the plugin. Export the plugin’s CA certificate and import that public certificate in the server’s **CA certificate** field. The certificate is trusted only for this server, and hostname verification stays enabled.
+With **Local REST API with MCP** enabled in Obsidian, add an HTTP server in Deep Pink’s MCP panel. Use `https://127.0.0.1:27124/mcp/` (adjust the port if you changed it), and add a header as `Authorization=Bearer YOUR_API_KEY` using the key shown by the plugin. Import a public certificate in the server’s **Trusted certificate** field. The certificate is trusted only for this server, and hostname verification stays enabled.
+
+Electron cannot validate the IP name constraints in some Obsidian CA certificates, reporting **unsupported name constraint type**. In that case, import the server certificate instead: save the public `crypto.cert` value from `<vault>/.obsidian/plugins/obsidian-local-rest-api/data.json` as a PEM file and import it. Deep Pink trusts only that exact server certificate, checks the hostname and expiration, and keeps TLS verification enabled. If Obsidian regenerates its server certificate, import the replacement. Do not import or share `privateKey`, `caPrivateKey`, or the API key.
 
 Enable the server and check that its tools appear. Keep the server selected for the thread where you want to use it. Editing authentication headers or the certificate reconnects automatically. HTTP servers can use bearer keys or custom headers; browser OAuth sign-in is not supported yet.
 

@@ -98,6 +98,35 @@ suite('MCP — authentication, discovery, lifecycle and certificate trust', asyn
     const redacted = mcpHttp.connectionError(new Error('key secret-key failed'), { Authorization: 'Bearer secret-key' })
     check('transport errors do not expose a saved bearer key', !redacted.includes('secret-key'), redacted)
 
+    section('Obsidian-style constrained CA and a pinned server certificate')
+    const caKey = path.join(tmpDir, 'constrained-ca.key')
+    const caPath = path.join(tmpDir, 'constrained-ca.crt')
+    const leafKey = path.join(tmpDir, 'leaf.key')
+    const leafCsr = path.join(tmpDir, 'leaf.csr')
+    const leafPath = path.join(tmpDir, 'leaf.crt')
+    const leafExt = path.join(tmpDir, 'leaf.ext')
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+      '-subj', '/CN=Constrained local CA', '-addext', 'basicConstraints=critical,CA:TRUE',
+      '-addext', 'nameConstraints=critical,permitted;IP:127.0.0.1/255.255.255.255,permitted;DNS:localhost',
+      '-keyout', caKey, '-out', caPath], { stdio: 'ignore' })
+    execFileSync('openssl', ['req', '-new', '-newkey', 'rsa:2048', '-nodes',
+      '-subj', '/CN=Local server', '-keyout', leafKey, '-out', leafCsr], { stdio: 'ignore' })
+    fs.writeFileSync(leafExt, 'basicConstraints=critical,CA:FALSE\nsubjectAltName=IP:127.0.0.1\nextendedKeyUsage=serverAuth\n')
+    execFileSync('openssl', ['x509', '-req', '-in', leafCsr, '-CA', caPath, '-CAkey', caKey,
+      '-CAcreateserial', '-days', '1', '-extfile', leafExt, '-out', leafPath], { stdio: 'ignore' })
+    const leaf = fs.readFileSync(leafPath, 'utf8')
+    const constrained = await mcpServer({ key: fs.readFileSync(leafKey), cert: leaf + fs.readFileSync(caPath, 'utf8') })
+    fixtures.push(constrained)
+    const pinned = mcp.createServer({ name: 'Pinned local server', transport: 'http', url: constrained.url,
+      caCertificate: leaf, enabled: true, headers: { Authorization: 'Bearer first-test-key' } })
+    const pinnedStatus = await mcp.connect(pinned.id)
+    check('the exact server certificate works under Electron with a constrained issuer', pinnedStatus.state === 'connected', pinnedStatus)
+    check('a pinned connection supports authenticated tool calls', !(await mcp.callTool(pinnedStatus.tools[0].qualifiedName, {})).isError)
+    await mcp.updateServer(pinned.id, { caCertificate: cert })
+    check('a different imported certificate cannot authenticate the server', status(pinned.id).state === 'error', status(pinned.id))
+    const constraintError = mcpHttp.connectionError(new Error('unsupported name constraint type'), {})
+    check('the runtime constraint error explains which certificate to import', /server certificate instead/.test(constraintError), constraintError)
+
     section('stdio remains usable')
     const local = mcp.createServer({ name: 'Process fixture', command: process.execPath,
       args: [path.join(__dirname, 'support', 'mcp-stdio-server.js')],

@@ -1,6 +1,7 @@
 import { X509Certificate } from 'node:crypto'
 import { request } from 'node:https'
 import { Readable } from 'node:stream'
+import { checkServerIdentity } from 'node:tls'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 
 export function validateCertificate(pem: string): void {
@@ -8,7 +9,7 @@ export function validateCertificate(pem: string): void {
     if (/PRIVATE KEY/.test(pem)) throw new Error('private key')
     new X509Certificate(pem)
   } catch {
-    throw new Error('Invalid CA certificate. Import a PEM certificate, not a private key.')
+    throw new Error('Invalid certificate. Import a PEM certificate, not a private key.')
   }
 }
 
@@ -18,6 +19,11 @@ export function serverFetch(endpoint: URL, caCertificate?: string | null): Fetch
   if (!ca) return (url, init) => fetch(url, { ...init, redirect: 'error' })
   if (endpoint.protocol !== 'https:') throw new Error('A CA certificate requires an HTTPS URL.')
   validateCertificate(ca)
+  const certificate = new X509Certificate(ca)
+  // Electron's BoringSSL cannot validate some CA name constraints (including
+  // Obsidian's IP constraint). Explicitly importing the server certificate
+  // trusts that exact leaf instead, without disabling TLS verification.
+  const pinnedLeaf = certificate.ca ? null : certificate
 
   return async (input, init = {}) => {
     const url = new URL(input)
@@ -36,7 +42,18 @@ export function serverFetch(endpoint: URL, caCertificate?: string | null): Fetch
         method: init.method ?? 'GET',
         headers: Object.fromEntries(headers),
         ca,
+        allowPartialTrustChain: Boolean(pinnedLeaf),
         rejectUnauthorized: true,
+        ...(pinnedLeaf ? {
+          checkServerIdentity: (hostname: string, peer: Parameters<typeof checkServerIdentity>[1]) => {
+            const mismatch = checkServerIdentity(hostname, peer)
+            if (mismatch) return mismatch
+            if (!peer.raw?.equals(pinnedLeaf.raw)) {
+              return new Error('The MCP server certificate does not match the imported certificate. Import its current server certificate.')
+            }
+            return undefined
+          }
+        } : {}),
         // Do not share a pooled connection with another server's trust policy.
         agent: false,
         signal: init.signal ?? undefined
@@ -76,7 +93,9 @@ export function connectionError(error: unknown, headers: Record<string, string>)
   }
   let message = error instanceof Error ? error.message : String(error)
   if ([...codes].some((code) => /SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER/.test(code))) {
-    message = 'The HTTPS certificate is not trusted. Import this server’s CA certificate in its MCP settings.'
+    message = 'The HTTPS certificate is not trusted. Import this server’s CA or server certificate in its MCP settings.'
+  } else if (codes.has('UNSUPPORTED_CONSTRAINT_TYPE') || /unsupported name constraint type/i.test(message)) {
+    message = 'Electron cannot validate this CA certificate’s name constraints. Import the server certificate instead of the CA certificate. For Obsidian, use the public crypto.cert certificate from the plugin’s data.json file.'
   } else if (codes.has('ERR_TLS_CERT_ALTNAME_INVALID')) {
     message = 'The HTTPS certificate does not match the URL hostname. For Obsidian, use https://127.0.0.1:27124/mcp/ rather than localhost.'
   } else if (codes.has('ECONNREFUSED')) {
