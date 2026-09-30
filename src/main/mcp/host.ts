@@ -1,7 +1,13 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import {
+  ToolListChangedNotificationSchema,
+  ResourceListChangedNotificationSchema,
+  PromptListChangedNotificationSchema
+} from '@modelcontextprotocol/sdk/types.js'
+import { connectionError, serverFetch } from './http'
 import type { McpServerConfig, McpServerStatus, McpToolInfo } from '@shared/types'
 import type { ToolParam } from '../providers/openrouter'
 import { deleteMcpServer, listMcpServers, upsertMcpServer } from '../db/repo'
@@ -14,6 +20,7 @@ import { deleteMcpServer, listMcpServers, upsertMcpServer } from '../db/repo'
 interface Connection {
   config: McpServerConfig
   client: Client | null
+  transport: StdioClientTransport | StreamableHTTPClientTransport | null
   state: McpServerStatus['state']
   error: string | null
   instructions: string | null
@@ -34,19 +41,37 @@ function notify(): void {
   onStatusChange?.()
 }
 
-/** Function names must match ^[a-zA-Z0-9_-]{1,64}$ for the model API. */
-function sanitize(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 24)
+/** Keep model API names valid without merging distinct long or punctuated names. */
+function sanitize(name: string, limit: number): string {
+  const clean = name.replace(/[^a-zA-Z0-9_-]/g, '_')
+  if (clean === name && clean.length <= limit && clean) return clean
+  const hash = createHash('sha256').update(name).digest('hex').slice(0, 8)
+  return `${clean.slice(0, limit - 9)}_${hash}`
 }
 
-export function qualifiedToolName(serverName: string, toolName: string): string {
-  return `${sanitize(serverName)}__${sanitize(toolName).slice(0, 38)}`
+export function qualifiedToolName(serverName: string, toolName: string, serverId?: string): string {
+  const server = serverId ? `${serverName}_${serverId}` : serverName
+  return `${sanitize(server, 24)}__${sanitize(toolName, 38)}`
+}
+
+// An edited key, a reconnect, and a disable can arrive in successive IPC calls.
+// Apply them in order so an old handshake cannot overwrite the newer config.
+const operations = new Map<string, Promise<unknown>>()
+function serial<T>(serverId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = operations.get(serverId) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(operation)
+  operations.set(serverId, next)
+  void next.finally(() => {
+    if (operations.get(serverId) === next) operations.delete(serverId)
+  }).catch(() => undefined)
+  return next
 }
 
 function blankConnection(config: McpServerConfig): Connection {
   return {
     config,
     client: null,
+    transport: null,
     state: 'disconnected',
     error: null,
     instructions: null,
@@ -77,112 +102,201 @@ export async function connectAll(): Promise<void> {
   )
 }
 
-export async function connect(serverId: string): Promise<McpServerStatus> {
+export function connect(serverId: string): Promise<McpServerStatus> {
+  return serial(serverId, () => connectNow(serverId))
+}
+
+async function connectNow(serverId: string): Promise<McpServerStatus> {
+  loadServers()
   const existing = connections.get(serverId)
   if (!existing) throw new Error(`Unknown MCP server: ${serverId}`)
 
-  await disconnect(serverId)
-
-  const config = existing.config
-  const conn = blankConnection(config)
+  await disconnectNow(serverId)
+  const conn = blankConnection(existing.config)
+  const config = conn.config
   conn.state = 'connecting'
   connections.set(serverId, conn)
   notify()
 
-  try {
-    const client = new Client(
-      // Servers see this in their logs; a hardcoded version would go stale.
-      { name: 'deep-pink', version: __APP_VERSION__ },
-      { capabilities: {} }
-    )
+  const client = new Client(
+    { name: 'deep-pink', version: __APP_VERSION__ },
+    { capabilities: {} }
+  )
+  // Hold the client before awaiting initialization, so failures can close it.
+  conn.client = client
+  client.onclose = () => {
+    if (conn.client !== client) return
+    conn.client = null
+    conn.transport = null
+    conn.state = 'error'
+    conn.error ??= 'The MCP connection closed. Start the server and reconnect.'
+    clearInventory(conn)
+    notify()
+  }
+  client.onerror = (error) => {
+    if (conn.client !== client) return
+    conn.error = connectionError(error, config.headers)
+    notify()
+  }
 
+  try {
     if (config.transport === 'stdio') {
       if (!config.command) throw new Error('No command configured for this stdio server.')
       const transport = new StdioClientTransport({
         command: config.command,
         args: config.args,
         cwd: config.cwd ?? undefined,
-        env: {
-          // Inherit the user's environment so servers find their own tooling,
-          // then layer the per-server overrides on top.
-          ...(process.env as Record<string, string>),
-          ...config.env
-        },
-        stderr: 'pipe'
+        env: { ...(process.env as Record<string, string>), ...config.env },
+        // Drain stderr rather than allowing a verbose server to fill its pipe
+        // and stop responding. Server logs may contain secrets, so discard it.
+        stderr: 'ignore'
       })
-      await client.connect(transport)
+      conn.transport = transport
+      await client.connect(transport, { timeout: 15_000 })
     } else {
       if (!config.url) throw new Error('No URL configured for this HTTP server.')
-      const transport = new StreamableHTTPClientTransport(new URL(config.url), {
-        requestInit: { headers: config.headers }
+      const url = new URL(config.url)
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        throw new Error('MCP URLs must use HTTP or HTTPS.')
+      }
+      const transport = new StreamableHTTPClientTransport(url, {
+        requestInit: { headers: config.headers },
+        fetch: serverFetch(url, config.caCertificate)
       })
-      await client.connect(transport)
+      conn.transport = transport
+      await client.connect(transport, { timeout: 15_000 })
     }
 
-    conn.client = client
-    conn.state = 'connected'
-    conn.connectedAt = Date.now()
     conn.instructions = client.getInstructions() ?? null
-
     await refreshInventory(conn)
+    if (conn.client !== client) throw new Error('The MCP connection closed during discovery.')
+    conn.state = 'connected'
+    conn.error = null
+    conn.connectedAt = Date.now()
+
+    const refresh = async (): Promise<void> => {
+      try {
+        await refreshInventory(conn)
+        if (conn.client !== client) return
+        conn.error = null
+        notify()
+      } catch (error) {
+        if (conn.client !== client) return
+        conn.error = connectionError(error, config.headers)
+        conn.state = 'error'
+        conn.client = null
+        clearInventory(conn)
+        await closeClient(client, conn.transport)
+        conn.transport = null
+        notify()
+      }
+    }
+    client.setNotificationHandler(ToolListChangedNotificationSchema, refresh)
+    client.setNotificationHandler(ResourceListChangedNotificationSchema, refresh)
+    client.setNotificationHandler(PromptListChangedNotificationSchema, refresh)
     notify()
     return toStatus(conn)
-  } catch (err) {
+  } catch (error) {
     conn.state = 'error'
-    conn.error = err instanceof Error ? err.message : String(err)
+    conn.error = connectionError(error, config.headers)
     conn.client = null
+    clearInventory(conn)
+    await closeClient(client, conn.transport)
+    conn.transport = null
     notify()
     return toStatus(conn)
   }
+}
+
+/** Retrieve every page, while refusing a broken server's cursor loop. */
+async function pages<T>(list: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string }>): Promise<T[]> {
+  const result: T[] = []
+  const seen = new Set<string>()
+  let cursor: string | undefined
+  do {
+    const page = await list(cursor)
+    result.push(...page.items)
+    cursor = page.nextCursor
+    if (cursor) {
+      if (seen.has(cursor)) throw new Error('The MCP server repeated a discovery page cursor.')
+      seen.add(cursor)
+    }
+  } while (cursor)
+  return result
 }
 
 async function refreshInventory(conn: Connection): Promise<void> {
   const client = conn.client
   if (!client) return
-
-  try {
-    const { tools } = await client.listTools()
-    conn.tools = tools.map((tool) => ({
-      serverId: conn.config.id,
-      serverName: conn.config.name,
-      name: tool.name,
-      qualifiedName: qualifiedToolName(conn.config.name, tool.name),
-      description: tool.description ?? '',
-      inputSchema: tool.inputSchema,
-      enabled: !conn.config.disabledTools.includes(tool.name)
-    }))
-  } catch {
-    conn.tools = []
-  }
-
-  // Resources and prompts are counted for display only; nothing is read unless
-  // the user explicitly attaches it.
-  try {
-    conn.resourceCount = (await client.listResources()).resources.length
-  } catch {
-    conn.resourceCount = 0
-  }
-  try {
-    conn.promptCount = (await client.listPrompts()).prompts.length
-  } catch {
-    conn.promptCount = 0
-  }
+  const capabilities = client.getServerCapabilities()
+  const options = { timeout: 15_000 }
+  // Unsupported methods need not be probed, and a failed advertised inventory
+  // must not become a green "connected" indicator with silently missing tools.
+  const [tools, resources, prompts] = await Promise.all([
+    capabilities?.tools ? pages(async (cursor) => {
+      const result = await client.listTools(cursor ? { cursor } : undefined, options)
+      return { items: result.tools, nextCursor: result.nextCursor }
+    }) : [],
+    capabilities?.resources ? pages(async (cursor) => {
+      const result = await client.listResources(cursor ? { cursor } : undefined, options)
+      return { items: result.resources, nextCursor: result.nextCursor }
+    }) : [],
+    capabilities?.prompts ? pages(async (cursor) => {
+      const result = await client.listPrompts(cursor ? { cursor } : undefined, options)
+      return { items: result.prompts, nextCursor: result.nextCursor }
+    }) : []
+  ])
+  if (conn.client !== client) return
+  conn.tools = tools.map((tool) => ({
+    serverId: conn.config.id,
+    serverName: conn.config.name,
+    name: tool.name,
+    qualifiedName: qualifiedToolName(conn.config.name, tool.name, conn.config.id),
+    description: tool.description ?? '',
+    inputSchema: tool.inputSchema,
+    enabled: !conn.config.disabledTools.includes(tool.name)
+  }))
+  conn.resourceCount = resources.length
+  conn.promptCount = prompts.length
 }
 
-export async function disconnect(serverId: string): Promise<void> {
-  const conn = connections.get(serverId)
-  if (!conn?.client) return
-
-  try {
-    await conn.client.close()
-  } catch {
-    /* the process may already be gone */
-  }
-
-  conn.client = null
-  conn.state = 'disconnected'
+function clearInventory(conn: Connection): void {
   conn.connectedAt = null
+  conn.instructions = null
   conn.tools = []
+  conn.resourceCount = 0
+  conn.promptCount = 0
+}
+
+async function closeClient(client: Client, transport: Connection['transport']): Promise<void> {
+  // Streamable HTTP close aborts the SSE listener; DELETE also releases the
+  // session on the server. A stopped server must not hold a reconnect forever.
+  if (transport instanceof StreamableHTTPClientTransport && transport.sessionId) {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      transport.terminateSession().catch(() => undefined),
+      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 3000) })
+    ])
+    if (timeout) clearTimeout(timeout)
+  }
+  await client.close().catch(() => undefined)
+}
+
+export function disconnect(serverId: string): Promise<void> {
+  return serial(serverId, () => disconnectNow(serverId))
+}
+
+async function disconnectNow(serverId: string): Promise<void> {
+  const conn = connections.get(serverId)
+  if (!conn) return
+  const client = conn.client
+  const transport = conn.transport
+  conn.client = null
+  conn.transport = null
+  conn.state = 'disconnected'
+  conn.error = null
+  clearInventory(conn)
+  if (client) await closeClient(client, transport)
   notify()
 }
 
@@ -205,6 +319,7 @@ export function createServer(input: Partial<McpServerConfig>): McpServerConfig {
     cwd: input.cwd ?? null,
     url: input.url ?? null,
     headers: input.headers ?? {},
+    caCertificate: input.caCertificate?.trim() || null,
     enabled: input.enabled ?? false,
     // Deliberately false: an MCP server cannot put text into the system prompt
     // until the user has read it and opted in.
@@ -218,10 +333,14 @@ export function createServer(input: Partial<McpServerConfig>): McpServerConfig {
   return config
 }
 
-export async function updateServer(
+export function updateServer(
   serverId: string,
   patch: Partial<McpServerConfig>
 ): Promise<McpServerConfig> {
+  return serial(serverId, () => updateServerNow(serverId, patch))
+}
+
+async function updateServerNow(serverId: string, patch: Partial<McpServerConfig>): Promise<McpServerConfig> {
   const conn = connections.get(serverId)
   if (!conn) throw new Error(`Unknown MCP server: ${serverId}`)
 
@@ -234,28 +353,37 @@ export async function updateServer(
     next.url !== conn.config.url ||
     JSON.stringify(next.args) !== JSON.stringify(conn.config.args) ||
     JSON.stringify(next.env) !== JSON.stringify(conn.config.env) ||
-    next.cwd !== conn.config.cwd
+    next.cwd !== conn.config.cwd ||
+    JSON.stringify(next.headers) !== JSON.stringify(conn.config.headers) ||
+    next.caCertificate !== conn.config.caCertificate
 
   conn.config = next
 
   // Reflect tool enable/disable immediately without a round trip.
-  conn.tools = conn.tools.map((t) => ({ ...t, enabled: !next.disabledTools.includes(t.name) }))
+  conn.tools = conn.tools.map((t) => ({
+    ...t,
+    serverName: next.name,
+    qualifiedName: qualifiedToolName(next.name, t.name, next.id),
+    enabled: !next.disabledTools.includes(t.name)
+  }))
 
   if (!next.enabled) {
-    await disconnect(serverId)
+    await disconnectNow(serverId)
   } else if (needsReconnect || conn.state !== 'connected') {
-    await connect(serverId)
+    await connectNow(serverId)
   }
 
   notify()
   return next
 }
 
-export async function removeServer(serverId: string): Promise<void> {
-  await disconnect(serverId)
-  connections.delete(serverId)
-  deleteMcpServer(serverId)
-  notify()
+export function removeServer(serverId: string): Promise<void> {
+  return serial(serverId, async () => {
+    await disconnectNow(serverId)
+    connections.delete(serverId)
+    deleteMcpServer(serverId)
+    notify()
+  })
 }
 
 /* ------------------------------------------------------------------ *
@@ -293,7 +421,7 @@ export function getInjectableInstructions(activeServerIds: string[] | null): {
   instructions: string
 }[] {
   return [...connections.values()]
-    .filter((c) => c.state === 'connected' && c.config.injectInstructions && c.instructions)
+    .filter((c) => c.state === 'connected' && c.config.enabled && c.config.injectInstructions && c.instructions)
     .filter((c) => activeServerIds === null || activeServerIds.includes(c.config.id))
     .map((c) => ({
       serverId: c.config.id,
@@ -306,7 +434,7 @@ export function getInjectableInstructions(activeServerIds: string[] | null): {
 export function getToolParams(activeServerIds: string[] | null): ToolParam[] {
   const params: ToolParam[] = []
   for (const conn of connections.values()) {
-    if (conn.state !== 'connected') continue
+    if (conn.state !== 'connected' || !conn.config.enabled) continue
     if (activeServerIds !== null && !activeServerIds.includes(conn.config.id)) continue
 
     for (const tool of conn.tools) {
@@ -326,6 +454,7 @@ export function getToolParams(activeServerIds: string[] | null): ToolParam[] {
 
 export function findTool(qualifiedName: string): { conn: Connection; tool: McpToolInfo } | null {
   for (const conn of connections.values()) {
+    if (conn.state !== 'connected' || !conn.config.enabled) continue
     const tool = conn.tools.find((t) => t.qualifiedName === qualifiedName)
     if (tool) return { conn, tool }
   }
@@ -359,6 +488,8 @@ export async function callTool(
   const result = await found.conn.client.callTool({
     name: found.tool.name,
     arguments: args
+  }).catch((error) => {
+    throw new Error(connectionError(error, found.conn.config.headers))
   })
 
   const blocks = (result.content ?? []) as { type: string; text?: string; [k: string]: unknown }[]
@@ -375,7 +506,7 @@ export async function callTool(
     .join('\n')
 
   return {
-    content: text || '(the tool returned no content)',
+    content: text || (result.structuredContent ? JSON.stringify(result.structuredContent) : '(the tool returned no content)'),
     isError: Boolean(result.isError),
     serverId: found.conn.config.id,
     toolName: found.tool.name

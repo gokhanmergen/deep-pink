@@ -206,6 +206,7 @@ const api = {
     remove: (id: string): Promise<void> => ipcRenderer.invoke('mcp:delete', id),
     connect: (id: string): Promise<McpServerStatus> => ipcRenderer.invoke('mcp:connect', id),
     disconnect: (id: string): Promise<void> => ipcRenderer.invoke('mcp:disconnect', id),
+    importCertificate: (): Promise<string | null> => ipcRenderer.invoke('mcp:importCertificate'),
 
     onStatus: (listener: (statuses: McpServerStatus[]) => void): (() => void) => {
       const handler = (_e: unknown, payload: McpServerStatus[]): void => listener(payload)

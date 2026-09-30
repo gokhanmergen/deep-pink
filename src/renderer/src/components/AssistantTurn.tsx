@@ -197,7 +197,9 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
     if (!element) return
 
     if (!wanted.length) {
-      setStrokes([])
+      // Streaming text has no marks. Keep the existing empty array so each
+      // delta does not schedule another render just to clear nothing.
+      setStrokes((current) => current.length ? [] : current)
       return
     }
 
@@ -222,13 +224,27 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
       const shape = JSON.stringify(next)
       if (shape === last) return
       last = shape
-      setStrokes(next)
+      // The observer is recreated when the reply changes. Compare against the
+      // actual state too, so a new observer cannot repeat an identical update.
+      setStrokes((current) => JSON.stringify(current) === shape ? current : next)
     }
     redraw()
 
-    const observer = new ResizeObserver(redraw)
+    // A resize can arrive while React is committing streamed text. Queue one
+    // later task instead of setting state inside that layout notification.
+    let pending: ReturnType<typeof setTimeout> | null = null
+    const observer = new ResizeObserver(() => {
+      if (pending !== null) return
+      pending = setTimeout(() => {
+        pending = null
+        redraw()
+      }, 0)
+    })
     observer.observe(element)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (pending !== null) clearTimeout(pending)
+    }
     // A fresh array every render, so the sentences themselves are the key.
   }, [wanted.join('\u0000'), message.content])
 

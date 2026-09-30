@@ -37,6 +37,7 @@ function ServerEditor({
   onRemove: () => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
+  const showToast = useStore((s) => s.showToast)
 
   return (
     <div className="list-card">
@@ -156,6 +157,35 @@ function ServerEditor({
                   value={stringifyEnv(config.headers)}
                   onCommit={(next) => onChange({ headers: parseEnv(next) })}
                 />
+                <span className="field__hint">
+                  For a bearer key, use Authorization=Bearer followed by your key.
+                  These headers are sent on every MCP request. Browser OAuth sign-in is not available.
+                </span>
+              </div>
+              <div className="field">
+                <div className="spread">
+                  <span className="field__label">CA certificate (optional)</span>
+                  <button className="btn btn--ghost" type="button" onClick={async () => {
+                    try {
+                      const pem = await window.deepPink.mcp.importCertificate()
+                      if (pem) onChange({ caCertificate: pem })
+                    } catch (error) {
+                      showToast(error instanceof Error ? error.message : String(error), 'error')
+                    }
+                  }}>Import certificate</button>
+                </div>
+                <DebouncedTextarea
+                  className="textarea mono"
+                  rows={4}
+                  placeholder="-----BEGIN CERTIFICATE-----"
+                  value={config.caCertificate ?? ''}
+                  onCommit={(next) => onChange({ caCertificate: next.trim() || null })}
+                />
+                <span className="field__hint">
+                  Trust a local server’s PEM CA certificate for this connection.
+                  For Obsidian, export the CA certificate from the Local REST API settings
+                  and use https://127.0.0.1:27124/mcp/ as the URL.
+                </span>
               </div>
             </>
           )}
@@ -227,7 +257,11 @@ function ServerEditor({
           <div className="row" style={{ marginTop: 14 }}>
             <button
               className="btn"
-              onClick={() => void window.deepPink.mcp.connect(config.id)}
+              onClick={() => {
+                if (!config.enabled) onChange({ enabled: true })
+                else void window.deepPink.mcp.connect(config.id).catch((error) =>
+                  showToast(error instanceof Error ? error.message : String(error), 'error'))
+              }}
               type="button"
             >
               Reconnect
@@ -248,6 +282,7 @@ export function McpPanel({ onClose }: { onClose: () => void }): React.JSX.Elemen
   const threads = useStore((s) => s.threads)
   const activeThreadId = useStore((s) => s.activeThreadId)
   const updateThread = useStore((s) => s.updateThread)
+  const showToast = useStore((s) => s.showToast)
   const [configs, setConfigs] = useState<McpServerConfig[]>([])
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
@@ -261,8 +296,12 @@ export function McpPanel({ onClose }: { onClose: () => void }): React.JSX.Elemen
   }, [statuses])
 
   const update = async (id: string, patch: Partial<McpServerConfig>): Promise<void> => {
-    await window.deepPink.mcp.update(id, patch)
-    await reload()
+    try {
+      await window.deepPink.mcp.update(id, patch)
+      await reload()
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), 'error')
+    }
   }
 
   const activeForThread = thread?.config.enabledMcpServers

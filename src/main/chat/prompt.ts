@@ -56,7 +56,7 @@ export function chartsEnabledFor(thread: Thread, settings: Settings): boolean {
 }
 
 export function activeServerIdsFor(thread: Thread): string[] | null {
-  return thread.config.enabledMcpServers
+  return thread.config.enabledMcpServers ?? null
 }
 
 /**

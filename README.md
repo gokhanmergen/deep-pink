@@ -292,6 +292,12 @@ Chromium's hit-testing for them misbehaves under Wayland and swallows clicks.
 
 Open Settings (`Ctrl/⌘ ,`), paste an [OpenRouter key](https://openrouter.ai/keys), and start a thread.
 
+### Connecting Obsidian over MCP
+
+With **Local REST API with MCP** enabled in Obsidian, add an HTTP server in Deep Pink’s MCP panel. Use `https://127.0.0.1:27124/mcp/` (adjust the port if you changed it), and add a header as `Authorization=Bearer YOUR_API_KEY` using the key shown by the plugin. Export the plugin’s CA certificate and import that public certificate in the server’s **CA certificate** field. The certificate is trusted only for this server, and hostname verification stays enabled.
+
+Enable the server and check that its tools appear. Keep the server selected for the thread where you want to use it. Editing authentication headers or the certificate reconnects automatically. HTTP servers can use bearer keys or custom headers; browser OAuth sign-in is not supported yet.
+
 ---
 
 ## Where your data lives

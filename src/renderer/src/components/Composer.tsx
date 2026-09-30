@@ -150,10 +150,11 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const publishHeight = (): void => {
     const el = rootRef.current
     if (!el) return
-    document.documentElement.style.setProperty(
-      '--composer-height',
-      `${Math.round(el.getBoundingClientRect().height)}px`
-    )
+    const height = `${Math.round(el.getBoundingClientRect().height)}px`
+    const style = document.documentElement.style
+    if (style.getPropertyValue('--composer-height') !== height) {
+      style.setProperty('--composer-height', height)
+    }
   }
 
   // Publish the composer's height so overlays — toasts, for one — can stay clear

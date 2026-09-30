@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from 'electron'
 import type {
@@ -19,6 +19,7 @@ import type { UpdateConfig } from '@shared/updates'
 import * as repo from './db/repo'
 import { dbPath } from './db/index'
 import * as mcp from './mcp/host'
+import { validateCertificate } from './mcp/http'
 import * as attachments from './attachments'
 import * as icons from './icons'
 import * as importer from './import/index'
@@ -421,6 +422,18 @@ export function registerIpc(): void {
   })
   ipcMain.handle('mcp:connect', (_e, id: string) => mcp.connect(id))
   ipcMain.handle('mcp:disconnect', (_e, id: string) => mcp.disconnect(id))
+  ipcMain.handle('mcp:importCertificate', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import the MCP server’s CA certificate',
+      properties: ['openFile'],
+      filters: [{ name: 'PEM certificate', extensions: ['pem', 'crt', 'cer'] }]
+    })
+    if (canceled || !filePaths[0]) return null
+    if (statSync(filePaths[0]).size > 64 * 1024) throw new Error('The certificate file is too large.')
+    const pem = readFileSync(filePaths[0], 'utf8').trim()
+    validateCertificate(pem)
+    return pem
+  })
 
   /* ---------------- data ---------------- */
 
