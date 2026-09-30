@@ -236,6 +236,18 @@ suite('renderer streaming — one subscription, one bubble per turn', async ({ c
   // also sweeps the blank one, since leaving an untouched thread deletes it.
   await state().selectThread('t1')
   check('the active thread was selected', state().activeThreadId === 't1')
+  section('compaction progress follows its thread and clears on failure')
+  emit({ type: 'compaction-start', threadId: 't1' })
+  check('the open thread shows compaction progress', state().compacting)
+  useStore.setState({ activeThreadId: 'other' })
+  emit({ type: 'compaction-start', threadId: 'other' })
+  emit({ type: 'compaction-error', threadId: 't1', error: 'offline' })
+  check('a background failure preserves the open thread\'s progress', state().compacting &&
+    state().compactingThreadIds.join(',') === 'other')
+  emit({ type: 'compaction-error', threadId: 'other', error: 'offline' })
+  check('a failed compaction clears progress without a reply start event',
+    !state().compacting && state().compactingThreadIds.length === 0)
+  useStore.setState({ activeThreadId: 't1' })
   check(
     'and the blank one it started in did not survive being left',
     !state().threads.some((t) => t.id === 'made-1'),

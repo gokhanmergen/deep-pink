@@ -1679,11 +1679,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             </div>
 
             <div className="field">
-              <FieldLabel path="compaction.keepRecentMessages" what="how many are kept">Messages always kept verbatim</FieldLabel>
+              <FieldLabel path="compaction.keepRecentMessages" what="how many are kept">Recent messages kept (at least)</FieldLabel>
               <DebouncedInput
                 className="input"
                 type="number"
                 min={2}
+                step={1}
                 value={String(settings.compaction.keepRecentMessages)}
                 onCommit={(next) =>
                   void saveSettings({ compaction: { keepRecentMessages: Number(next) || 2 } })

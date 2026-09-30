@@ -901,7 +901,7 @@ export function ChatView(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [activeThreadId, lastMessageId, generating])
+  }, [activeThreadId, lastMessageId, generating, compacting, settings, thread?.config])
 
   if (!settings) return <div className="main" />
 
@@ -1196,23 +1196,6 @@ export function ChatView(): React.JSX.Element {
                   <p>
                     Nothing said here is kept. It is deleted when you open another
                     chat or close the app, and it is never synced.
-                  </p>
-                )}
-                {/* Which model this will use is on the button below, with its
-                    own mark on it. Saying it here as well was the same fact
-                    twice on a screen with almost nothing else on it. */}
-                <p>
-                  Press <span className="kbd">{formatBinding(keybinds['palette.open'])}</span> for
-                  the command palette, or{' '}
-                  <span className="kbd">{formatBinding(keybinds['keybinds.cheatsheet'])}</span> for
-                  every shortcut.
-                </p>
-                {/* Said here because here is the only place it can be done: a
-                    chat can be made temporary before it is used and not after. */}
-                {!thread.temporary && (
-                  <p>
-                    <span className="kbd">{formatBinding(keybinds['thread.toggleTemporary'])}</span>{' '}
-                    makes this one temporary — deleted when you leave it, and never synced.
                   </p>
                 )}
               </div>

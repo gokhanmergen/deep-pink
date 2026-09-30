@@ -547,7 +547,7 @@ export interface CompactionSettings {
   enabled: boolean
   /** Compact once context exceeds this fraction of the model's window. */
   triggerRatio: number
-  /** Never compact these most-recent messages. */
+  /** Keep at least this many recent messages, extending to a complete user turn. */
   keepRecentMessages: number
   /** Model used to write the summary; falls back to the thread model. */
   model: string | null
@@ -834,6 +834,7 @@ export type StreamEvent =
   | { type: 'aborted'; messageId: string; threadId: string }
   | { type: 'compaction-start'; threadId: string }
   | { type: 'compaction-done'; threadId: string; summaryMessageId: string; freedTokens: number }
+  | { type: 'compaction-error'; threadId: string; error: string }
   /**
    * A thread was named, or naming finished without a name.
    *

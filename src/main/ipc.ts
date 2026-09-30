@@ -349,6 +349,7 @@ export function registerIpc(): void {
       emit({
         type: 'error',
         messageId: '',
+        threadId: req.threadId,
         error: err instanceof Error ? err.message : String(err)
       })
     }
@@ -393,9 +394,11 @@ export function registerIpc(): void {
   ipcMain.handle('stats:thread', async (_e, threadId: string) => {
     const thread = repo.getThread(threadId)
     const settings = loadSettings()
-    const model = thread ? engine.resolveModel(thread, settings) : settings.defaultModel
-    const limit = await engine.contextLimitFor(model)
-    return repo.getThreadStats(threadId, limit)
+    const context = thread ? await engine.shouldCompact(thread, settings) : null
+    return {
+      ...repo.getThreadStats(threadId, context?.limit ?? null),
+      contextTokens: context?.used ?? 0
+    }
   })
 
   ipcMain.handle('stats:global', () => repo.getGlobalStats())

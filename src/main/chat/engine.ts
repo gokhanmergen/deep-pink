@@ -12,6 +12,7 @@ import { takeKeyPointMarkers } from '@shared/keyPointPrompt'
 import { LOAD_SKILL, type Skill } from '@shared/skills'
 import { reasoningParam, resolveReasoning } from '@shared/reasoning'
 import { keyPointCeiling } from '@shared/defaults'
+import { normalizeCompaction } from '@shared/compaction'
 import * as repo from '../db/repo'
 import * as mcp from '../mcp/host'
 import { loadSettings } from '../settings'
@@ -34,6 +35,7 @@ import { nativeImage } from 'electron'
 import * as attachments from '../attachments'
 import { MAX_ATTACHMENTS_PER_MESSAGE } from '../attachments'
 import { assembleContext, estimateTokens, skillsFor } from './prompt'
+import { compactionBoundary } from './compaction'
 
 export type Emit = (event: StreamEvent) => void
 
@@ -61,6 +63,7 @@ function persistProgress(messageId: string): void {
 const MAX_TOOL_ROUNDS = 12
 
 const abortControllers = new Map<string, AbortController>()
+const compactions = new Map<string, AbortController>()
 const pendingApprovals = new Map<string, (approved: boolean) => void>()
 
 /**
@@ -87,8 +90,8 @@ export function liveStreamsFor(threadId: string): LiveStream[] {
 }
 
 export function abortThread(threadId: string): void {
+  compactions.get(threadId)?.abort()
   abortControllers.get(threadId)?.abort()
-  abortControllers.delete(threadId)
 }
 
 export function isGenerating(threadId: string): boolean {
@@ -484,78 +487,112 @@ export async function shouldCompact(
    * that was the whole cost of opening it. `contextEstimate` asks SQLite for
    * the same three numbers and reads no messages at all.
    */
-  const estimate = repo.contextEstimate(thread.id)
-  const { estimatedTokens } = assembleContext(thread, settings)
+  const context = assembleContext(thread, settings)
+  const estimate = repo.contextEstimate(thread.id, { model, segments: context.segments })
+  const { estimatedTokens } = context
   const used = estimate.measured ?? estimate.fromText + estimatedTokens
 
   if (!settings.compaction.enabled || !limit) return { needed: false, used, limit }
-  return { needed: used > limit * settings.compaction.triggerRatio, used, limit }
+  const compaction = normalizeCompaction(settings.compaction)
+  // A request must also leave room for the configured answer.
+  const output = thread.config.maxTokens ?? settings.maxTokens ?? 0
+  const reserved = Number.isFinite(output) ? Math.max(0, output) : 0
+  const threshold = Math.min(limit * compaction.triggerRatio, limit - reserved)
+  return { needed: used >= threshold, used, limit }
 }
 
 export async function compactThread(
   threadId: string,
-  emit: Emit
+  emit: Emit,
+  options: { settings?: Settings; signal?: AbortSignal } = {}
 ): Promise<{ summaryMessageId: string; freedTokens: number } | null> {
-  const settings = loadSettings()
+  if (compactions.has(threadId) || (isGenerating(threadId) && !options.signal)) {
+    throw new Error('Wait for the current request to finish before compacting this chat.')
+  }
+  const settings = options.settings ?? loadSettings()
   const thread = repo.getThread(threadId)
   if (!thread) return null
 
   const messages = repo.getMessages(threadId)
-  const keep = Math.max(settings.compaction.keepRecentMessages, 2)
-  const older = messages.slice(0, Math.max(messages.length - keep, 0))
+  const compaction = normalizeCompaction(settings.compaction)
+  const boundary = compactionBoundary(messages, compaction.keepRecentMessages)
+  const older = messages.slice(0, boundary)
 
   if (older.length < 2) return null
 
+  const controller = new AbortController()
+  const signal = options.signal
+    ? AbortSignal.any([controller.signal, options.signal])
+    : controller.signal
+  signal.throwIfAborted()
+  compactions.set(threadId, controller)
   emit({ type: 'compaction-start', threadId })
 
-  const transcript = older
-    .map((m) => {
-      if (m.role === 'tool') return `TOOL RESULT (${m.toolResult?.name ?? '?'}):\n${m.content}`
-      return `${m.role.toUpperCase()}:\n${m.content}`
+  try {
+    const transcript = older.map((m) => {
+      if (m.role === 'tool') {
+        return `TOOL RESULT (${m.toolResult?.name ?? '?'}):\n${m.toolResult?.content ?? m.content}`
+      }
+      const calls = m.toolCalls?.length ? `\nTOOL CALLS:\n${JSON.stringify(m.toolCalls)}` : ''
+      return `${m.role.toUpperCase()}:\n${inlineTextAttachments(m)}${calls}`
+    }).join('\n\n')
+    const historyTokens = (history: Message[]): number => toChatParams(history, false).reduce(
+      (sum, m) => sum + estimateTokens(typeof m.content === 'string' ? m.content : '') +
+        estimateTokens(m.tool_calls ? JSON.stringify(m.tool_calls) : '') + 4, 0
+    )
+    const olderTokens = historyTokens(older)
+    const model = compaction.model ?? resolveModel(thread, settings)
+    const limit = await contextLimitFor(model)
+    signal.throwIfAborted()
+    const inputTokens = estimateTokens(transcript) + estimateTokens(compaction.prompt) + 16
+    if (limit && inputTokens + 128 > limit) {
+      throw new Error('The history is too large for the summary model. Use a model with a larger context window.')
+    }
+    const maxTokens = Math.min(
+      Math.max(128, Math.min(2048, Math.floor(olderTokens / 2))),
+      limit ? Math.floor(limit - inputTokens) : 2048
+    )
+
+    const result = await complete({
+      model,
+      messages: [
+        { role: 'system', content: compaction.prompt },
+        { role: 'user', content: transcript }
+      ],
+      maxTokens,
+      temperature: 0.3,
+      providerRouting: resolveRouting(thread, settings, model),
+      attribution: settings.sendAppAttribution,
+      signal
     })
-    .join('\n\n')
+    signal.throwIfAborted()
+    if (!result.content.trim() || result.finishReason !== 'stop') {
+      throw new Error('The model did not return a complete summary. Your history was kept unchanged.')
+    }
+    const content = `Summary of the earlier part of this conversation:\n\n${result.content.trim()}`
+    const freed = olderTokens - estimateTokens(content) - 4
+    if (freed <= 0) {
+      throw new Error('The summary did not reduce the context. Your history was kept unchanged.')
+    }
 
-  const model = settings.compaction.model ?? resolveModel(thread, settings)
-
-  const result = await complete({
-    model,
-    messages: [
-      { role: 'system', content: settings.compaction.prompt },
-      { role: 'user', content: transcript }
-    ],
-    temperature: 0.3,
-    providerRouting: resolveRouting(thread, settings, model),
-    attribution: settings.sendAppAttribution
-  })
-
-  // The summary stands in for the messages it replaces, so it has to sit where
-  // they were — ahead of the recent messages that were kept verbatim.
-  const firstKept = messages[older.length]
-  const insertAt = firstKept ? (repo.seqOf(firstKept.id) ?? 0) : 0
-
-  const summary = repo.insertMessageBefore(insertAt, {
-    threadId,
-    role: 'system',
-    content: `Summary of the earlier part of this conversation:\n\n${result.content}`,
-    model,
-    provider: result.provider,
-    isCompactionSummary: true
-  })
-
-  repo.markCompacted(
-    older.map((m) => m.id),
-    summary.id
-  )
-
-  if (result.usage.totalTokens) {
-    repo.recordUsage(threadId, summary.id, model, result.provider, result.usage)
+    // Edits, sync or deletion may have changed the chat while the model worked.
+    const fingerprint = (history: Message[]): string => JSON.stringify(history.map((m) =>
+      [m.id, m.role, m.content, m.toolCalls, m.toolResult, m.attachments.map((a) => a.id)]
+    ))
+    if (fingerprint(messages) !== fingerprint(repo.getMessages(threadId))) {
+      throw new Error('The conversation changed during compaction. Try again.')
+    }
+    const summary = repo.saveCompaction(older.map((m) => m.id), messages[boundary].id, {
+      threadId, role: 'system', content, model, provider: result.provider, isCompactionSummary: true
+    }, result.usage)
+    emit({ type: 'compaction-done', threadId, summaryMessageId: summary.id, freedTokens: freed })
+    return { summaryMessageId: summary.id, freedTokens: freed }
+  } catch (err) {
+    emit({ type: 'compaction-error', threadId, error: err instanceof Error ? err.message : String(err) })
+    throw err
+  } finally {
+    compactions.delete(threadId)
   }
-
-  const freed =
-    older.reduce((sum, m) => sum + estimateTokens(m.content), 0) - estimateTokens(summary.content)
-
-  emit({ type: 'compaction-done', threadId, summaryMessageId: summary.id, freedTokens: freed })
-  return { summaryMessageId: summary.id, freedTokens: freed }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1008,6 +1045,9 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
   const settings = loadSettings()
   let thread = repo.getThread(req.threadId)
   if (!thread) throw new Error(`Unknown thread: ${req.threadId}`)
+  if (isGenerating(thread.id) || compactions.has(thread.id)) {
+    throw new Error('Wait for the current request to finish before sending another message.')
+  }
 
   const controller = new AbortController()
   abortControllers.set(thread.id, controller)
@@ -1058,12 +1098,6 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       }
     }
 
-    // Compact before building the request, so the turn goes out at the smaller size.
-    if (settings.compaction.enabled && !settings.compaction.requireConfirmation) {
-      const check = await shouldCompact(thread, settings)
-      if (check.needed) await compactThread(thread.id, emit)
-    }
-
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       thread = repo.getThread(thread.id)!
       const model = resolveModel(thread, settings)
@@ -1071,6 +1105,17 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       // Read the layout before assembling, so the prompt carries it. Cached
       // between turns, so this is usually free.
       if (thread.config.repoPaths?.length) await ensureTree(thread.config.repoPaths)
+
+      // Tool results and the repository layout can fill the window as well as
+      // a new question. Check before each provider request, not just each turn.
+      if (settings.compaction.enabled && !settings.compaction.requireConfirmation) {
+        const check = await shouldCompact(thread, settings)
+        if (check.needed) await compactThread(thread.id, emit, { settings, signal: controller.signal })
+      }
+      if (controller.signal.aborted) {
+        emit({ type: 'aborted', messageId: '', threadId: thread.id })
+        return
+      }
 
       const context = assembleContext(thread, settings)
       const history = repo.getMessages(thread.id)
@@ -1268,6 +1313,14 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       }
     }
 
+  } catch (err) {
+    // Compaction can be stopped before an assistant row exists. End the turn
+    // as an abort rather than surfacing cancellation as a provider failure.
+    if (controller.signal.aborted) {
+      emit({ type: 'aborted', messageId: '', threadId: req.threadId })
+      return
+    }
+    throw err
   } finally {
     abortControllers.delete(req.threadId)
 

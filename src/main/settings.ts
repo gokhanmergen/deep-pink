@@ -1,4 +1,5 @@
 import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '@shared/defaults'
+import { normalizeCompaction } from '@shared/compaction'
 import type { Settings, SettingsPatch } from '@shared/types'
 import { getSetting, setSetting } from './db/repo'
 import { hasApiKey } from './secrets'
@@ -52,7 +53,7 @@ export function loadSettings(): Settings {
       ...stored.web,
       engine: stored.web?.engine === 'duckduckgo' ? 'local' : stored.web?.engine ?? DEFAULT_SETTINGS.web.engine
     },
-    compaction: { ...DEFAULT_SETTINGS.compaction, ...stored.compaction },
+    compaction: normalizeCompaction(stored.compaction ?? {}),
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...stored.ui,
@@ -81,7 +82,7 @@ export function saveSettings(input: SettingsPatch): Settings {
       ...patch.web,
       engine: patch.web?.engine === 'duckduckgo' ? 'local' : patch.web?.engine ?? current.web.engine
     },
-    compaction: { ...current.compaction, ...patch.compaction },
+    compaction: normalizeCompaction({ ...current.compaction, ...patch.compaction }),
     ui: {
       ...current.ui,
       ...patch.ui,

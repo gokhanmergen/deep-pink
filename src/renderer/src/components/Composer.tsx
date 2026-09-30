@@ -96,6 +96,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const settings = useStore((s) => s.settings)
   const showToast = useStore((s) => s.showToast)
   const openGenerating = useStore((s) => s.generating)
+  const compacting = useStore((s) => s.compacting)
   const send = useStore((s) => s.send)
   const abort = useStore((s) => s.abort)
   const openThreadId = useStore((s) => s.activeThreadId)
@@ -107,7 +108,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
    */
   const activeThreadId = target ? target.threadId : openThreadId
   const draftKey = target ? target.draftKey : openThreadId
-  const generating = target ? target.generating : openGenerating
+  const generating = target ? target.generating : openGenerating || compacting
   const value = useStore((s) => (draftKey ? (s.drafts[draftKey] ?? '') : ''))
   const setDraft = useStore((s) => s.setDraft)
   const updateThread = useStore((s) => s.updateThread)

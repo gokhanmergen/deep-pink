@@ -11,6 +11,7 @@ import type {
   Role,
   MessagePage,
   SearchHit,
+  SystemPromptSegment,
   Thread,
   ThreadTotals,
   ThreadConfig,
@@ -1087,25 +1088,32 @@ export interface ContextEstimate {
   measured: number | null
 }
 
-export function contextEstimate(threadId: string): ContextEstimate {
+export function contextEstimate(
+  threadId: string,
+  context?: { model: string; segments: SystemPromptSegment[] }
+): ContextEstimate {
   const db = getDb()
 
-  /*
-   * The same sum `estimateContextTokens` made: the message, whatever a tool
-   * handed back, and the call that asked for it. A missing `tool_calls` was
-   * stringified as `""` before it was counted, which is one token, so it is
-   * still one token here.
-   */
+  // Tool content is also stored in `content`: count the value actually sent,
+  // once. Text files are inlined; their byte count is a conservative estimate
+  // without reading every file. Vision token costs vary by model and are only
+  // approximated until a provider measurement is available.
   const tokensFrom = (extra: string, ...args: unknown[]): number =>
     (
       db
         .prepare(
           `SELECT COALESCE(SUM(
-                    (LENGTH(content) + 3) / 4
-                  + (LENGTH(COALESCE(
-                       CASE WHEN json_valid(tool_result)
-                            THEN json_extract(tool_result, '$.content') END, '')) + 3) / 4
-                  + (LENGTH(COALESCE(tool_calls, '""')) + 3) / 4
+                    (LENGTH(CASE WHEN role = 'tool' AND json_valid(tool_result)
+                           THEN COALESCE(json_extract(tool_result, '$.content'), content)
+                           ELSE content END) + 3) / 4
+                  + (LENGTH(COALESCE(tool_calls, '')) + 3) / 4
+                  + 4
+                  + COALESCE((SELECT SUM(CASE
+                      WHEN a.mime LIKE 'image/%' THEN
+                        1024 + 256 * ((COALESCE(a.width, 1024) + 511) / 512)
+                                   * ((COALESCE(a.height, 1024) + 511) / 512)
+                      ELSE (a.bytes + 3) / 4 + 32 END)
+                    FROM attachments a WHERE a.message_id = messages.id), 0)
                   ), 0) AS n
              FROM messages
             WHERE thread_id = ? AND ${VISIBLE_MESSAGES} ${extra}`
@@ -1122,19 +1130,39 @@ export function contextEstimate(threadId: string): ContextEstimate {
   const turn = db
     .prepare(
       `SELECT m.seq AS seq, m.created_at AS created_at,
-              u.prompt_tokens AS prompt_tokens, u.completion_tokens AS completion_tokens
+              u.prompt_tokens AS prompt_tokens, u.completion_tokens AS completion_tokens,
+              u.reasoning_tokens AS reasoning_tokens, u.model AS model,
+              m.system_prompt_snapshot AS snapshot
          FROM messages m
          JOIN usage u ON u.message_id = m.id
         WHERE m.thread_id = ? AND m.${VISIBLE_MESSAGES}
           AND m.role = 'assistant' AND m.is_compaction_summary = 0
+          AND u.prompt_tokens > 0
         ORDER BY m.seq DESC
         LIMIT 1`
     )
     .get(threadId) as
-    | { seq: number; created_at: number; prompt_tokens: number; completion_tokens: number }
+    | {
+        seq: number; created_at: number; prompt_tokens: number; completion_tokens: number
+        reasoning_tokens: number; model: string | null; snapshot: string | null
+      }
     | undefined
 
   if (!turn) return { fromText, measured: null }
+
+  if (context) {
+    // A model switch changes tokenization; changed instructions/tool schemas
+    // change the prompt. The previous request no longer measures the next one.
+    const fingerprint = (segments: SystemPromptSegment[]): string => JSON.stringify(
+      segments.filter((s) => s.enabled && s.source !== 'datetime')
+        .map((s) => [s.id, s.text, s.tokens])
+    )
+    const snapshot = parseJson<SystemPromptSegment[] | null>(turn.snapshot, null)
+    if (turn.model !== context.model ||
+        (snapshot && fingerprint(snapshot) !== fingerprint(context.segments))) {
+      return { fromText, measured: null }
+    }
+  }
 
   // A compaction since that measurement means it describes messages that have
   // been replaced by a summary, so it now reads as full forever — which is
@@ -1153,8 +1181,29 @@ export function contextEstimate(threadId: string): ContextEstimate {
   return {
     fromText,
     measured:
-      turn.prompt_tokens + turn.completion_tokens + tokensFrom('AND seq > ?', turn.seq)
+      // Hidden reasoning is billed completion, but is not sent back in history.
+      turn.prompt_tokens + Math.max(0, turn.completion_tokens - turn.reasoning_tokens) +
+      tokensFrom('AND seq > ?', turn.seq)
   }
+}
+
+/** Commit the replacement and its cost together, or leave history untouched. */
+export function saveCompaction(
+  olderIds: string[],
+  firstKeptId: string,
+  input: Partial<Message> & Pick<Message, 'threadId' | 'role'>,
+  usage: Usage
+): Message {
+  return getDb().transaction(() => {
+    const beforeSeq = seqOf(firstKeptId)
+    if (beforeSeq === null) throw new Error('The conversation changed during compaction. Try again.')
+    const summary = insertMessageBefore(beforeSeq, input)
+    markCompacted(olderIds, summary.id)
+    if (usage.totalTokens || usage.costUsd) {
+      recordUsage(input.threadId, summary.id, input.model ?? null, input.provider ?? null, usage)
+    }
+    return summary
+  })()
 }
 
 /**

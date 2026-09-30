@@ -194,6 +194,7 @@ interface State {
   threadTotals: ThreadTotals | null
   generating: boolean
   compacting: boolean
+  compactingThreadIds: string[]
   mcpStatuses: McpServerStatus[]
   overlay: Overlay
   /** Where to go when the current overlay closes, e.g. back to Settings. */
@@ -728,6 +729,7 @@ export const useStore = create<State>((set, get) => ({
   threadTotals: null,
   generating: false,
   compacting: false,
+  compactingThreadIds: [],
   mcpStatuses: [],
   overlay: null,
   overlayReturnTo: null,
@@ -957,7 +959,8 @@ export const useStore = create<State>((set, get) => ({
       hasOlderMessages: page.hasOlder,
       loadingOlder: false,
       threadTotals: totals,
-      generating
+      generating,
+      compacting: get().compactingThreadIds.includes(id)
     })
 
     // Deltas that arrived while the above was loading were dropped, because the
@@ -1551,7 +1554,7 @@ export const useStore = create<State>((set, get) => ({
 
   async compact() {
     const threadId = get().activeThreadId
-    if (!threadId) return
+    if (!threadId || get().compacting) return
     set({ compacting: true })
     try {
       const result = await api.chat.compact(threadId)
@@ -1559,7 +1562,7 @@ export const useStore = create<State>((set, get) => ({
       // replaces the older part of the thread with a summary that sits *before*
       // what was on screen, so the range that was loaded no longer describes
       // anything a reader would recognise.
-      await get().resetTranscript()
+      if (get().activeThreadId === threadId) await get().resetTranscript()
       get().showToast(
         result
           ? `Compacted — about ${result.freedTokens.toLocaleString()} tokens freed`
@@ -1568,7 +1571,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       get().showToast(err instanceof Error ? err.message : String(err), 'error')
     } finally {
-      set({ compacting: false })
+      set({ compacting: get().compactingThreadIds.includes(get().activeThreadId ?? '') })
     }
   },
 
@@ -2351,6 +2354,13 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
   trackGenerating(event, set, get)
   countDelta(event, set, get)
 
+  if (event.type === 'compaction-start' || event.type === 'compaction-done' ||
+      event.type === 'compaction-error') {
+    const ids = get().compactingThreadIds.filter((id) => id !== event.threadId)
+    if (event.type === 'compaction-start') ids.push(event.threadId)
+    set({ compactingThreadIds: ids, compacting: ids.includes(get().activeThreadId ?? '') })
+  }
+
   const state = get()
 
   if (event.type === 'title') {
@@ -2550,6 +2560,12 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       // where the loaded range said it was.
       void get().resetTranscript()
       get().showToast(`Compacted — about ${event.freedTokens.toLocaleString()} tokens freed`)
+      break
+
+    case 'compaction-error':
+      // The request's caller reports the error. This event ends its progress
+      // indicator even when automatic compaction failed before a reply began.
+      set({ compacting: false })
       break
   }
 }
