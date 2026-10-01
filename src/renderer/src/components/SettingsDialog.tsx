@@ -875,9 +875,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             activePage={tab}
             query={query}
             sectionId="settings-general-1"
-            keywords="experimental capabilities tools beta enable"
+            keywords="experimental capabilities tools beta enable lazy load loading speed performance all messages at once pagination setup wizard onboarding first launch"
           >
-            <h3 className="section-title">Features</h3>
+            <h3 className="section-title">App preferences</h3>
             <label className="switch">
               <input
                 type="checkbox"
@@ -891,16 +891,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 format={(value) => (value ? 'off' : 'on')}
               />
             </label>
-          </SettingsSection>
-
-          <SettingsSection
-            page="general"
-            activePage={tab}
-            query={query}
-            sectionId="settings-general-2"
-            keywords="lazy load loading speed performance all messages at once pagination"
-          >
-            <h3 className="section-title">Performance</h3>
             <label className="switch">
               <input
                 type="checkbox"
@@ -918,19 +908,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 format={(value) => (value ? 'off' : 'on')}
               />
             </label>
-          </SettingsSection>
-
-          <SettingsSection
-            page="general"
-            activePage={tab}
-            query={query}
-            sectionId="settings-general-3"
-            keywords="setup wizard onboarding first launch"
-          >
-            <h3 className="section-title">Setup</h3>
-            <button className="btn" onClick={() => setOverlay('wizard')} type="button">
-              Run the setup again
-            </button>
+            <div className="field">
+              <div className="row">
+                <button className="btn btn--ghost" onClick={() => setOverlay('wizard')} type="button">
+                  Run the setup again
+                </button>
+              </div>
+            </div>
           </SettingsSection>
 
           <SettingsSection

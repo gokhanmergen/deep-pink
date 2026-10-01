@@ -3240,8 +3240,7 @@ svg.lucide {
   border-top: none;
 }
 
-/* Settings use the app's surfaces, accent and control styles, with separate
-   navigation, readable cards and a search that stays within reach. */
+/* Settings read as one page: headings and space group the controls. */
 .panel--settings {
   max-width: 1040px;
   height: min(840px, 88dvh);
@@ -3294,6 +3293,7 @@ svg.lucide {
   width: 100%;
   min-width: 0;
   padding: 9px 0;
+  border: none;
   outline: none;
   background: transparent;
   font-size: var(--t-ui);
@@ -3319,8 +3319,7 @@ svg.lucide {
   flex-direction: column;
   width: 208px;
   padding: 20px 12px;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  background: transparent;
 }
 
 .settings-workspace .tabs__group + .tabs__group {
@@ -3345,13 +3344,12 @@ svg.lucide {
 }
 .settings-workspace .tab[data-active="true"] {
   background: var(--accent-wash);
-  border-color: var(--accent-line);
   color: var(--text);
 }
 
 .settings-workspace .settings-content {
   padding: 28px 32px;
-  background: var(--bg);
+  background: transparent;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -3377,21 +3375,18 @@ svg.lucide {
 
 .settings-card {
   min-width: 0;
-  margin-bottom: 16px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-panel);
+  margin-bottom: 32px;
+  padding: 0;
 }
 .settings-card:last-child {
   margin-bottom: 0;
 }
 .settings-card .section-title {
-  margin: 16px 0 8px;
+  margin: 24px 0 8px;
   padding: 0;
   border: none;
-  color: var(--text);
-  font-size: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -3411,12 +3406,7 @@ svg.lucide {
 .settings-card .field,
 .settings-card .switch {
   margin: 0;
-  padding: 16px 0;
-  border-top: 1px solid var(--border);
-}
-.settings-card > .section-title + .field,
-.settings-card > .section-title + .switch {
-  border-top: none;
+  padding: 12px 0;
 }
 .settings-card > .field:last-child,
 .settings-card > .switch:last-child {
@@ -3487,7 +3477,20 @@ svg.lucide {
   cursor: default;
 }
 .settings-card .skill {
-  margin-top: 12px;
+  margin: 0;
+  padding: 12px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.settings-card .skill + .skill {
+  margin-top: 8px;
+}
+.settings-card .list-card {
+  padding: 12px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 .settings-card .skill .switch {
   border: none;
@@ -3504,8 +3507,7 @@ svg.lucide {
 }
 
 .settings-advanced {
-  margin-top: 16px;
-  border-top: 1px solid var(--border);
+  margin-top: 12px;
 }
 .settings-advanced > summary {
   padding: 14px 0 0;
@@ -3525,6 +3527,13 @@ svg.lucide {
 .settings-card .keybind {
   min-height: 44px;
   gap: 12px;
+}
+
+.settings-card .revert {
+  background: transparent;
+}
+.settings-card .revert:hover {
+  background: var(--accent-wash);
 }
 
 .settings-card--locked {
@@ -3563,7 +3572,7 @@ svg.lucide {
 }
 .panel--settings .panel__foot {
   padding: 10px 20px;
-  background: var(--bg-panel);
+  background: transparent;
 }
 
 @container panel (max-width: 740px) {
@@ -3577,11 +3586,9 @@ svg.lucide {
   .settings-workspace .settings-content {
     padding: 24px 20px;
   }
-  .settings-card {
-    padding: 16px;
-  }
   .settings-card .field:has(> .field__label) {
     display: flex;
+    align-items: stretch;
   }
 }
 
