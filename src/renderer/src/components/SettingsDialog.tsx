@@ -918,13 +918,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             sectionId="settings-models-0"
             keywords=""
           >
-            <h3 className="section-title">
-              Default model
-              <Revert path="defaultModel" what="the default model" />
-            </h3>
-            <div className="field">
+            <div className="field field--model">
+              <label className="field__label" htmlFor="setting-defaultModel">
+                Default model
+              </label>
               <div className="row">
                 <button
+                  id="setting-defaultModel"
                   className="btn"
                   onClick={() => openModelPicker('defaultModel', 'models')}
                   type="button"
@@ -932,6 +932,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   {modelShortName(settings.defaultModel)}
                 </button>
               </div>
+              <Revert path="defaultModel" what="the default model" />
             </div>
           </SettingsSection>
 
@@ -956,17 +957,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span>Open new threads side by side</span>
               <Revert path="sideBySideNewThreads" what="opening new threads side by side" />
             </label>
-            <div className="field">
-              <span className="field__label">
+            <div className="field field--model">
+              <label className="field__label" htmlFor="setting-sideBySideLeftModel">
                 Left
-                <Revert
-                  path="sideBySideLeftModel"
-                  what="the left side’s model"
-                  format={() => 'following the model in use'}
-                />
-              </span>
+              </label>
               <div className="row">
                 <button
+                  id="setting-sideBySideLeftModel"
                   aria-label="Left"
                   className="btn"
                   onClick={() => openModelPicker('compareModelLeft', 'models')}
@@ -977,18 +974,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     : 'The model in use'}
                 </button>
               </div>
+              <Revert
+                path="sideBySideLeftModel"
+                what="the left side’s model"
+                format={() => 'following the model in use'}
+              />
             </div>
-            <div className="field">
-              <span className="field__label">
+            <div className="field field--model">
+              <label className="field__label" htmlFor="setting-sideBySideRightModel">
                 Right
-                <Revert
-                  path="sideBySideRightModel"
-                  what="the right side’s model"
-                  format={() => 'being chosen each time'}
-                />
-              </span>
+              </label>
               <div className="row">
                 <button
+                  id="setting-sideBySideRightModel"
                   aria-label="Right"
                   className="btn"
                   onClick={() => openModelPicker('compareModelRight', 'models')}
@@ -999,6 +997,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     : 'Choose a model'}
                 </button>
               </div>
+              <Revert
+                path="sideBySideRightModel"
+                what="the right side’s model"
+                format={() => 'being chosen each time'}
+              />
             </div>
           </SettingsSection>
 

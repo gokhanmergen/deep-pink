@@ -3425,6 +3425,10 @@ svg.lucide {
   align-items: center;
   column-gap: 16px;
 }
+.settings-card .field.field--model {
+  grid-template-columns: minmax(40px, max-content) minmax(0, 1fr) auto;
+  column-gap: 12px;
+}
 .settings-card .field:has(> textarea) {
   display: flex;
 }
@@ -3582,7 +3586,7 @@ svg.lucide {
   .settings-workspace .settings-content {
     padding: 14px 16px;
   }
-  .settings-card .field:has(> .field__label) {
+  .settings-card .field:not(.field--model):has(> .field__label) {
     display: flex;
     align-items: stretch;
   }
