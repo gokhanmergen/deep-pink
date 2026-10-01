@@ -3239,6 +3239,405 @@ svg.lucide {
   border-top: none;
 }
 
+/* Settings use the app's surfaces, accent and control styles, with separate
+   navigation, readable cards and a search that stays within reach. */
+.panel--settings {
+  max-width: 1040px;
+  height: min(840px, 88dvh);
+  max-height: 90dvh;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.settings-header__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 174px;
+  font-size: 16px;
+  font-weight: var(--w-strong);
+}
+
+.settings-header__title svg {
+  color: var(--accent);
+}
+
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 480px;
+  margin-right: auto;
+  padding: 0 12px;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-dim);
+}
+
+.settings-search:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.settings-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 0;
+  outline: none;
+  background: transparent;
+  font-size: var(--t-ui);
+  color: var(--text);
+}
+
+.settings-search input::placeholder {
+  color: var(--text-dim);
+}
+.settings-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.settings-search > svg {
+  flex: none;
+}
+.settings-search .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.settings-workspace .tabs {
+  display: flex;
+  flex-direction: column;
+  width: 208px;
+  padding: 20px 12px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+}
+
+.settings-workspace .tabs__group + .tabs__group {
+  margin-top: 24px;
+}
+.settings-workspace .tabs__label {
+  padding: 0 10px 8px;
+}
+.settings-workspace .tab {
+  min-height: 36px;
+  margin-bottom: 3px;
+  padding: 8px 10px;
+  justify-content: flex-start;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.settings-workspace .tab__label {
+  display: inline;
+}
+.settings-workspace .tab[data-active="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+
+.settings-workspace .settings-content {
+  padding: 28px 32px;
+  background: var(--bg);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.settings-workspace .settings-content > * {
+  max-width: none;
+}
+.settings-page-heading {
+  margin-bottom: 24px;
+}
+.settings-page-heading h2 {
+  margin: 0 0 6px;
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: var(--w-strong);
+  letter-spacing: -0.025em;
+}
+.settings-page-heading p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.settings-card {
+  min-width: 0;
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+.settings-card:last-child {
+  margin-bottom: 0;
+}
+.settings-card .section-title {
+  margin: 16px 0 8px;
+  padding: 0;
+  border: none;
+  color: var(--text);
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.settings-card > .section-title:first-child {
+  margin-top: 0;
+}
+.settings-card__category {
+  margin-bottom: 12px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: var(--w-ui);
+}
+.settings-card__category + .section-title {
+  margin-top: 0;
+}
+
+.settings-card .field,
+.settings-card .switch {
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+.settings-card > .section-title + .field,
+.settings-card > .section-title + .switch {
+  border-top: none;
+}
+.settings-card > .field:last-child,
+.settings-card > .switch:last-child {
+  padding-bottom: 0;
+}
+.settings-card .field:has(> .field__label) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 44%);
+  align-items: center;
+  column-gap: 24px;
+}
+.settings-card .field:has(> textarea) {
+  display: flex;
+}
+.settings-card .field__label {
+  font-size: 13px;
+  font-weight: var(--w-ui);
+  line-height: 1.5;
+}
+.settings-card .field__hint {
+  margin: 0;
+  grid-column: 1 / -1;
+}
+.settings-card .field > .row {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.settings-card .row > .field:has(> .field__label) {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+.settings-card .field > .row .btn {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-card .input,
+.settings-card .select,
+.settings-card .textarea {
+  box-shadow: none;
+  min-width: 0;
+}
+.settings-card .input:focus,
+.settings-card .select:focus,
+.settings-card .textarea:focus {
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.settings-card .switch {
+  align-items: center;
+  gap: 12px;
+}
+.settings-card .switch > span {
+  order: 0;
+  font-size: 13px;
+}
+.settings-card .switch > input {
+  order: 2;
+  margin: 0;
+}
+.settings-card .switch > .revert {
+  order: 1;
+  margin: 0;
+}
+.settings-card .switch:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings-card .skill {
+  margin-top: 12px;
+}
+.settings-card .skill .switch {
+  border: none;
+  padding: 0;
+}
+.settings-card .skill .field:has(> .field__label) {
+  display: flex;
+}
+.settings-card .reply-options {
+  margin: 16px 0 0;
+}
+.settings-card .reply-option {
+  min-height: 38px;
+}
+
+.settings-advanced {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.settings-advanced > summary {
+  padding: 14px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.settings-advanced > summary:hover {
+  color: var(--text);
+}
+.settings-advanced[open] > summary {
+  margin-bottom: 14px;
+}
+.settings-advanced > .field:first-of-type {
+  border-top: none;
+}
+.settings-card .keybind {
+  min-height: 44px;
+  gap: 12px;
+}
+
+.settings-card--locked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.settings-card--locked h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.settings-card--locked span {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.settings-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 10px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.settings-empty strong {
+  color: var(--text-muted);
+}
+.settings-save-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.settings-save-note svg {
+  color: var(--accent);
+}
+.panel--settings .panel__foot {
+  padding: 10px 20px;
+  background: var(--bg-panel);
+}
+
+@container panel (max-width: 740px) {
+  .settings-header__title {
+    min-width: 0;
+  }
+  .settings-workspace .tabs {
+    width: 180px;
+    padding: 16px 8px;
+  }
+  .settings-workspace .settings-content {
+    padding: 24px 20px;
+  }
+  .settings-card {
+    padding: 16px;
+  }
+  .settings-card .field:has(> .field__label) {
+    display: flex;
+  }
+}
+
+@container panel (max-width: 560px) {
+  .settings-header {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .settings-header > .icon {
+    margin-left: auto;
+  }
+  .settings-search {
+    order: 2;
+    max-width: none;
+  }
+  .settings-workspace {
+    flex-direction: column;
+  }
+  .settings-workspace .tabs {
+    width: 100%;
+    flex-direction: row;
+    gap: 12px;
+    padding: 8px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .settings-workspace .tabs__group {
+    display: flex;
+    flex: none;
+    gap: 4px;
+  }
+  .settings-workspace .tabs__group + .tabs__group {
+    margin: 0;
+  }
+  .settings-workspace .tabs__label {
+    display: none;
+  }
+  .settings-workspace .tab {
+    width: auto;
+    margin: 0;
+    padding: 8px 10px;
+  }
+  .settings-workspace .tab__label {
+    display: inline;
+  }
+  .settings-workspace .settings-content {
+    padding: 20px 16px;
+  }
+  .settings-card--locked {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * Stats
  * ------------------------------------------------------------------ */

@@ -57,24 +57,10 @@ function sumUsage(messages: Message[]): Usage | null {
 function useHiddenPart(
   messageId: string,
   present: string | null,
-  wanted: 'reasoning' | 'content',
-  initiallyOpen = false
+  wanted: 'reasoning' | 'content'
 ): { open: boolean; onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => void; text: string | null } {
-  const [open, setOpen] = useState(initiallyOpen)
+  const [open, setOpen] = useState(false)
   const [fetched, setFetched] = useState<string | null>(null)
-
-  /*
-   * A `<details open>` does not fire a toggle for being born open.
-   *
-   * Which is the whole of "expand reasoning traces by default": the element
-   * arrives open, nothing is toggled, and without this the trace would sit
-   * there empty for the one reader who asked to always see it.
-   */
-  useEffect(() => {
-    if (!initiallyOpen || present || fetched !== null) return
-    void window.deepPink.messages.hidden(messageId).then((parts) => setFetched(parts[wanted] ?? ''))
-    // On mount alone: after that, opening it is what asks.
-  }, [])
 
   const onToggle = (event: React.SyntheticEvent<HTMLDetailsElement>): void => {
     const nowOpen = event.currentTarget.open
@@ -109,19 +95,13 @@ function reasoningLength(message: Message): number {
  * before it was, and every model that does not reason aloud — the tokens stand
  * on their own.
  */
-function ReasoningTrace({
-  message,
-  openByDefault
-}: {
-  message: Message
-  openByDefault: boolean
-}): React.JSX.Element | null {
-  const trace = useHiddenPart(message.id, message.reasoning, 'reasoning', openByDefault)
+function ReasoningTrace({ message }: { message: Message }): React.JSX.Element | null {
+  const trace = useHiddenPart(message.id, message.reasoning, 'reasoning')
   const length = reasoningLength(message)
   if (length === 0) return null
 
   return (
-    <details className="aside reasoning" open={openByDefault} onToggle={trace.onToggle}>
+    <details className="aside reasoning" onToggle={trace.onToggle}>
       <summary className="aside__summary">
         {message.usage?.reasoningMs
           ? `Reasoned for ${formatDuration(message.usage.reasoningMs)}`
@@ -613,7 +593,7 @@ export const AssistantTurn = memo(function AssistantTurn({
 
             return (
               <div key={message.id} className="turn-part">
-                <ReasoningTrace message={message} openByDefault={ui.showReasoningByDefault} />
+                <ReasoningTrace message={message} />
 
                 {/* What OpenRouter's own search read, in the place a tool
                     round would have gone: after the thinking, before the

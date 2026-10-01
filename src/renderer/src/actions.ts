@@ -627,15 +627,6 @@ export function buildActions(): AppAction[] {
     },
     { id: 'mcp.panel', label: 'MCP servers', group: 'Capabilities', run: () => store.setOverlay('mcp') },
     {
-      id: 'reasoning.toggle',
-      label: 'Show or hide reasoning traces',
-      group: 'Capabilities',
-      run: () => {
-        const on = settings?.ui.showReasoningByDefault ?? false
-        void store.saveSettings({ ui: { showReasoningByDefault: !on } })
-      }
-    },
-    {
       id: 'context.compact',
       label: 'Compact the context now',
       group: 'Capabilities',

@@ -357,12 +357,87 @@ suite(
     check('code blocks are highlighted', rich.codeBlocks > 0 && rich.highlighted > 0, rich)
     check('LaTeX is typeset', rich.katex > 0, rich)
 
-    section('editing a prompt keeps the caret where it was')
+    section('settings search and everyday controls')
     await run(`[...document.querySelectorAll('.sidebar__footer .btn')]
       .find((b) => b.textContent.trim() === 'Settings').click()`)
     await settle(500)
+    const searchSettings = async (value) => {
+      await run('(() => { const input = document.querySelector(".settings-search input");' +
+        'Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ' +
+        JSON.stringify(value) + '); input.dispatchEvent(new Event("input", { bubbles: true })); })()')
+      await settle(350)
+    }
+    const settingsTab = async (label) => {
+      await run('[...document.querySelectorAll(".tab")].find((el) => el.textContent.trim() === ' +
+        JSON.stringify(label) + ').click()')
+      await settle(350)
+    }
+    const toggleSetting = async (label) => {
+      await run('[...document.querySelectorAll(".settings-card .switch")].find((el) => ' +
+        'el.querySelector("span")?.textContent.trim() === ' + JSON.stringify(label) +
+        ').querySelector("input").click()')
+      await settle(600)
+    }
+    await settingsTab('General')
+    const everyday = await run('([...document.querySelectorAll(".settings-card .switch")].map((el) => ' +
+      '({ label: el.querySelector("span")?.textContent.trim(), checked: el.querySelector("input").checked })))')
+    check('General uses positive labels for the everyday switches',
+      ['Experimental Features', 'Lazy Load', 'Enter to Send', 'Tell the model date and time']
+        .every((label) => everyday.some((setting) => setting.label === label)), everyday)
+    check('lazy loading starts enabled', everyday.find((s) => s.label === 'Lazy Load')?.checked === true, everyday)
+    check('the date and time preference starts enabled',
+      everyday.find((s) => s.label === 'Tell the model date and time')?.checked === true, everyday)
+    await toggleSetting('Lazy Load')
+    check('turning lazy loading off saves eager loading',
+      await run('window.deepPink.settings.get().then((s) => s.ui.loadEverythingAtOnce)') === true)
+    await toggleSetting('Lazy Load')
+    check('turning lazy loading back on saves paging',
+      await run('window.deepPink.settings.get().then((s) => s.ui.loadEverythingAtOnce)') === false)
+
+    await searchSettings('temperature')
+    check('search finds a setting in another section',
+      await run('!!document.querySelector("[data-settings-page=advanced] input[type=range]")'))
+    await searchSettings('summary instructions')
+    check('search opens matching advanced controls',
+      await run('!!document.querySelector("[data-settings-page=context] details[open] textarea")'))
+    await searchSettings('no-such-preference-928374')
+    check('an unmatched query shows an empty state',
+      await run('document.querySelectorAll("[data-settings-section]").length === 0 && ' +
+        'document.querySelector(".settings-empty")?.textContent.includes("No settings found")'))
+    await searchSettings('')
+    await settingsTab('General')
+    await toggleSetting('Experimental Features') // The suite enabled these in its initial fixture.
+    check('turning experimental features off hides their navigation',
+      await run('![...document.querySelectorAll(".tab")].some((el) => el.textContent.trim() === "Web search")'))
+    await searchSettings('Brave')
+    check('search can discover an experimental feature without enabling it',
+      await run('!!document.querySelector(".settings-card--locked") && ' +
+        '!document.querySelector("[data-settings-page=web] select")'))
+    await run('document.querySelector(".settings-card--locked button").click()')
+    await settle(350)
+    check('the discovery link returns to General and clears search',
+      await run('document.querySelector(".settings-search input").value === "" && ' +
+        'document.querySelector(".tab[aria-current=page]")?.textContent.trim() === "General"'))
+    await toggleSetting('Experimental Features')
+
+    const settingsBounds = win.getBounds()
+    const settingsMinimum = win.getMinimumSize()
+    win.setMinimumSize(400, 400)
+    win.setContentSize(520, 720)
+    await settle(500)
+    const compactSettings = await run('(() => { const body = document.querySelector(".settings-content"); ' +
+      'const search = document.querySelector(".settings-search"); return { overflow: body.scrollWidth - body.clientWidth, ' +
+      'searchWidth: search.getBoundingClientRect().width, labels: [...document.querySelectorAll(".tab__label")].some((el) => ' +
+      'getComputedStyle(el).display !== "none") }; })()')
+    check('narrow settings keep search and named navigation usable without content overflow',
+      compactSettings.overflow <= 1 && compactSettings.searchWidth > 200 && compactSettings.labels, compactSettings)
+    win.setMinimumSize(...settingsMinimum)
+    win.setBounds(settingsBounds)
+    await settle(500)
+
+    section('editing a prompt keeps the caret where it was')
     await run(`[...document.querySelectorAll('.tab')]
-      .find((t) => t.textContent.trim() === 'Prompts').click()`)
+      .find((t) => t.textContent.trim() === 'Instructions').click()`)
     await settle(500)
 
     const caret = await run(`(async () => {
@@ -999,7 +1074,7 @@ suite(
     const settingsTabs = await run(`[...document.querySelectorAll('.tab')].map((t) => t.textContent.trim())`)
     check('settings still offers model preferences', settingsTabs.includes('Models'), settingsTabs)
     check('settings no longer offers the retired popup', !settingsTabs.includes('Quick Question'), settingsTabs)
-    await run(`[...document.querySelectorAll('.tab')].find((t) => t.textContent.trim() === 'Data').click()`)
+    await run(`[...document.querySelectorAll('.tab')].find((t) => t.textContent.trim() === 'Updates & about').click()`)
     await settle(800)
 
     const about = await run(`(() => {

@@ -97,6 +97,9 @@ function emptyPane(threadId: string | null, model: string | null): ComparePane {
  * were going and not taking them there.
  */
 export type SettingsTab =
+  | 'general'
+  | 'advanced'
+  | 'about'
   | 'account'
   | 'models'
   | 'prompts'

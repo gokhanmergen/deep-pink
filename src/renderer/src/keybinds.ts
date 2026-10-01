@@ -202,7 +202,6 @@ export const KEYBIND_GROUPS: { title: string; actions: { id: string; label: stri
       { id: 'reasoning.less', label: 'Think less' },
       { id: 'sync.pause', label: 'Pause / resume syncing' },
       { id: 'mcp.panel', label: 'MCP servers' },
-      { id: 'reasoning.toggle', label: 'Show / hide reasoning' },
       { id: 'context.compact', label: 'Compact context now' }
     ]
   },

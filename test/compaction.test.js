@@ -68,6 +68,8 @@ suite('compaction — limits, preserved context, failures and cancellation', asy
     check('billed reasoning is not counted as history sent again', status.used === 670 && !status.needed, status)
     status = await shouldCompact({ ...ctx, config: { ...ctx.config, model: 'test/compact' } }, loadSettings())
     check('switching models invalidates the old token measurement', status.used < 100, status)
+    status = await shouldCompact(ctx, { ...loadSettings(), includeDateTimeInPrompt: true })
+    check('enabling date and time invalidates the previous prompt measurement', status.used < 100, status)
     status = await shouldCompact(ctx, { ...loadSettings(), baseSystemPrompt: 'New instructions. '.repeat(200) })
     check('changed instructions use a fresh estimate', status.used > 750 && status.used !== 670, status)
 

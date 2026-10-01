@@ -228,7 +228,7 @@ export function Wizard({ onClose }: { onClose: () => void }): React.JSX.Element 
             </label>
             <p className="field__hint">
               Off, they are hidden and switched off rather than merely greyed out. You can
-              turn this on later under Appearance without losing anything.
+              turn this on later under General without losing anything.
             </p>
           </>
         )}

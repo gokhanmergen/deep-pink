@@ -66,7 +66,6 @@ export const DEFAULT_UI: UiSettings = {
   zoomLevel: 0,
   messageDensity: 'comfortable',
   codeTheme: 'github-dark-default',
-  showReasoningByDefault: false,
   sendOnEnter: true,
   pasteAsFileThreshold: 2000,
   animations: true,
@@ -157,7 +156,6 @@ export const DEFAULT_KEYBINDS: Record<string, string> = {
   'reasoning.less': 'mod+shift+,',
   'sync.pause': 'mod+shift+u',
   'mcp.panel': 'mod+shift+e',
-  'reasoning.toggle': 'mod+shift+r',
   'context.compact': 'mod+shift+c',
 
   // Transparency & stats
@@ -248,7 +246,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sideBySideNewThreads: false,
   titlePrompt: DEFAULT_TITLE_PROMPT,
   baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
-  includeDateTimeInPrompt: false,
+  includeDateTimeInPrompt: true,
   defaultProviderRouting: DEFAULT_PROVIDER_ROUTING,
   modelProviderRouting: {},
   temperature: 1,

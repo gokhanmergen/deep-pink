@@ -6,6 +6,16 @@ import { hasApiKey } from './secrets'
 
 const KEY = 'settings'
 
+function currentUi(input?: SettingsPatch['ui']): SettingsPatch['ui'] {
+  const { showReasoningByDefault: _retired, ...ui } = (input ?? {}) as NonNullable<
+    SettingsPatch['ui']
+  > & {
+    showReasoningByDefault?: unknown
+  }
+  void _retired
+  return ui
+}
+
 /**
  * Whether an install was already using something experimental.
  *
@@ -21,15 +31,18 @@ const KEY = 'settings'
 function alreadyExperimenting(stored: Partial<Settings>): boolean {
   return Boolean(
     stored.chartsEnabled ||
-      stored.keyPointEnabled ||
-      stored.web?.enabled ||
-      stored.sendAppAttribution === false
+    stored.keyPointEnabled ||
+    stored.web?.enabled ||
+    stored.sendAppAttribution === false
   )
 }
 
 /** Stored settings merged over defaults, so new options appear on upgrade. */
 export function loadSettings(): Settings {
-  const raw = getSetting<Partial<Settings> & { docsEnabled?: unknown; quickQuestion?: unknown }>(KEY, {})
+  const raw = getSetting<Partial<Settings> & { docsEnabled?: unknown; quickQuestion?: unknown }>(
+    KEY,
+    {}
+  )
   // Older settings can still carry retired features. Drop these fields as
   // the settings are read so the next save also removes it from storage.
   const { docsEnabled: _legacyDocsEnabled, quickQuestion: _legacyQuickQuestion, ...stored } = raw
@@ -37,6 +50,7 @@ export function loadSettings(): Settings {
   void _legacyQuickQuestion
   const keybinds = { ...DEFAULT_KEYBINDS, ...stored.keybinds }
   delete keybinds['docs.toggle']
+  delete keybinds['reasoning.toggle']
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
@@ -51,15 +65,21 @@ export function loadSettings(): Settings {
     web: {
       ...DEFAULT_SETTINGS.web,
       ...stored.web,
-      engine: stored.web?.engine === 'duckduckgo' ? 'local' : stored.web?.engine ?? DEFAULT_SETTINGS.web.engine
+      engine:
+        stored.web?.engine === 'duckduckgo'
+          ? 'local'
+          : (stored.web?.engine ?? DEFAULT_SETTINGS.web.engine)
     },
     compaction: normalizeCompaction(stored.compaction ?? {}),
     ui: {
       ...DEFAULT_SETTINGS.ui,
-      ...stored.ui,
+      ...currentUi(stored.ui),
       // One level deeper, so a switch added after somebody last saved arrives
       // with its default rather than as undefined.
-      replyChips: { ...DEFAULT_SETTINGS.ui.replyChips, ...stored.ui?.replyChips }
+      replyChips: {
+        ...DEFAULT_SETTINGS.ui.replyChips,
+        ...stored.ui?.replyChips
+      }
     },
     keybinds
   }
@@ -75,21 +95,30 @@ export function saveSettings(input: SettingsPatch): Settings {
   const next: Settings = {
     ...current,
     ...patch,
-    defaultProviderRouting: { ...current.defaultProviderRouting, ...patch.defaultProviderRouting },
+    defaultProviderRouting: {
+      ...current.defaultProviderRouting,
+      ...patch.defaultProviderRouting
+    },
     modelProviderRouting: patch.modelProviderRouting ?? current.modelProviderRouting,
     web: {
       ...current.web,
       ...patch.web,
-      engine: patch.web?.engine === 'duckduckgo' ? 'local' : patch.web?.engine ?? current.web.engine
+      engine:
+        patch.web?.engine === 'duckduckgo' ? 'local' : (patch.web?.engine ?? current.web.engine)
     },
-    compaction: normalizeCompaction({ ...current.compaction, ...patch.compaction }),
+    compaction: normalizeCompaction({
+      ...current.compaction,
+      ...patch.compaction
+    }),
     ui: {
       ...current.ui,
-      ...patch.ui,
+      ...currentUi(patch.ui),
       replyChips: { ...current.ui.replyChips, ...patch.ui?.replyChips }
     },
     keybinds: { ...current.keybinds, ...patch.keybinds }
   }
+
+  delete next.keybinds['reasoning.toggle']
 
   // `hasApiKey` is derived, never authoritative.
   const { hasApiKey: _derived, ...persistable } = next

@@ -11,6 +11,7 @@ interface Props {
   center?: boolean
   /** Replaces the header entirely — used by the search-first palettes. */
   header?: ReactNode
+  className?: string
 }
 
 export function Overlay({
@@ -20,7 +21,8 @@ export function Overlay({
   footer,
   wide,
   center,
-  header
+  header,
+  className
 }: Props): React.JSX.Element {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -40,7 +42,12 @@ export function Overlay({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className={`panel${wide ? ' panel--wide' : ''}`} role="dialog" aria-modal="true">
+      <div
+        className={`panel${wide ? ' panel--wide' : ''}${className ? ` ${className}` : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === 'string' ? title : undefined}
+      >
         {header ?? (
           <div className="panel__head">
             <span className="panel__title">{title}</span>

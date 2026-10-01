@@ -907,6 +907,33 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   check('settings survive a round trip', repo.getSetting('probe', null).nested.value === 7)
   check('missing settings fall back', repo.getSetting('absent', 'fallback') === 'fallback')
 
+  section('settings defaults and retired reasoning expansion')
+  const settingsBeforeDefaults = repo.getSetting('settings', {})
+  repo.setSetting('settings', {})
+  const freshPreferences = loadSettings()
+  check('experimental features are off on a fresh install', freshPreferences.hideExperimental === true)
+  check('lazy loading is on on a fresh install', freshPreferences.ui.loadEverythingAtOnce === false)
+  check('new installs tell models the date and time', freshPreferences.includeDateTimeInPrompt === true)
+  repo.setSetting('settings', {
+    hideExperimental: false,
+    includeDateTimeInPrompt: false,
+    ui: { loadEverythingAtOnce: true, showReasoningByDefault: true, fontSize: 17 },
+    keybinds: { 'reasoning.toggle': 'mod+shift+r', 'thread.new': 'mod+n' }
+  })
+  const kept = loadSettings()
+  check('existing feature, loading and date preferences survive', !kept.hideExperimental &&
+    !kept.includeDateTimeInPrompt && kept.ui.loadEverythingAtOnce)
+  check('retired reasoning expansion is dropped on load', !('showReasoningByDefault' in kept.ui) &&
+    !('reasoning.toggle' in kept.keybinds))
+  saveSettings({ ui: { showReasoningByDefault: true, fontSize: 16 },
+    keybinds: { 'reasoning.toggle': 'mod+r' } })
+  const retiredSaved = repo.getSetting('settings', {})
+  check('an older caller cannot restore retired reasoning expansion',
+    !('showReasoningByDefault' in retiredSaved.ui) && !('reasoning.toggle' in retiredSaved.keybinds))
+  check('other display and shortcut choices are preserved',
+    retiredSaved.ui.fontSize === 16 && retiredSaved.keybinds['thread.new'] === 'mod+n')
+  repo.setSetting('settings', settingsBeforeDefaults)
+
   section('upgrading from Quick Question')
   const previousSettings = repo.getSetting('settings', {})
   repo.setSetting('settings', {

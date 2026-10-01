@@ -1154,8 +1154,8 @@ export function contextEstimate(
     // A model switch changes tokenization; changed instructions/tool schemas
     // change the prompt. The previous request no longer measures the next one.
     const fingerprint = (segments: SystemPromptSegment[]): string => JSON.stringify(
-      segments.filter((s) => s.enabled && s.source !== 'datetime')
-        .map((s) => [s.id, s.text, s.tokens])
+      segments.filter((s) => s.enabled)
+        .map((s) => [s.id, s.source === 'datetime' ? '' : s.text, s.tokens])
     )
     const snapshot = parseJson<SystemPromptSegment[] | null>(turn.snapshot, null)
     if (turn.model !== context.model ||
