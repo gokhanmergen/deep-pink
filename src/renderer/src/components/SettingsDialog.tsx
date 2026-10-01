@@ -1647,7 +1647,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           >
             <h3 className="section-title">About</h3>
             <p className="dim" style={{ fontSize: 13, lineHeight: 1.6 }}>
-              Deep Pink {info?.version ?? '…'} — MIT licensed, open source.
+              Deep Pink {info?.version ?? '…'} — MIT licensed.
               {info && (
                 <>
                   <br />
@@ -1845,13 +1845,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                * maximum on a large model is most of the cost and most of the
                * wait.
                */}
-              <p className="field__hint">
-                {settings.reasoning.mode === 'auto'
-                  ? 'Use the model’s default reasoning.'
-                  : settings.reasoning.mode === 'off'
+              {settings.reasoning.mode !== 'auto' && (
+                <p className="field__hint">
+                  {settings.reasoning.mode === 'off'
                     ? 'Request no reasoning where supported.'
                     : 'More reasoning can increase cost and response time.'}
-              </p>
+                </p>
+              )}
             </div>
             {settings.reasoning.mode === 'budget' && (
               <div className="field">
@@ -1883,11 +1883,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span>Show me the thinking</span>
               <Revert path="streamReasoning" what="reasoning traces" />
             </label>
-            {/* Worth saying, because the obvious reading is that switching it
-                off saves the money. It saves the reading. */}
-            <p className="field__hint">
-              Turning this off hides reasoning; it does not change its cost.
-            </p>
           </SettingsSection>
 
           <SettingsSection

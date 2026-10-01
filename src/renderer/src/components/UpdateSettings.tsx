@@ -83,16 +83,10 @@ export function UpdateSettings(): React.JSX.Element {
         </p>
       )}
 
-      {/*
-        * Said out loud where it applies, because the alternative is a reader
-        * wondering why the app that just told them about a new version will
-        * not fetch it. This copy belongs to something else.
-        */}
-      {config.check && status && !status.canSelfInstall && status.installKind !== 'unknown' && (
+      {config.check && status && !status.canSelfInstall && status.installKind === 'mac' && (
         <p className="field__hint">
-          {status.installKind === 'mac'
-            ? 'Deep Pink cannot replace itself on macOS: that needs an Apple Developer ID signature, and these builds are signed ad-hoc. It will tell you when there is a new one.'
-            : 'Deep Pink does not replace itself here — this copy was installed by something else, and overwriting it would put the two out of step.'}
+          Deep Pink cannot replace itself on macOS: that needs an Apple Developer ID signature,
+          and these builds are signed ad-hoc. It will tell you when there is a new one.
         </p>
       )}
 
