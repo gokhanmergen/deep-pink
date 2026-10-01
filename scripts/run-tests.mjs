@@ -111,7 +111,9 @@ for (const file of files) {
        * panel over the window is not a thing these suites are testing and is
        * a thing that would hide everything they are.
        */
-      DEEP_PINK_NO_WIZARD: '1'
+      DEEP_PINK_NO_WIZARD: '1',
+      // Release notes have their own coverage and must not cover unrelated fixtures.
+      DEEP_PINK_NO_RELEASE_NOTES: '1'
     }
   })
   if (run.status !== 0) failed++

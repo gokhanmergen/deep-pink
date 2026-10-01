@@ -2955,6 +2955,18 @@ svg.lucide {
   max-width: 900px;
 }
 
+.panel--release-notes {
+  max-width: 560px;
+}
+.release-notes__version {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.release-notes .md > ul {
+  margin: 0;
+}
+
 .panel__head {
   display: flex;
   align-items: center;

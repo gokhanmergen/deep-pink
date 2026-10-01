@@ -5,7 +5,9 @@ name: Release
 # Two ways to run it:
 #
 #   Tag a version — builds and publishes a real release:
+#     Handwrite and commit release-notes.md for the next version first.
 #     just version patch          # writes package.json and tags
+#     pnpm check:release-notes
 #     git push --follow-tags
 #
 #   Run it by hand from the Actions tab — builds the packages, and publishes
@@ -43,6 +45,10 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Require handwritten release notes before publishing
+        if: github.ref_type == 'tag' || inputs.publish
+        run: node scripts/check-release-notes.mjs
 
       - name: Work out the version being released
         id: meta

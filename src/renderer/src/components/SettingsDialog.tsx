@@ -1635,10 +1635,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             activePage={tab}
             query={query}
             sectionId="settings-about-0"
-            keywords="updates release upgrade automatic check download install version"
+            keywords="updates release upgrade automatic check download install version features whats new what's new release notes changelog"
           >
             <h3 className="section-title">Updates</h3>
             <UpdateSettings />
+            <button
+              id="show-release-notes"
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => setOverlay('whatsNew', 'settings')}
+            >
+              What’s new
+            </button>
           </SettingsSection>
 
           <SettingsSection

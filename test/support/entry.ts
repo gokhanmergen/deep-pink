@@ -3,6 +3,7 @@
  * test files can require a single CommonJS artifact from inside Electron.
  */
 export { getDb } from '@/db/index'
+export * as releaseNotes from '@shared/releaseNotes.mjs'
 export { MIGRATIONS } from '@/db/schema'
 export { loadSettings, saveSettings } from '@/settings'
 export * as mcp from '@/mcp/host'

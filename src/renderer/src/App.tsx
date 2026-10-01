@@ -10,6 +10,7 @@ import { CompareView } from './components/CompareView'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchOverlay } from './components/SearchOverlay'
 import { SettingsDialog } from './components/SettingsDialog'
+import { ReleaseNotesPopup, ReleaseNotesPrompt } from './components/ReleaseNotesPopup'
 import { ModelPicker } from './components/ModelPicker'
 import { ProviderPicker } from './components/ProviderPicker'
 import { SystemPromptInspector } from './components/SystemPromptInspector'
@@ -295,6 +296,8 @@ export function App(): React.JSX.Element {
       {overlay === 'palette' && <CommandPalette onClose={close} />}
       {overlay === 'search' && <SearchOverlay onClose={close} />}
       {overlay === 'settings' && <SettingsDialog onClose={close} />}
+      <ReleaseNotesPrompt />
+      {overlay === 'whatsNew' && <ReleaseNotesPopup onClose={close} />}
       {overlay === 'models' && <ModelPicker mode="chat" onClose={close} />}
       {overlay === 'defaultModel' && <ModelPicker mode="default" onClose={close} />}
       {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}

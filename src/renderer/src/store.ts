@@ -28,6 +28,7 @@ export type Overlay =
   | 'palette'
   | 'search'
   | 'settings'
+  | 'whatsNew'
   | 'models'
   | 'defaultModel'
   | 'titleModel'

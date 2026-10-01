@@ -390,7 +390,8 @@ const api = {
    * would hide the very thing being measured. Read here rather than in the
    * renderer, which has no `process` to read it from.
    */
-  wizardSuppressed: Boolean(process.env.DEEP_PINK_NO_WIZARD)
+  wizardSuppressed: Boolean(process.env.DEEP_PINK_NO_WIZARD),
+  releaseNotesSuppressed: Boolean(process.env.DEEP_PINK_NO_RELEASE_NOTES)
 }
 
 export type DeepPinkApi = typeof api

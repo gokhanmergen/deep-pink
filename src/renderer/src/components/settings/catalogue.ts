@@ -33,7 +33,8 @@ export const SETTINGS_PAGES: Record<SettingsTab, SettingsPage> = {
   },
   about: {
     label: 'Updates & about',
-    keywords: 'update upgrade download install version release about license source'
+    keywords:
+      "update upgrade download install version release about license source features whats new what's new release notes changelog"
   },
   prompts: {
     label: 'Instructions',

@@ -22,3 +22,15 @@ that they were written but not run.
 
 Straight to `main`. No feature branches; this is a solo project and the history
 is all on one line.
+
+## Handwritten release notes
+
+`release-notes.md` supplies the in-app What's new popup. Its heading is
+`# <package.json version>`, followed by Markdown feature bullets.
+The maintainer must write every feature bullet by hand. Never generate,
+rewrite, or fill in release bullets as an agent.
+
+Whenever preparing or bumping a release, run `pnpm check:release-notes`.
+If notes are missing, unfinished, or for a different version, explicitly tell
+the user which version needs handwritten notes and link `release-notes.md`.
+Continue authorized implementation and pushes; publishing requires valid notes.

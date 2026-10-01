@@ -13,7 +13,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
-    "build": "pnpm run typecheck && electron-vite build",
+    "build": "node scripts/check-release-notes.mjs --warn && pnpm run typecheck && electron-vite build",
+    "check:release-notes": "node scripts/check-release-notes.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "node scripts/run-tests.mjs",
     "postinstall": "electron-builder install-app-deps"

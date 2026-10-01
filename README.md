@@ -363,15 +363,25 @@ just build           # production bundle
 just package-linux   # complete Linux package build
 ```
 
-To cut a release, bump the version and push the tag — the workflow builds the
-Linux and macOS artefacts on their own machines, refuses to publish if the
-tests fail or the tag disagrees with `package.json`, and attaches everything to
-one GitHub release:
+To cut a release, write the notes for the next version, bump the version, and
+push the tag — the workflow builds the Linux and macOS artefacts on their own
+machines, refuses to publish if the
+tests fail, handwritten release notes are missing, or the tag disagrees with
+`package.json`, and attaches everything to one GitHub release:
 
 ```bash
+# Handwrite release-notes.md for the NEXT version: "# <version>" and feature bullets.
+git add release-notes.md
+git commit -m "Write release notes"
 just version patch
+pnpm check:release-notes
 git push --follow-tags
 ```
+
+The app bundles [release-notes.md](release-notes.md), shows it once per version,
+and offers **What's new** in Settings → Updates & about. Update this file by
+hand for each release; agents must not write its feature bullets. Development
+builds warn about missing notes, while publishing requires them.
 
 The tests run inside Electron, because the storage layer is built against Electron's ABI and `safeStorage` exists nowhere else. On a headless machine, use `xvfb-run --auto-servernum just test`.
 
