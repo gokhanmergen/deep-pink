@@ -550,12 +550,34 @@ suite(
     await run(`[...document.querySelectorAll('.tab')].find((t) => t.textContent.trim() === 'Models').click()`)
     await settle(500)
 
-    // The first button under "Default model" opens the picker.
-    await run(`(() => {
-      const heading = [...document.querySelectorAll('.section-title')]
-        .find((e) => e.textContent.trim() === 'Default model')
-      heading.nextElementSibling.querySelector('.btn').click()
+    // These pickers are inline fields, not controls below section headings.
+    const modelFields = await run(`(() => {
+      return ['defaultModel', 'sideBySideLeftModel', 'sideBySideRightModel'].map((name) => {
+        const id = 'setting-' + name
+        const button = document.getElementById(id)
+        const label = document.querySelector('label[for="' + id + '"]')
+        if (!button || !label) return { name, found: false }
+        const a = label.getBoundingClientRect()
+        const b = button.getBoundingClientRect()
+        return {
+          name, found: true,
+          sameLine: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2) <= 1,
+          gap: b.left - a.right
+        }
+      })
     })()`)
+    check('the model pickers have associated labels', modelFields.every((field) => field.found), modelFields)
+    check('the default model stays on the same line as its label', modelFields[0].sameLine === true, modelFields[0])
+    check('the comparison pickers stay beside their labels',
+      modelFields.slice(1).every((field) => field.sameLine && field.gap >= 0 && field.gap <= 16), modelFields)
+    const modelPickerOpened = await run(`(() => {
+      const button = document.getElementById('setting-defaultModel')
+      if (!button) return false
+      button.click()
+      return true
+    })()`)
+    check('the default model picker can be clicked', modelPickerOpened)
+    if (!modelPickerOpened) return
     await settle(700)
 
     const picker = await run(`({
