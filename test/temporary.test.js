@@ -54,7 +54,7 @@ suite(
         groups: [...document.querySelectorAll('.sidebar__group-label')].map((e) => e.textContent.trim()),
         temporaryRows: document.querySelectorAll('.thread-item[data-temporary="true"]').length,
         rowLabels: [...document.querySelectorAll('.thread-item__title')].map((e) => e.textContent),
-        badge: document.querySelector('.temp-badge')?.textContent ?? null,
+        badge: document.querySelector('.temp-badge')?.getAttribute('aria-label') ?? null,
         // The switch reads the same either way; what it says is in the styling.
         badgeOn: document.querySelector('.temp-badge')?.dataset.on ?? null,
         title: document.querySelector('.topbar__title')?.textContent ?? null,
@@ -96,7 +96,7 @@ suite(
     check('the title bar says so too', started.title === 'Temporary chat', started.title)
     check('and the switch is now showing as on', started.badgeOn === 'true', started.badgeOn)
     check('saying what it is rather than what to do about it',
-      (started.badge ?? '').trim() === 'Temporary', started.badge)
+      started.badge === 'Temporary chat', started.badge)
     check(
       'and the database agrees there is one',
       repo.listThreads().filter((t) => t.temporary).length === 1,

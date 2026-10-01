@@ -79,7 +79,12 @@ suite(
     check('the left side opens', await openThread(win, 'Compared, left side'))
     check(
       'its top bar offers the pair back',
-      await clickByText('.topbar .btn', 'Side by side'),
+      await run(`(() => {
+        const button = document.querySelector('.topbar .btn[aria-label="Side by side"]')
+        if (!button) return false
+        button.click()
+        return true
+      })()`),
       'no "Side by side" button in the top bar'
     )
     await settle(800)
@@ -136,7 +141,7 @@ suite(
     check('with the ordinary composer back', alone.mainComposer)
 
     const labels = await run(
-      `[...document.querySelectorAll('.topbar .btn')].map((b) => b.textContent.trim())`
+      `[...document.querySelectorAll('.topbar .btn')].map((b) => b.getAttribute('aria-label') ?? '')`
     )
     check(
       'its top bar offers it by the one name it has everywhere',

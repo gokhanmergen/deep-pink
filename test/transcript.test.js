@@ -119,9 +119,8 @@ suite(
     // header that summed what was loaded would show a fraction of this, and
     // would count upwards as the reader scrolled back.
     const header = await run(`(() => {
-      const btn = [...document.querySelectorAll('.topbar .btn')]
-        .find((b) => /tok|\\$/.test(b.textContent))
-      return btn?.textContent ?? null
+      const btn = document.querySelector('.topbar .btn[aria-label="Thread statistics"]')
+      return btn?.title ?? null
     })()`)
     check('the header reports the whole thread’s tokens', (header ?? '').includes('24k'), header)
     check('and the whole thread’s cost', (header ?? '').includes('$0.12'), header)

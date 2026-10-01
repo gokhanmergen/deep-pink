@@ -1042,6 +1042,8 @@ export function ChatView(): React.JSX.Element {
           <button
             className="btn btn--ghost temp-badge"
             data-on={thread.temporary}
+            aria-label="Temporary chat"
+            aria-pressed={Boolean(thread.temporary)}
             onClick={() => void toggleTemporary()}
             title={
               thread.temporary
@@ -1055,7 +1057,6 @@ export function ChatView(): React.JSX.Element {
             type="button"
           >
             <Ghost {...ICON} />
-            <span className="btn__label">Temporary</span>
           </button>
         )}
 
@@ -1065,6 +1066,7 @@ export function ChatView(): React.JSX.Element {
         <button
           className="btn"
           data-on={Boolean(partner)}
+          aria-label="Side by side"
           onClick={() => void (thread && partner ? openCompare([thread.id, partner]) : openCompare())}
           title={`${
             partner
@@ -1074,8 +1076,6 @@ export function ChatView(): React.JSX.Element {
           type="button"
         >
           <Columns2 {...ICON} />
-          {/* One name whichever it does; lit when there is a pair to go back to. */}
-          <span className="btn__label">Side by side</span>
         </button>
 
         {thread && (
@@ -1091,34 +1091,34 @@ export function ChatView(): React.JSX.Element {
               */}
             <button
               className="btn"
+              aria-label="Provider routing"
               onClick={() => setOverlay('providers')}
-              title={`Provider routing — ${formatBinding(keybinds['provider.picker'])}`}
+              title={`Provider routing: ${
+                thread.config.providerRouting?.order[0] ??
+                settings.modelProviderRouting[model]?.order[0] ??
+                'auto provider'
+              } — ${formatBinding(keybinds['provider.picker'])}`}
               type="button"
             >
               <Route {...ICON} />
-              <span className="btn__label">
-                {thread.config.providerRouting?.order[0] ??
-                  settings.modelProviderRouting[model]?.order[0] ??
-                  'auto provider'}
-              </span>
             </button>
             <button
               className="btn"
+              aria-label="Inspect the system prompt"
               onClick={() => setOverlay('prompt')}
               title={`Inspect the system prompt — ${formatBinding(keybinds['prompt.inspect'])}`}
               type="button"
             >
               <FileText {...ICON} />
-              Prompt
             </button>
             <button
               className="btn"
+              aria-label="Thread statistics"
               onClick={() => setOverlay('threadStats')}
-              title={`Thread statistics — ${formatBinding(keybinds['stats.thread'])}`}
+              title={`Thread statistics: ${formatTokens(totalTokens)} · ${formatCost(totalCost)} — ${formatBinding(keybinds['stats.thread'])}`}
               type="button"
             >
               <BarChart3 {...ICON} />
-              {formatTokens(totalTokens)} · {formatCost(totalCost)}
             </button>
           </>
         )}

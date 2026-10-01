@@ -1331,11 +1331,12 @@ svg.lucide {
   flex: 1;
 }
 
-/* The row has to fit at any window width. The title gives way first, and after
-   that the long names — a model, a provider — truncate rather than pushing the
-   statistics off the end of the bar. */
+/* Compact, equally sized actions leave room for the conversation title. */
 .topbar .btn {
-  min-width: 0;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  flex: none;
 }
 
 /* A switch rather than a label, because the useful thing to do about "this
