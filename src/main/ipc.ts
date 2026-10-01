@@ -11,6 +11,7 @@ import type {
   SendMessageRequest,
   Settings,
   SettingsPatch,
+  StatsRangeDays,
   StreamEvent,
   Thread,
   ThreadConfig
@@ -401,7 +402,7 @@ export function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('stats:global', () => repo.getGlobalStats())
+  ipcMain.handle('stats:global', (_e, days?: StatsRangeDays) => repo.getGlobalStats(days))
 
   ipcMain.handle('stats:credits', () => getCredits(loadSettings().sendAppAttribution))
 

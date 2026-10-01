@@ -364,6 +364,8 @@ export interface ToolUsageRollup {
   totalMs: number
 }
 
+export type StatsRangeDays = 7 | 30 | 90
+
 export interface GlobalStats {
   threadCount: number
   messageCount: number
@@ -379,7 +381,7 @@ export interface GlobalStats {
   byModel: ModelUsageRollup[]
   byProvider: ModelUsageRollup[]
   byDay: DailyUsage[]
-  /** Per day and model, for a line each. Bounded to the same 90 days. */
+  /** Per day and model, for a line each. Selected range, or 90 days for lifetime queries. */
   byDayModel: DailyModelUsage[]
 }
 

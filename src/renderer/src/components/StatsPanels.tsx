@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { GlobalStats, ModelUsageRollup, ThreadStats, ToolUsageRollup } from '@shared/types'
+import type {
+  GlobalStats,
+  ModelUsageRollup,
+  StatsRangeDays,
+  ThreadStats,
+  ToolUsageRollup
+} from '@shared/types'
 import { useStore } from '../store'
 import { Overlay } from './Overlay'
-import {
-  MAX_SERIES,
-  Segmented,
-  ShareRow,
-  StatTiles,
-  TimeChart,
-  type ChartSeries
-} from './Charts'
+import { MAX_SERIES, Segmented, ShareRow, StatTiles, TimeChart, type ChartSeries } from './Charts'
 import {
   formatCost,
   formatDateTime,
@@ -72,9 +71,8 @@ function ToolUsage({ rows }: { rows: ToolUsageRollup[] }): React.JSX.Element | n
         </tbody>
       </table>
       <p className="field__hint" style={{ marginTop: 6 }}>
-        Estimated from what was returned. These tokens are billed as part of the
-        prompt on the turn after each call, and again on every turn that follows
-        until the context is compacted.
+        Estimated from what was returned. These tokens are billed as part of the prompt on the turn
+        after each call, and again on every turn that follows until the context is compacted.
       </p>
     </>
   )
@@ -89,16 +87,20 @@ function ToolUsage({ rows }: { rows: ToolUsageRollup[] }): React.JSX.Element | n
  */
 function ShareList({
   rows,
-  total
+  total,
+  measure = 'cost',
+  limit = 6
 }: {
   rows: ModelUsageRollup[]
   total: number
+  measure?: Measure
+  limit?: number
 }): React.JSX.Element | null {
   if (!rows.length) return null
 
   return (
     <div>
-      {rows.slice(0, 6).map((row) => (
+      {rows.slice(0, limit).map((row) => (
         <ShareRow
           key={`${row.model}:${row.provider ?? ''}`}
           label={
@@ -107,9 +109,9 @@ function ShareList({
               <span title={row.model}>{modelShortName(row.model) || 'unknown'}</span>
             </>
           }
-          value={formatCost(row.costUsd)}
-          share={total > 0 ? row.costUsd / total : 0}
-          sub={`${total > 0 ? ((row.costUsd / total) * 100).toFixed(1) : '0.0'}% of cost · ${formatTokens(row.totalTokens)} tokens`}
+          value={measure === 'cost' ? formatCost(row.costUsd) : formatTokens(row.totalTokens)}
+          share={total > 0 ? (measure === 'cost' ? row.costUsd : row.totalTokens) / total : 0}
+          sub={`${total > 0 ? (((measure === 'cost' ? row.costUsd : row.totalTokens) / total) * 100).toFixed(1) : '0.0'}% of ${measure} · ${measure === 'cost' ? `${formatTokens(row.totalTokens)} tokens` : formatCost(row.costUsd)}`}
         />
       ))}
     </div>
@@ -118,26 +120,34 @@ function ShareList({
 
 function RollupTable({
   rows,
-  caption
+  caption,
+  measure = 'cost',
+  showHeading = true
 }: {
   rows: ModelUsageRollup[]
   caption: string
+  measure?: Measure
+  showHeading?: boolean
 }): React.JSX.Element | null {
   if (!rows.length) return null
-  const total = rows.reduce((sum, row) => sum + row.costUsd, 0)
+  const total = rows.reduce(
+    (sum, row) => sum + (measure === 'cost' ? row.costUsd : row.totalTokens),
+    0
+  )
 
   return (
     <>
-      <div className="section-title">{caption}</div>
+      {showHeading && <div className="section-title">{caption}</div>}
       <table className="table">
         <thead>
           <tr>
             <th>{caption.includes('provider') ? 'Provider' : 'Model'}</th>
             <th className="num">Requests</th>
-            <th className="num">In</th>
-            <th className="num">Out</th>
+            <th className="num">Input</th>
+            <th className="num">Output</th>
+            <th className="num">Tokens</th>
             <th className="num">Cost</th>
-            <th className="num">Share</th>
+            <th className="num">{measure === 'cost' ? 'Cost share' : 'Token share'}</th>
           </tr>
         </thead>
         <tbody>
@@ -147,9 +157,12 @@ function RollupTable({
               <td className="num">{formatNumber(row.requests)}</td>
               <td className="num">{formatTokens(row.promptTokens)}</td>
               <td className="num">{formatTokens(row.completionTokens)}</td>
+              <td className="num">{formatTokens(row.totalTokens)}</td>
               <td className="num">{formatCost(row.costUsd)}</td>
               <td className="num">
-                {total > 0 ? `${((row.costUsd / total) * 100).toFixed(1)}%` : '—'}
+                {total > 0
+                  ? `${(((measure === 'cost' ? row.costUsd : row.totalTokens) / total) * 100).toFixed(1)}%`
+                  : '—'}
               </td>
             </tr>
           ))}
@@ -344,11 +357,12 @@ const RANGES: { id: Range; label: string }[] = [
   { id: '90', label: '90 days' }
 ]
 
-type Breakdown = 'model' | 'day'
+type Breakdown = 'model' | 'provider' | 'day'
 
 const BREAKDOWNS: { id: Breakdown; label: string }[] = [
-  { id: 'model', label: 'Model' },
-  { id: 'day', label: 'Day' }
+  { id: 'model', label: 'By model' },
+  { id: 'provider', label: 'By provider' },
+  { id: 'day', label: 'By day' }
 ]
 
 type Grouping = 'total' | 'model'
@@ -375,16 +389,51 @@ function shortDay(key: string): string {
 }
 
 export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [stats, setStats] = useState<GlobalStats | null>(null)
+  const [loaded, setLoaded] = useState<{ range: Range; stats: GlobalStats } | null>(null)
+  const [failure, setFailure] = useState<{ range: Range; message: string } | null>(null)
   const [credits, setCredits] = useState<{ totalCredits: number; totalUsage: number } | null>(null)
   const [range, setRange] = useState<Range>('30')
   const [measure, setMeasure] = useState<Measure>('cost')
   const [grouping, setGrouping] = useState<Grouping>('total')
   const [breakdown, setBreakdown] = useState<Breakdown>('model')
+  const [refresh, setRefresh] = useState(0)
+  const generationState = useStore(
+    (s) => [s.generating, s.compare?.[0].generating ?? false, s.compare?.[1].generating ?? false].join(':')
+  )
+  const stats = loaded?.range === range ? loaded.stats : null
 
   useEffect(() => {
-    void window.deepPink.stats.global().then(setStats)
-    void window.deepPink.stats.credits().then(setCredits)
+    let active = true
+    setFailure(null)
+    void window.deepPink.stats.global(Number(range) as StatsRangeDays).then(
+      (result) => {
+        if (active) setLoaded({ range, stats: result })
+      },
+      () => {
+        if (active) {
+          setLoaded(null)
+          setFailure({ range, message: 'Could not load statistics.' })
+        }
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [range, generationState, refresh])
+
+  useEffect(() => {
+    let active = true
+    void window.deepPink.stats.credits().then(
+      (result) => {
+        if (active) setCredits(result)
+      },
+      () => {
+        if (active) setCredits(null)
+      }
+    )
+    return () => {
+      active = false
+    }
   }, [])
 
   /**
@@ -419,8 +468,8 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
   /**
    * The chart's series: either one line for everything, or one per model.
    *
-   * Models are ranked by what they cost across the whole range and keep the
-   * colour that rank gives them for as long as the range does — hiding a line
+   * Models are ranked by the selected measure across the range and keep the
+   * colour that rank gives them until the filters change — hiding a line
    * from the legend never repaints the ones left behind. Past the palette, the
    * tail is folded into a single "Other" rather than given a generated hue
    * nobody could tell from the others.
@@ -437,7 +486,7 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
     const rows = (stats?.byDayModel ?? []).filter((row) => within.has(row.day))
 
     const spend = new Map<string, number>()
-    for (const row of rows) spend.set(row.model, (spend.get(row.model) ?? 0) + row.costUsd)
+    for (const row of rows) spend.set(row.model, (spend.get(row.model) ?? 0) + value(row))
 
     const ranked = [...spend.entries()].sort((a, b) => b[1] - a[1]).map(([model]) => model)
     const named = ranked.slice(0, spend.size > MAX_SERIES ? MAX_SERIES - 1 : MAX_SERIES)
@@ -488,43 +537,77 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
       wide
       footer={
         <span>
-          Everything here is computed from your local database. Credit balance is the only figure
-          fetched from OpenRouter.
+          {credits
+            ? `OpenRouter account · ${formatCost(Math.max(credits.totalCredits - credits.totalUsage, 0))} credit remaining · ${formatCost(credits.totalUsage)} used on this key (all time)`
+            : 'Usage recorded on this device. OpenRouter account balance unavailable.'}
         </span>
       }
     >
       <div className="panel__body">
+        <div className="viz-head stats-filters">
+          <span className="dim" style={{ fontSize: 12 }}>
+            {shortDay(dayKey(Number(range) - 1))} to {shortDay(dayKey(0))}
+          </span>
+          <div style={{ flex: 1 }} />
+          <Segmented options={RANGES} value={range} onChange={setRange} label="Date range" />
+          <Segmented
+            options={MEASURES}
+            value={measure}
+            onChange={setMeasure}
+            label="Usage measure"
+          />
+        </div>
         {!stats ? (
-          <p className="dim">Loading…</p>
+          <div role="status">
+            <p className="dim">
+              {failure?.range === range ? failure.message : 'Loading statistics…'}
+            </p>
+            {failure?.range === range && (
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setRefresh((value) => value + 1)}
+              >
+                Retry
+              </button>
+            )}
+          </div>
         ) : (
           <>
-            {/* One row of filters, above everything they scope. */}
-            <div className="viz-head">
-              <span className="dim" style={{ fontSize: 12 }}>
-                {shortDay(days[0]?.key ?? dayKey(0))} to {shortDay(days[days.length - 1]?.key ?? dayKey(0))}
-              </span>
-              <div style={{ flex: 1 }} />
-              <Segmented options={RANGES} value={range} onChange={setRange} label="Date range" />
-            </div>
-
             <div className="viz-split">
-              <div>
+              <div className="stats-summary">
                 <div className="hero">
-                  <div className="hero__label">Spent in range</div>
-                  <div className="hero__value">{formatCost(inRange.cost)}</div>
+                  <div className="hero__label">
+                    {measure === 'cost' ? 'Cost' : 'Tokens'} · last {range} days
+                  </div>
+                  <div className="hero__value">
+                    {format(measure === 'cost' ? stats.costUsd : stats.totalTokens)}
+                  </div>
                   <div className="hero__sub">
-                    {formatCost(stats.costUsd)} since{' '}
-                    {stats.firstUsedAt ? formatDateTime(stats.firstUsedAt).split(',')[0] : 'the start'}
+                    {measure === 'cost'
+                      ? `${formatTokens(stats.totalTokens)} tokens`
+                      : formatCost(stats.costUsd)}{' '}
+                    · {formatNumber(inRange.requests)} requests
                   </div>
                 </div>
 
                 <div style={{ marginTop: 16 }}>
-                  <ShareList rows={stats.byModel} total={stats.costUsd} />
+                  <div className="hero__label" style={{ marginBottom: 8 }}>
+                    Top models
+                  </div>
+                  <ShareList
+                    rows={[...stats.byModel].sort((a, b) =>
+                      measure === 'cost' ? b.costUsd - a.costUsd : b.totalTokens - a.totalTokens
+                    )}
+                    total={measure === 'cost' ? stats.costUsd : stats.totalTokens}
+                    measure={measure}
+                    limit={4}
+                  />
                 </div>
               </div>
 
               <div>
-                <div className="viz-head">
+                <div className="viz-head stats-chart-head">
                   <span className="viz-head__title">
                     {measure === 'cost' ? 'Daily cost' : 'Daily tokens'}
                   </span>
@@ -533,17 +616,17 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
                     options={GROUPINGS}
                     value={grouping}
                     onChange={setGrouping}
-                    label="One line or one per model"
-                  />
-                  <Segmented
-                    options={MEASURES}
-                    value={measure}
-                    onChange={setMeasure}
-                    label="What the chart plots"
+                    label="Chart lines"
                   />
                 </div>
 
-                <TimeChart labels={labels} series={series} notes={notes} format={format} />
+                <TimeChart
+                  key={`${range}:${measure}:${grouping}`}
+                  labels={labels}
+                  series={series}
+                  notes={notes}
+                  format={format}
+                />
               </div>
             </div>
 
@@ -560,7 +643,7 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
                   label: 'Cached input',
                   value: formatTokens(stats.cachedTokens),
                   sub: stats.promptTokens
-                    ? `${((stats.cachedTokens / stats.promptTokens) * 100).toFixed(1)}% of all input`
+                    ? `${((stats.cachedTokens / stats.promptTokens) * 100).toFixed(1)}% of input`
                     : undefined
                 },
                 {
@@ -571,19 +654,13 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
                 {
                   label: 'Requests',
                   value: formatNumber(inRange.requests),
-                  sub: `${formatNumber(stats.threadCount)} threads`
+                  sub: `${formatNumber(stats.threadCount)} active threads`
                 },
-                credits
-                  ? {
-                      label: 'Credit left',
-                      value: formatCost(Math.max(credits.totalCredits - credits.totalUsage, 0)),
-                      sub: `${formatCost(credits.totalUsage)} used on this key`
-                    }
-                  : {
-                      label: 'Messages',
-                      value: formatNumber(stats.messageCount),
-                      sub: `${formatNumber(stats.toolCallCount)} tool calls`
-                    }
+                {
+                  label: 'Messages',
+                  value: formatNumber(stats.messageCount),
+                  sub: `${formatNumber(stats.toolCallCount)} tool calls`
+                }
               ]}
             />
 
@@ -594,54 +671,71 @@ export function GlobalStatsPanel({ onClose }: { onClose: () => void }): React.JS
                 options={BREAKDOWNS}
                 value={breakdown}
                 onChange={setBreakdown}
-                label="How to break the spend down"
+                label="Usage breakdown"
               />
             </div>
 
-            {breakdown === 'model' ? (
-              <>
-                <RollupTable rows={stats.byModel} caption="By model" />
-                <RollupTable rows={stats.byProvider} caption="By provider" />
-              </>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th className="num">Requests</th>
-                    <th className="num">Tokens</th>
-                    <th style={{ width: 110 }}>Cost</th>
-                    <th className="num">Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...days]
-                    .reverse()
-                    .filter((day) => day.requests > 0)
-                    .map((day) => (
-                      <tr key={day.key}>
-                        <td>{shortDay(day.key)}</td>
-                        <td className="num">{formatNumber(day.requests)}</td>
-                        <td className="num">{formatTokens(day.totalTokens)}</td>
-                        <td>
-                          <div className="share__track">
-                            <div
-                              className="share__fill"
-                              style={{
-                                width: `${Math.max(
-                                  (day.costUsd / Math.max(...days.map((d) => d.costUsd), 1)) * 100,
-                                  1
-                                )}%`
-                              }}
-                            />
-                          </div>
-                        </td>
-                        <td className="num">{formatCost(day.costUsd)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            )}
+            <div className="stats-breakdown">
+              {breakdown !== 'day' ? (
+                <RollupTable
+                  rows={[...(breakdown === 'model' ? stats.byModel : stats.byProvider)].sort(
+                    (a, b) =>
+                      measure === 'cost' ? b.costUsd - a.costUsd : b.totalTokens - a.totalTokens
+                  )}
+                  caption={breakdown === 'model' ? 'By model' : 'By provider'}
+                  measure={measure}
+                  showHeading={false}
+                />
+              ) : (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Day</th>
+                      <th className="num">Requests</th>
+                      <th className="num">Tokens</th>
+                      <th style={{ width: 110 }}>
+                        {measure === 'cost' ? 'Cost share' : 'Token share'}
+                      </th>
+                      <th className="num">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...days]
+                      .reverse()
+                      .filter((day) => day.requests > 0)
+                      .map((day) => (
+                        <tr key={day.key}>
+                          <td>{shortDay(day.key)}</td>
+                          <td className="num">{formatNumber(day.requests)}</td>
+                          <td className="num">{formatTokens(day.totalTokens)}</td>
+                          <td>
+                            <div className="share__track">
+                              <div
+                                className="share__fill"
+                                style={{
+                                  width: `${Math.max(
+                                    ((measure === 'cost' ? day.costUsd : day.totalTokens) /
+                                      Math.max(
+                                        measure === 'cost' ? inRange.cost : inRange.tokens,
+                                        Number.EPSILON
+                                      )) *
+                                      100,
+                                    1
+                                  )}%`
+                                }}
+                              />
+                            </div>
+                          </td>
+                          <td className="num">{formatCost(day.costUsd)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+              {inRange.requests === 0 && (
+                <p className="dim">No recorded usage in this date range.</p>
+              )}
+            </div>
 
             <ToolUsage rows={stats.toolUsage} />
           </>

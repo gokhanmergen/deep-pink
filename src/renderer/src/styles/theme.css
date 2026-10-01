@@ -3249,9 +3249,9 @@ svg.lucide {
 
 /* Settings read as one page: headings and space group the controls. */
 .panel--settings {
-  max-width: 1040px;
-  height: min(840px, 88dvh);
-  max-height: 90dvh;
+  max-width: 840px;
+  height: min(640px, 82dvh);
+  max-height: 88dvh;
 }
 
 .settings-header {
@@ -3570,18 +3570,6 @@ svg.lucide {
 .settings-empty strong {
   color: var(--text-muted);
 }
-.settings-save-note {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.settings-save-note svg {
-  color: var(--accent);
-}
-.panel--settings .panel__foot {
-  padding: 6px 16px;
-  background: transparent;
-}
 
 @container panel (max-width: 740px) {
   .settings-header__title {
@@ -3657,6 +3645,14 @@ svg.lucide {
 /* ------------------------------------------------------------------ *
  * Stats
  * ------------------------------------------------------------------ */
+
+.stats-summary .share {
+  margin-bottom: 10px;
+}
+
+.stats-breakdown {
+  overflow-x: auto;
+}
 
 .stat-grid {
   display: grid;

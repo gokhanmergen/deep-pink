@@ -5,6 +5,7 @@ import type {
   DailyUsage,
   Folder,
   GlobalStats,
+  StatsRangeDays,
   McpServerConfig,
   Message,
   ModelUsageRollup,
@@ -1587,8 +1588,21 @@ export function getThreadStats(threadId: string, contextLimit: number | null): T
   }
 }
 
-export function getGlobalStats(): GlobalStats {
+export function getGlobalStats(days?: StatsRangeDays): GlobalStats {
+  if (days !== undefined && ![7, 30, 90].includes(days)) {
+    throw new Error('Statistics range must be 7, 30 or 90 days')
+  }
   const db = getDb()
+  // Local calendar days, including today. Calendar arithmetic handles DST;
+  // an exclusive end keeps tomorrow's data out of every rollup.
+  const end = new Date()
+  end.setHours(0, 0, 0, 0)
+  end.setDate(end.getDate() + 1)
+  const start = new Date(end)
+  start.setDate(start.getDate() - (days ?? 90))
+  const period = [start.getTime(), end.getTime()]
+  const where = days === undefined ? '' : 'WHERE created_at >= ? AND created_at < ?'
+  const params = days === undefined ? [] : period
 
   const totals = db
     .prepare(
@@ -1599,9 +1613,9 @@ export function getGlobalStats(): GlobalStats {
               COALESCE(SUM(total_tokens), 0)      AS total_tokens,
               COALESCE(SUM(cost_usd), 0)          AS cost_usd,
               MIN(created_at)                     AS first_used
-         FROM usage`
+         FROM usage ${where}`
     )
-    .get() as {
+    .get(...params) as {
     prompt_tokens: number
     completion_tokens: number
     reasoning_tokens: number
@@ -1611,17 +1625,24 @@ export function getGlobalStats(): GlobalStats {
     first_used: number | null
   }
 
-  const threadCount = (db.prepare('SELECT COUNT(*) AS n FROM threads').get() as { n: number }).n
+  const threadCount = (
+    days === undefined
+      ? db.prepare('SELECT COUNT(*) AS n FROM threads').get()
+      : db.prepare(`SELECT COUNT(DISTINCT thread_id) AS n FROM usage ${where}`).get(...params)
+  ) as { n: number }
   const messageCount = (
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM messages
-          WHERE compacted_into IS NULL OR compacted_into NOT IN (${MARKER_LIST})`
+          WHERE (compacted_into IS NULL OR compacted_into NOT IN (${MARKER_LIST}))
+            ${days === undefined ? '' : 'AND created_at >= ? AND created_at < ?'}`
       )
-      .get() as { n: number }
+      .get(...params) as { n: number }
   ).n
   const toolCallCount = (
-    db.prepare('SELECT COUNT(*) AS n FROM tool_invocations').get() as { n: number }
+    db.prepare(`SELECT COUNT(*) AS n FROM tool_invocations ${where}`).get(...params) as {
+      n: number
+    }
   ).n
 
   const toolUsage = toolRollup(
@@ -1629,19 +1650,21 @@ export function getGlobalStats(): GlobalStats {
       .prepare(
         `SELECT source, COUNT(*) AS calls, COALESCE(SUM(result_chars), 0) AS chars,
                 COALESCE(SUM(duration_ms), 0) AS ms
-           FROM tool_invocations GROUP BY source ORDER BY chars DESC`
+           FROM tool_invocations ${where} GROUP BY source ORDER BY chars DESC`
       )
-      .all() as ToolRollupRow[]
+      .all(...params) as ToolRollupRow[]
   )
 
   const byModel = (
-    db.prepare(`${ROLLUP_SELECT} GROUP BY model ORDER BY cost_usd DESC`).all() as RollupRow[]
+    db
+      .prepare(`${ROLLUP_SELECT} ${where} GROUP BY model ORDER BY cost_usd DESC`)
+      .all(...params) as RollupRow[]
   ).map(toRollup)
 
   const byProvider = (
     db
       .prepare(
-        `SELECT provider              AS model,
+        `SELECT COALESCE(provider, 'unknown') AS model,
                 provider              AS provider,
                 COUNT(*)              AS requests,
                 SUM(prompt_tokens)    AS prompt_tokens,
@@ -1649,11 +1672,11 @@ export function getGlobalStats(): GlobalStats {
                 SUM(total_tokens)     AS total_tokens,
                 SUM(cost_usd)         AS cost_usd
            FROM usage
-          WHERE provider IS NOT NULL
+          ${where}
           GROUP BY provider
           ORDER BY cost_usd DESC`
       )
-      .all() as RollupRow[]
+      .all(...params) as RollupRow[]
   ).map(toRollup)
 
   const byDay = (
@@ -1664,19 +1687,17 @@ export function getGlobalStats(): GlobalStats {
                 SUM(cost_usd)                                     AS cost_usd,
                 COUNT(*)                                          AS requests
            FROM usage
+          WHERE created_at >= ? AND created_at < ?
           GROUP BY day
-          ORDER BY day DESC
-          LIMIT 90`
+          ORDER BY day DESC`
       )
-      .all() as { day: string; total_tokens: number; cost_usd: number; requests: number }[]
-  ).map(
-    (r): DailyUsage => ({
-      day: r.day,
-      totalTokens: r.total_tokens,
-      costUsd: r.cost_usd,
-      requests: r.requests
-    })
-  )
+      .all(...period) as { day: string; total_tokens: number; cost_usd: number; requests: number }[]
+  ).map((r): DailyUsage => ({
+    day: r.day,
+    totalTokens: r.total_tokens,
+    costUsd: r.cost_usd,
+    requests: r.requests
+  }))
 
   // The same series split by model. Bounded to the window `byDay` covers, so a
   // long history cannot turn one panel into tens of thousands of rows.
@@ -1684,34 +1705,32 @@ export function getGlobalStats(): GlobalStats {
     db
       .prepare(
         `SELECT date(created_at / 1000, 'unixepoch', 'localtime') AS day,
-                COALESCE(model, '')                               AS model,
+                COALESCE(model, 'unknown')                        AS model,
                 SUM(total_tokens)                                 AS total_tokens,
                 SUM(cost_usd)                                     AS cost_usd,
                 COUNT(*)                                          AS requests
            FROM usage
-          WHERE created_at >= ?
+          WHERE created_at >= ? AND created_at < ?
           GROUP BY day, model
           ORDER BY day DESC`
       )
-      .all(Date.now() - 90 * 24 * 60 * 60 * 1000) as {
+      .all(...period) as {
       day: string
       model: string
       total_tokens: number
       cost_usd: number
       requests: number
     }[]
-  ).map(
-    (r): DailyModelUsage => ({
-      day: r.day,
-      model: r.model,
-      totalTokens: r.total_tokens,
-      costUsd: r.cost_usd,
-      requests: r.requests
-    })
-  )
+  ).map((r): DailyModelUsage => ({
+    day: r.day,
+    model: r.model,
+    totalTokens: r.total_tokens,
+    costUsd: r.cost_usd,
+    requests: r.requests
+  }))
 
   return {
-    threadCount,
+    threadCount: threadCount.n,
     messageCount,
     promptTokens: totals.prompt_tokens,
     completionTokens: totals.completion_tokens,

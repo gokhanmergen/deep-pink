@@ -4,6 +4,7 @@ import type {
   ExportFormat,
   Folder,
   GlobalStats,
+  StatsRangeDays,
   McpServerConfig,
   McpServerStatus,
   Message,
@@ -191,7 +192,7 @@ const api = {
 
   stats: {
     thread: (threadId: string): Promise<ThreadStats> => ipcRenderer.invoke('stats:thread', threadId),
-    global: (): Promise<GlobalStats> => ipcRenderer.invoke('stats:global'),
+    global: (days?: StatsRangeDays): Promise<GlobalStats> => ipcRenderer.invoke('stats:global', days),
     credits: (): Promise<{ totalCredits: number; totalUsage: number } | null> =>
       ipcRenderer.invoke('stats:credits')
   },

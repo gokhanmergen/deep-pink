@@ -681,12 +681,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
       onClose={onClose}
       wide
       className="panel--settings"
-      footer={
-        <span className="settings-save-note">
-          <Check size={13} aria-hidden="true" />
-          Changes save automatically
-        </span>
-      }
       header={
         <div className="settings-header">
           <span className="settings-header__title">
