@@ -3251,7 +3251,7 @@ svg.lucide {
   display: flex;
   align-items: center;
   gap: var(--s4);
-  padding: 16px 20px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   flex: none;
 }
@@ -3260,8 +3260,8 @@ svg.lucide {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 174px;
-  font-size: 16px;
+  min-width: 150px;
+  font-size: 14px;
   font-weight: var(--w-strong);
 }
 
@@ -3272,12 +3272,12 @@ svg.lucide {
 .settings-search {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   max-width: 480px;
   margin-right: auto;
-  padding: 0 12px;
-  min-height: 38px;
+  padding: 0 10px;
+  min-height: 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-input);
@@ -3292,7 +3292,7 @@ svg.lucide {
 .settings-search input {
   width: 100%;
   min-width: 0;
-  padding: 9px 0;
+  padding: 5px 0;
   border: none;
   outline: none;
   background: transparent;
@@ -3317,21 +3317,21 @@ svg.lucide {
 .settings-workspace .tabs {
   display: flex;
   flex-direction: column;
-  width: 208px;
-  padding: 20px 12px;
+  width: 184px;
+  padding: 14px 8px;
   background: transparent;
 }
 
 .settings-workspace .tabs__group + .tabs__group {
-  margin-top: 24px;
+  margin-top: 16px;
 }
 .settings-workspace .tabs__label {
-  padding: 0 10px 8px;
+  padding: 0 8px 4px;
 }
 .settings-workspace .tab {
-  min-height: 36px;
-  margin-bottom: 3px;
-  padding: 8px 10px;
+  min-height: 28px;
+  margin-bottom: 1px;
+  padding: 4px 8px;
   justify-content: flex-start;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -3348,7 +3348,7 @@ svg.lucide {
 }
 
 .settings-workspace .settings-content {
-  padding: 28px 32px;
+  padding: 16px 20px;
   background: transparent;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -3358,31 +3358,31 @@ svg.lucide {
   max-width: none;
 }
 .settings-page-heading {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 .settings-page-heading h2 {
-  margin: 0 0 6px;
-  font-size: 23px;
+  margin: 0;
+  font-size: 20px;
   line-height: 1.2;
   font-weight: var(--w-strong);
   letter-spacing: -0.025em;
 }
 .settings-page-heading p {
-  margin: 0;
+  margin: 4px 0 0;
   color: var(--text-dim);
   font-size: 13px;
 }
 
 .settings-card {
   min-width: 0;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   padding: 0;
 }
 .settings-card:last-child {
   margin-bottom: 0;
 }
 .settings-card .section-title {
-  margin: 24px 0 8px;
+  margin: 16px 0 4px;
   padding: 0;
   border: none;
   color: var(--text-muted);
@@ -3394,7 +3394,7 @@ svg.lucide {
   margin-top: 0;
 }
 .settings-card__category {
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   color: var(--accent);
   font-size: 11px;
   font-weight: var(--w-ui);
@@ -3406,7 +3406,7 @@ svg.lucide {
 .settings-card .field,
 .settings-card .switch {
   margin: 0;
-  padding: 12px 0;
+  padding: 6px 0;
 }
 .settings-card > .field:last-child,
 .settings-card > .switch:last-child {
@@ -3416,7 +3416,7 @@ svg.lucide {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 44%);
   align-items: center;
-  column-gap: 24px;
+  column-gap: 16px;
 }
 .settings-card .field:has(> textarea) {
   display: flex;
@@ -3458,7 +3458,7 @@ svg.lucide {
 
 .settings-card .switch {
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 .settings-card .switch > span {
   order: 0;
@@ -3478,16 +3478,16 @@ svg.lucide {
 }
 .settings-card .skill {
   margin: 0;
-  padding: 12px 0;
+  padding: 6px 0;
   border: none;
   border-radius: 0;
   background: transparent;
 }
 .settings-card .skill + .skill {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 .settings-card .list-card {
-  padding: 12px 0;
+  padding: 6px 0;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -3500,17 +3500,18 @@ svg.lucide {
   display: flex;
 }
 .settings-card .reply-options {
-  margin: 16px 0 0;
+  margin: 8px 0 0;
 }
 .settings-card .reply-option {
-  min-height: 38px;
+  min-height: 30px;
+  padding: 5px var(--s2);
 }
 
 .settings-advanced {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 .settings-advanced > summary {
-  padding: 14px 0 0;
+  padding: 8px 0 0;
   font-size: 12px;
   color: var(--text-muted);
   cursor: pointer;
@@ -3519,14 +3520,14 @@ svg.lucide {
   color: var(--text);
 }
 .settings-advanced[open] > summary {
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 .settings-advanced > .field:first-of-type {
   border-top: none;
 }
 .settings-card .keybind {
-  min-height: 44px;
-  gap: 12px;
+  min-height: 30px;
+  gap: 8px;
 }
 
 .settings-card .revert {
@@ -3540,7 +3541,7 @@ svg.lucide {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 .settings-card--locked h3 {
   margin: 0 0 6px;
@@ -3571,7 +3572,7 @@ svg.lucide {
   color: var(--accent);
 }
 .panel--settings .panel__foot {
-  padding: 10px 20px;
+  padding: 6px 16px;
   background: transparent;
 }
 
@@ -3581,10 +3582,10 @@ svg.lucide {
   }
   .settings-workspace .tabs {
     width: 180px;
-    padding: 16px 8px;
+    padding: 12px 6px;
   }
   .settings-workspace .settings-content {
-    padding: 24px 20px;
+    padding: 14px 16px;
   }
   .settings-card .field:has(> .field__label) {
     display: flex;
@@ -3595,8 +3596,8 @@ svg.lucide {
 @container panel (max-width: 560px) {
   .settings-header {
     flex-wrap: wrap;
-    gap: 12px;
-    padding: 14px 16px;
+    gap: 8px;
+    padding: 10px 12px;
   }
   .settings-header > .icon {
     margin-left: auto;
@@ -3611,8 +3612,8 @@ svg.lucide {
   .settings-workspace .tabs {
     width: 100%;
     flex-direction: row;
-    gap: 12px;
-    padding: 8px 12px;
+    gap: 8px;
+    padding: 6px 8px;
     border-right: none;
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
@@ -3632,13 +3633,13 @@ svg.lucide {
   .settings-workspace .tab {
     width: auto;
     margin: 0;
-    padding: 8px 10px;
+    padding: 4px 8px;
   }
   .settings-workspace .tab__label {
     display: inline;
   }
   .settings-workspace .settings-content {
-    padding: 20px 16px;
+    padding: 12px;
   }
   .settings-card--locked {
     align-items: flex-start;

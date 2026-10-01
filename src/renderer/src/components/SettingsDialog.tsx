@@ -771,11 +771,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
         <div className="panel__body settings-content" ref={contentRef}>
           <div className="settings-page-heading">
             <h2>{searching ? 'Search results' : SETTINGS_PAGES[tab].label}</h2>
-            <p role={searching ? 'status' : undefined} aria-live={searching ? 'polite' : undefined}>
-              {searching
-                ? `${resultCount} ${resultCount === 1 ? 'section' : 'sections'} found`
-                : SETTINGS_PAGES[tab].description}
-            </p>
+            {searching && (
+              <p role="status" aria-live="polite">
+                {`${resultCount} ${resultCount === 1 ? 'section' : 'sections'} found`}
+              </p>
+            )}
           </div>
           {searching && resultCount === 0 && (
             <div className="settings-empty" role="status">
