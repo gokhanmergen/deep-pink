@@ -49,7 +49,7 @@ suite(
       .map((t) => t.textContent.trim())`)
     check(
       'the newer sections are marked experimental',
-      JSON.stringify(marked) === '["Web access","Skills","Key point","Sync"]',
+      JSON.stringify(marked) === '["Web search","Skills","Highlights","Sync"]',
       marked
     )
     // The other half of the same claim, and the half worth having: the mark
@@ -58,8 +58,9 @@ suite(
     // here and not a silently wider list.
     check(
       'and the settled ones are not',
-      ['Account', 'Models', 'Prompts', 'Context', 'Appearance', 'Keyboard', 'Data'].every(
-        (label) => !marked.includes(label)
+      ['General', 'Models', 'Appearance', 'Shortcuts', 'Account', 'Data',
+        'Updates & about', 'Instructions', 'Context & memory', 'Generation'].every(
+        (label) => tabs.includes(label) && !marked.includes(label)
       ),
       marked
     )

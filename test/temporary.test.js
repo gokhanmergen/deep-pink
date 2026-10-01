@@ -76,8 +76,8 @@ suite(
     check('a new thread can be started', await clickByText('.sidebar__actions .btn', 'New thread'))
     await settle(700)
     check(
-      'and it says how to make it temporary, where that can still be done',
-      await run(`document.querySelector('.transcript .empty').textContent.includes('temporary')`)
+      'the temporary button explains the action in its tooltip',
+      await run(`document.querySelector('.temp-badge')?.title.includes('Make this chat temporary')`)
     )
 
     // The switch is there to be seen and clicked, not only pressed: a feature
