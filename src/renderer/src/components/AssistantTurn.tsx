@@ -627,10 +627,6 @@ export const AssistantTurn = memo(function AssistantTurn({
                   */}
                 <ImageAttachments attachments={message.attachments} />
 
-                {message.status === 'streaming' &&
-                  !message.content &&
-                  !message.attachments.some((a) => a.kind === 'image') && <span className="caret" />}
-
                 {message.toolCalls?.some((call) => !answered.has(call.id)) ? (
                   <div className="row row--wrap" style={{ marginTop: 6 }}>
                     {message.toolCalls
@@ -654,6 +650,10 @@ export const AssistantTurn = memo(function AssistantTurn({
             )
           })}
 
+          {/* A tool round can contain earlier text and an empty continuation.
+              They share one cursor, below the turn's text and tool activity. */}
+          {isLast && streaming && <span className="caret" aria-hidden="true" />}
+
           {usage && chips.length > 0 && (
             <div className="message__footer">
               {chips.map((chip) => (
@@ -667,8 +667,6 @@ export const AssistantTurn = memo(function AssistantTurn({
               ))}
             </div>
           )}
-
-          {isLast && streaming && text && <span className="caret" />}
         </>
       ) : (
         /*

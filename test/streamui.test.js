@@ -69,4 +69,39 @@ suite('reply rendering — streamed text and resize updates stay bounded', async
     input?.focus()
     return !!input && document.activeElement === input
   })()`))
+
+  section('a tool round shares one cursor with its empty continuation')
+  const toolThread = repo.createThread('Tool cursor fixture', { model: 'test/model' })
+  repo.insertMessage({ threadId: toolThread.id, role: 'user', content: 'Look up the result.' })
+  const call = { id: 'cursor-search', name: 'web_search', arguments: '{"query":"result"}' }
+  repo.insertMessage({ threadId: toolThread.id, role: 'assistant', content: 'Let me check.',
+    toolCalls: [call], status: 'complete' })
+  repo.insertMessage({ threadId: toolThread.id, role: 'tool', content: 'Found the result.',
+    toolResult: { toolCallId: call.id, name: call.name, content: 'Found the result.',
+      isError: false, durationMs: 12 } })
+  const continuation = repo.insertMessage({ threadId: toolThread.id, role: 'assistant',
+    content: '', status: 'streaming' })
+  check('the tool fixture opens', await openThread(win, 'Tool cursor fixture'))
+  const cursors = () => run(`document.querySelectorAll('.transcript .caret').length`)
+  check('earlier text and an empty continuation show one cursor', await cursors() === 1)
+  win.webContents.send('chat:event', { type: 'start', threadId: toolThread.id, messageId: continuation.id })
+  win.webContents.send('chat:event', { type: 'reasoning', messageId: continuation.id, delta: 'Checking the source.' })
+  await settle(200)
+  check('reasoning after the tool still shows one cursor', await cursors() === 1)
+  win.webContents.send('chat:event', { type: 'content', messageId: continuation.id, delta: 'Here is the result.' })
+  await settle(200)
+  check('the resumed reply keeps one cursor', await cursors() === 1)
+  repo.updateMessage(continuation.id, { content: 'Here is the result.', reasoning: 'Checking the source.', status: 'complete' })
+  win.webContents.send('chat:event', { type: 'done', messageId: continuation.id, message: repo.getMessage(continuation.id) })
+  await settle(200)
+  check('finishing removes the cursor', await cursors() === 0)
+
+  const cancelled = repo.insertMessage({ threadId: toolThread.id, role: 'assistant', content: '', status: 'streaming' })
+  win.webContents.send('chat:event', { type: 'start', threadId: toolThread.id, messageId: cancelled.id })
+  await settle(300)
+  check('a new continuation starts with one cursor', await cursors() === 1)
+  repo.deleteMessage(cancelled.id)
+  win.webContents.send('chat:event', { type: 'aborted', threadId: toolThread.id, messageId: cancelled.id })
+  await settle(200)
+  check('stopping removes the cursor too', await cursors() === 0)
 }, { bootApp: true })
