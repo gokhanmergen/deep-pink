@@ -49,9 +49,8 @@ suite(
         return {
           comparing: Boolean(document.querySelector('.compare')),
           panes: panes.map((pane) => ({
-            // The label alone: the mark beside it may be a letter until the
-            // icon arrives, and that letter is text too.
-            model: pane.querySelector('.compare__head .btn .btn__label')?.textContent?.trim() ?? null,
+            // The model name is in the icon button's tooltip.
+            model: pane.querySelector('.compare__head .btn')?.title.split(' — ')[0] ?? null,
             unset: pane.querySelector('.compare__head .btn')?.dataset.unset ?? null,
             text: pane.querySelector('.transcript')?.textContent ?? '',
             composers: pane.querySelectorAll('.composer').length,
@@ -107,7 +106,7 @@ suite(
     )
     check(
       'each headed by its model',
-      reopened.panes[0]?.model === 'claude-one' && reopened.panes[1]?.model === 'gpt-two',
+      reopened.panes[0]?.model === 'anthropic/claude-one' && reopened.panes[1]?.model === 'openai/gpt-two',
       reopened.panes.map((p) => p.model)
     )
     check(

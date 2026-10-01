@@ -657,9 +657,8 @@ export interface Settings {
    */
   customSkills: CustomSkill[]
   /**
-   * After a reply lands, asks a decision model which sentence matters most and
-   * marks it. Off by default: it is a second request per reply, and a reader
-   * who did not ask for one should not be paying for one.
+   * Marks the key sentences in a reply. Off by default; the source determines
+   * whether the reply marks itself or a separate model selects the sentences.
    */
   keyPointEnabled: boolean
   /**

@@ -271,7 +271,8 @@ export const DEFAULT_SETTINGS: Settings = {
   skillsOnDemand: true,
   customSkills: [],
   keyPointEnabled: false,
-  keyPointSource: 'jev',
+  // The reply marks its own sentences; a separate request is opt-in.
+  keyPointSource: 'self',
   /*
    * Only consulted when the source is `model`, and deliberately not the tiny
    * model the app names threads with.

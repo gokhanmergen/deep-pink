@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { Maximize2, PanelLeft, X } from 'lucide-react'
+import { BarChart3, Cpu, Maximize2, PanelLeft, X } from 'lucide-react'
 import { useStore, type CompareSide } from '../store'
 import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
@@ -84,13 +84,13 @@ export function CompareView(): React.JSX.Element {
         <button
           className="btn"
           onClick={() => void leaveSideBySide()}
+          aria-label="Close side by side"
           title={`Back to one conversation, and new threads as single chats — ${formatBinding(
             keybinds['compare.toggle'] ?? 'mod+\\'
           )}`}
           type="button"
         >
           <X {...ICON} />
-          <span className="btn__label">Close</span>
         </button>
       </div>
 
@@ -270,18 +270,23 @@ function ComparePaneView({ side }: { side: CompareSide }): React.JSX.Element | n
           <button
             className="btn"
             data-unset={!model || undefined}
+            aria-label={side === 0 ? 'Choose left model' : 'Choose right model'}
             onClick={chooseModel}
             title={model ? `${model} — choose another` : 'Choose the model for this side'}
             type="button"
           >
-            <ModelIcon model={model} size={14} />
-            <span className="btn__label">{model ? modelShortName(model) : 'Choose a model'}</span>
+            {model ? <ModelIcon model={model} size={14} /> : <Cpu {...ICON} />}
           </button>
           {generating && <span className="chip chip--accent">replying…</span>}
           <div className="topbar__spacer" />
           {totals && totals.totalTokens > 0 && (
-            <span className="chip" title="What this side has cost so far">
-              {formatTokens(totals.totalTokens)} · {formatCost(totals.costUsd)}
+            <span
+              className="compare__stats"
+              role="img"
+              aria-label={`Side statistics: ${formatTokens(totals.totalTokens)} tokens · ${formatCost(totals.costUsd)}`}
+              title={`Side statistics: ${formatTokens(totals.totalTokens)} tokens · ${formatCost(totals.costUsd)}`}
+            >
+              <BarChart3 {...ICON} />
             </span>
           )}
           {threadId && (

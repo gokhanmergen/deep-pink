@@ -1332,7 +1332,8 @@ svg.lucide {
 }
 
 /* Compact, equally sized actions leave room for the conversation title. */
-.topbar .btn {
+.topbar .btn,
+.compare__head .btn {
   width: var(--control-h);
   height: var(--control-h);
   padding: 0;
@@ -2464,8 +2465,14 @@ svg.lucide {
   flex: none;
 }
 
-.compare__head .btn {
-  min-width: 0;
+.compare__stats {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  flex: none;
+  color: var(--text-muted);
 }
 
 /* A side with no model yet is the one thing on screen asking for something. */

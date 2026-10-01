@@ -914,13 +914,16 @@ suite('storage — threads, messages, search, stats', async ({ check, section, s
   check('experimental features are off on a fresh install', freshPreferences.hideExperimental === true)
   check('lazy loading is on on a fresh install', freshPreferences.ui.loadEverythingAtOnce === false)
   check('new installs tell models the date and time', freshPreferences.includeDateTimeInPrompt === true)
+  check('new installs let the replying model select highlights', freshPreferences.keyPointSource === 'self')
   repo.setSetting('settings', {
     hideExperimental: false,
     includeDateTimeInPrompt: false,
+    keyPointSource: 'jev',
     ui: { loadEverythingAtOnce: true, showReasoningByDefault: true, fontSize: 17 },
     keybinds: { 'reasoning.toggle': 'mod+shift+r', 'thread.new': 'mod+n' }
   })
   const kept = loadSettings()
+  check('an existing highlight source is preserved', kept.keyPointSource === 'jev')
   check('existing feature, loading and date preferences survive', !kept.hideExperimental &&
     !kept.includeDateTimeInPrompt && kept.ui.loadEverythingAtOnce)
   check('retired reasoning expansion is dropped on load', !('showReasoningByDefault' in kept.ui) &&
