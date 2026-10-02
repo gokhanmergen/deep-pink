@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 import type {
   SyncConfig,
+  DeviceColor,
+  DeviceIcon,
+  DeviceProfile,
   SyncPause,
   SyncProgress,
   SyncResult,
@@ -14,6 +17,12 @@ import { getSecret, setSecret } from '../secrets'
 import * as vault from './crypto'
 import { S3Client, type Fetcher, type S3Config } from './s3'
 import * as records from './records'
+import {
+  DEFAULT_DEVICE_COLOR,
+  mergeDeviceProfiles,
+  normalizeDeviceColor,
+  normalizeDeviceIcon
+} from '@shared/devices'
 
 /**
  * Sync.
@@ -66,6 +75,9 @@ interface DeviceManifest {
   version: number
   device: string
   name: string
+  /** Optional for manifests written before device marks were added. */
+  icon?: DeviceIcon
+  color?: DeviceColor
   at: number
   /** Keyed by `${kind}:${id}`. */
   entries: Record<string, ManifestEntry>
@@ -74,6 +86,7 @@ interface DeviceManifest {
 /** The part of the configuration that is not a secret, as stored locally. */
 interface StoredSync extends SyncConfig {
   deviceId: string
+  devices: DeviceProfile[]
   lastSyncedAt: number | null
   lastError: string | null
   lastResult: SyncResult | null
@@ -100,7 +113,11 @@ function defaults(): StoredSync {
     accessKeyId: '',
     scopes: { ...DEFAULT_SCOPES },
     deviceName: hostname() || 'This machine',
+    deviceIcon: 'desktop',
+    deviceColor: DEFAULT_DEVICE_COLOR,
+    showDeviceInSidebar: true,
     deviceId: randomUUID(),
+    devices: [],
     lastSyncedAt: null,
     lastError: null,
     lastResult: null
@@ -112,6 +129,10 @@ const SETTING = 'sync'
 function stored(): StoredSync {
   const saved = getSetting<Partial<StoredSync>>(SETTING, {})
   const merged = { ...defaults(), ...saved, scopes: { ...DEFAULT_SCOPES, ...saved.scopes } }
+  merged.deviceIcon = normalizeDeviceIcon(saved.deviceIcon)
+  merged.deviceColor = normalizeDeviceColor(saved.deviceColor)
+  merged.showDeviceInSidebar = saved.showDeviceInSidebar !== false
+  merged.devices = mergeDeviceProfiles(saved.devices)
 
   // The device id is generated once and kept: it is what distinguishes this
   // machine's manifest from every other, and a new one each run would leave a
@@ -221,6 +242,12 @@ export function resume(): SyncState {
 export function state(): SyncState {
   const config = stored()
   const key = encryptionKey()
+  const ownDevice: DeviceProfile = {
+    id: config.deviceId,
+    name: config.deviceName,
+    icon: config.deviceIcon,
+    color: config.deviceColor
+  }
 
   return {
     config: {
@@ -232,8 +259,12 @@ export function state(): SyncState {
       accessKeyId: config.accessKeyId,
       scopes: config.scopes,
       deviceName: config.deviceName,
+      deviceIcon: config.deviceIcon,
+      deviceColor: config.deviceColor,
+      showDeviceInSidebar: config.showDeviceInSidebar,
       pause: config.pause
     },
+    devices: config.enabled ? mergeDeviceProfiles(config.devices, ownDevice) : [],
     hasKey: Boolean(key),
     // Shown so two machines can be checked against each other at a glance
     // without either of them putting the key on screen.
@@ -246,6 +277,12 @@ export function state(): SyncState {
     lastError: config.lastError,
     lastResult: config.lastResult
   }
+}
+
+/** Device attribution is only meaningful when this installation is syncing. */
+export function currentDeviceId(): string | null {
+  const config = stored()
+  return config.enabled ? config.deviceId : null
 }
 
 export function saveConfig(patch: Partial<SyncConfig>): SyncState {
@@ -269,10 +306,25 @@ export function disconnect(): SyncState {
 
 const MANIFEST_SETTING = 'sync.manifest'
 
-function localManifest(device: string, name: string): DeviceManifest {
+function localManifest(config: StoredSync): DeviceManifest {
   const saved = getSetting<DeviceManifest | null>(MANIFEST_SETTING, null)
-  if (saved && saved.device === device) return { ...saved, name }
-  return { version: MANIFEST_VERSION, device, name, at: 0, entries: {} }
+  if (saved && saved.device === config.deviceId) {
+    return {
+      ...saved,
+      name: config.deviceName,
+      icon: config.deviceIcon,
+      color: config.deviceColor
+    }
+  }
+  return {
+    version: MANIFEST_VERSION,
+    device: config.deviceId,
+    name: config.deviceName,
+    icon: config.deviceIcon,
+    color: config.deviceColor,
+    at: 0,
+    entries: {}
+  }
 }
 
 /**
@@ -374,7 +426,7 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
   try {
     /* ---- everyone's manifests, including the copy of ours out there ---- */
 
-    const mine = localManifest(config.deviceId, config.deviceName)
+    const mine = localManifest(config)
     const myName = `${MANIFEST_DIR}${vault.objectName(key, `manifest:${config.deviceId}`)}`
 
     report('listing', 'looking for the other machines')
@@ -395,9 +447,22 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
       // A manifest that will not open belongs to a different key. Someone
       // else's bucket, or an old key: not an error, just not ours.
       const manifest = vault.openJson<DeviceManifest>(key, path, sealed)
-      if (manifest?.entries) theirs.push(manifest)
+      if (manifest?.entries && typeof manifest.device === 'string' && manifest.device) {
+        theirs.push(manifest)
+      }
     }
     result.devices = theirs.length + 1
+    store({
+      devices: mergeDeviceProfiles(
+        config.devices,
+        theirs.map((manifest) => ({
+          id: manifest.device,
+          name: manifest.name,
+          icon: manifest.icon,
+          color: manifest.color
+        }))
+      )
+    })
 
     /* ---- what is here ---- */
 
@@ -547,11 +612,18 @@ export async function run(options: SyncOptions = {}): Promise<SyncResult> {
 
     /* ---- our manifest, last: it is the index of what is already there ---- */
 
-    if (changed || mine.name !== config.deviceName) {
+    if (
+      changed ||
+      mine.name !== config.deviceName ||
+      mine.icon !== config.deviceIcon ||
+      mine.color !== config.deviceColor
+    ) {
       const manifest: DeviceManifest = {
         version: MANIFEST_VERSION,
         device: config.deviceId,
         name: config.deviceName,
+        icon: config.deviceIcon,
+        color: config.deviceColor,
         at: Date.now(),
         entries
       }

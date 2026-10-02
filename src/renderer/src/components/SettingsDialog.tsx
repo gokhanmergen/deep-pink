@@ -14,7 +14,9 @@ import {
   KeyRound,
   Keyboard,
   Layers,
+  Laptop,
   MessageSquareText,
+  Monitor,
   Palette,
   Plus,
   Sparkles,
@@ -40,6 +42,7 @@ import type {
   SettingsPatch,
   ImportPreview,
   ImportResult,
+  SyncConfig,
   SyncDirection,
   SyncScopes
 } from '@shared/types'
@@ -673,6 +676,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
         scopes: { ...sync.config.scopes, ...patch }
       })
     })
+  }
+
+  const saveSyncConfig = async (patch: Partial<SyncConfig>): Promise<void> => {
+    if (!sync) return
+    useStore.setState({ sync: await window.deepPink.sync.save(patch) })
   }
 
   return (
@@ -2132,7 +2140,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 activePage={tab}
                 query={query}
                 sectionId="settings-sync-0"
-                keywords=""
+                keywords="device machine icon laptop desktop color sidebar"
               >
                 <h3 className="section-title">
                   Sync
@@ -2456,7 +2464,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 activePage={tab}
                 query={query}
                 sectionId="settings-sync-3"
-                keywords=""
+                keywords="device machine icon laptop desktop color sidebar"
               >
                 <h3 className="section-title">What to sync</h3>
                 <label className="switch">
@@ -2499,21 +2507,69 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                     onChange={(direction) => void saveScopes({ settingsDirection: direction })}
                   />
                 )}
-                <div className="field" style={{ marginTop: 14 }}>
-                  <span className="field__label">This machine is called</span>
-                  <DebouncedInput
-                    aria-label="This machine is called"
-                    className="input"
-                    value={sync.config.deviceName}
-                    onCommit={async (next) =>
-                      useStore.setState({
-                        sync: await window.deepPink.sync.save({
-                          deviceName: next
-                        })
-                      })
-                    }
-                  />
-                </div>
+                {sync.config.enabled && (
+                  <>
+                    <div className="field" style={{ marginTop: 14 }}>
+                      <span className="field__label">This machine is called</span>
+                      <DebouncedInput
+                        aria-label="This machine is called"
+                        className="input"
+                        value={sync.config.deviceName}
+                        onCommit={(next) => void saveSyncConfig({ deviceName: next })}
+                      />
+                    </div>
+                    <div className="field" style={{ marginTop: 12 }}>
+                      <span className="field__label">Device icon</span>
+                      <div className="segmented" role="group" aria-label="Device icon">
+                        <button
+                          className="segmented__option"
+                          type="button"
+                          data-active={sync.config.deviceIcon === 'desktop'}
+                          aria-pressed={sync.config.deviceIcon === 'desktop'}
+                          onClick={() => void saveSyncConfig({ deviceIcon: 'desktop' })}
+                        >
+                          <Monitor size={14} aria-hidden="true" /> Desktop
+                        </button>
+                        <button
+                          className="segmented__option"
+                          type="button"
+                          data-active={sync.config.deviceIcon === 'laptop'}
+                          aria-pressed={sync.config.deviceIcon === 'laptop'}
+                          onClick={() => void saveSyncConfig({ deviceIcon: 'laptop' })}
+                        >
+                          <Laptop size={14} aria-hidden="true" /> Laptop
+                        </button>
+                      </div>
+                    </div>
+                    <div className="field" style={{ marginTop: 12 }}>
+                      <span className="field__label">Icon color</span>
+                      <DebouncedInput
+                        aria-label="Icon color"
+                        type="color"
+                        value={sync.config.deviceColor}
+                        onCommit={(next) =>
+                          void saveSyncConfig({ deviceColor: next as SyncConfig['deviceColor'] })
+                        }
+                        style={{
+                          width: 44,
+                          height: 30,
+                          background: 'none',
+                          border: 'none'
+                        }}
+                      />
+                    </div>
+                    <label className="switch" style={{ marginTop: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={sync.config.showDeviceInSidebar}
+                        onChange={(event) =>
+                          void saveSyncConfig({ showDeviceInSidebar: event.target.checked })
+                        }
+                      />
+                      <span>Show device in sidebar</span>
+                    </label>
+                  </>
+                )}
               </SettingsSection>
 
               <SettingsSection

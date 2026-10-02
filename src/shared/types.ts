@@ -172,6 +172,8 @@ export interface Thread {
   title: string
   createdAt: number
   updatedAt: number
+  /** Sync device that most recently generated a reply in this thread. */
+  deviceId: string | null
   pinned: boolean
   archived: boolean
   /** The folder this thread is filed in, or null when it sits in the list. */
@@ -986,6 +988,23 @@ export interface SyncConfig {
   scopes: SyncScopes
   /** How this machine names itself to the others. */
   deviceName: string
+  /** Mark used for this machine's replies in the sidebar. */
+  deviceIcon: DeviceIcon
+  /** Hex color used for this machine's sidebar mark. */
+  deviceColor: DeviceColor
+  /** Whether synced thread origins are shown in the sidebar. */
+  showDeviceInSidebar: boolean
+}
+
+export type DeviceIcon = 'desktop' | 'laptop'
+export type DeviceColor = `#${string}`
+
+/** Public profile learned from an encrypted sync manifest. */
+export interface DeviceProfile {
+  id: string
+  name: string
+  icon: DeviceIcon
+  color: DeviceColor
 }
 
 export interface SyncResult {
@@ -1023,6 +1042,8 @@ export interface SyncProgress {
 
 export interface SyncState {
   config: SyncConfig
+  /** Devices known from encrypted manifests, including this one. */
+  devices: DeviceProfile[]
   hasKey: boolean
   /** Eight characters derived from the key, for checking two machines match. */
   keyFingerprint: string | null

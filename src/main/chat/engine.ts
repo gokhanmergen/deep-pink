@@ -14,6 +14,7 @@ import { reasoningParam, resolveReasoning } from '@shared/reasoning'
 import { keyPointCeiling } from '@shared/defaults'
 import { normalizeCompaction } from '@shared/compaction'
 import * as repo from '../db/repo'
+import * as sync from '../sync/engine'
 import * as mcp from '../mcp/host'
 import { loadSettings } from '../settings'
 import { reportProblem } from '../report'
@@ -1048,6 +1049,9 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
   if (isGenerating(thread.id) || compactions.has(thread.id)) {
     throw new Error('Wait for the current request to finish before sending another message.')
   }
+
+  const deviceId = sync.currentDeviceId()
+  if (deviceId) thread = repo.markThreadDevice(thread.id, deviceId) ?? thread
 
   const controller = new AbortController()
   abortControllers.set(thread.id, controller)

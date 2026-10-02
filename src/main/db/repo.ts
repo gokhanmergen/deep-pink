@@ -34,6 +34,7 @@ interface ThreadRow {
   title: string
   created_at: number
   updated_at: number
+  device_id: string | null
   pinned: number
   archived: number
   folder_id: string | null
@@ -147,6 +148,7 @@ function toThread(row: ThreadRow, messageCount?: number): Thread {
     title: row.title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    deviceId: row.device_id,
     pinned: row.pinned === 1,
     archived: row.archived === 1,
     folderId: row.folder_id,
@@ -578,6 +580,17 @@ export function updateThread(
       existing.temporary && !pinned && !archived ? 1 : 0,
       id
     )
+  return getThread(id)
+}
+
+/** Records which sync device is writing the reply without changing list order. */
+export function markThreadDevice(id: string, deviceId: string): Thread | null {
+  const existing = getThread(id)
+  if (!existing || existing.deviceId === deviceId) return existing
+
+  getDb()
+    .prepare('UPDATE threads SET device_id = ?, filed_at = MAX(filed_at, ?) WHERE id = ?')
+    .run(deviceId, Date.now(), id)
   return getThread(id)
 }
 

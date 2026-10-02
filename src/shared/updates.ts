@@ -58,25 +58,40 @@ export interface UpdateStatus {
 /**
  * Whether `latest` is newer than `current`.
  *
- * Numeric by part, so 0.10.0 beats 0.9.0 — which a string comparison gets
- * backwards, and which this project reached the moment it left single
- * digits. Anything after the numbers is ignored: a version is `0.13.3` here,
- * and a tag that arrives decorated is still asking about those three numbers.
+ * Numeric by part, so 0.10.0 beats 0.9.0, and prereleases sort below the
+ * matching release, so 0.18.0 is newer than 0.18.0-indev.
  */
 export function isNewer(latest: string, current: string): boolean {
-  const parts = (v: string): number[] =>
-    v
-      .replace(/^v/, '')
-      .split(/[.+-]/)
-      .map((n) => Number.parseInt(n, 10))
-      .filter((n) => Number.isFinite(n))
+  const parse = (value: string): { core: number[]; prerelease: string[] | null } | null => {
+    const match = value.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/)
+    if (!match) return null
+    return {
+      core: match.slice(1, 4).map(Number),
+      prerelease: match[4] ? match[4].split('.') : null
+    }
+  }
 
-  const a = parts(latest)
-  const b = parts(current)
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const left = a[i] ?? 0
-    const right = b[i] ?? 0
-    if (left !== right) return left > right
+  const a = parse(latest)
+  const b = parse(current)
+  if (!a || !b) return false
+
+  for (let i = 0; i < 3; i++) {
+    if (a.core[i] !== b.core[i]) return a.core[i] > b.core[i]
+  }
+
+  // A final release follows every prerelease carrying the same core version.
+  if (!a.prerelease || !b.prerelease) return Boolean(b.prerelease && !a.prerelease)
+
+  for (let i = 0; i < Math.max(a.prerelease.length, b.prerelease.length); i++) {
+    const left = a.prerelease[i]
+    const right = b.prerelease[i]
+    if (left === undefined || right === undefined) return right === undefined && left !== undefined
+    if (left === right) continue
+    const leftNumeric = /^\d+$/.test(left)
+    const rightNumeric = /^\d+$/.test(right)
+    if (leftNumeric && rightNumeric) return Number(left) > Number(right)
+    if (leftNumeric !== rightNumeric) return !leftNumeric
+    return left > right
   }
   return false
 }

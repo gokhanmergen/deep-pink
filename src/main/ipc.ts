@@ -344,8 +344,6 @@ export function registerIpc(): void {
   ipcMain.handle('chat:send', async (_e, req: SendMessageRequest) => {
     try {
       await engine.sendMessage(req, emit)
-      // A finished turn is the moment a conversation is worth carrying.
-      syncSoon()
     } catch (err) {
       emit({
         type: 'error',
@@ -353,6 +351,10 @@ export function registerIpc(): void {
         threadId: req.threadId,
         error: err instanceof Error ? err.message : String(err)
       })
+    } finally {
+      // Include failed turns: device attribution is written before generation,
+      // so it should travel even when the provider never answers.
+      syncSoon()
     }
   })
 

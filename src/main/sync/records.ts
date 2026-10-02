@@ -217,16 +217,17 @@ export function applyRecord(record: SyncRecord): void {
     case 'thread':
       db.prepare(
         `INSERT INTO threads (id, title, created_at, updated_at, filed_at, pinned, archived, config,
-                              source, source_id, folder_id)
+                              source, source_id, folder_id, device_id)
          VALUES (@id, @title, @created_at, @updated_at, @filed_at, @pinned, @archived, @config,
-                 @source, @source_id, @folder_id)
+                 @source, @source_id, @folder_id, @device_id)
          ON CONFLICT (id) DO UPDATE SET
            title = excluded.title, created_at = excluded.created_at,
            updated_at = excluded.updated_at, filed_at = excluded.filed_at,
            pinned = excluded.pinned,
            archived = excluded.archived, config = excluded.config,
            source = excluded.source, source_id = excluded.source_id,
-           folder_id = excluded.folder_id`
+           folder_id = excluded.folder_id,
+           device_id = CASE WHEN @has_device_id THEN excluded.device_id ELSE threads.device_id END`
       ).run({
         id: record.id,
         title: text(row['title']) ?? '',
@@ -244,7 +245,11 @@ export function applyRecord(record: SyncRecord): void {
         source_id: text(row['source_id']),
         // A folder that has not arrived yet would fail the foreign key, so the
         // thread lands loose and is filed by a later pass.
-        folder_id: folderExists(text(row['folder_id'])) ? text(row['folder_id']) : null
+        folder_id: folderExists(text(row['folder_id'])) ? text(row['folder_id']) : null,
+        device_id: text(row['device_id']),
+        // A device running an older build will not send this newly-added
+        // column; keep any origin already known here in that case.
+        has_device_id: Object.prototype.hasOwnProperty.call(row, 'device_id') ? 1 : 0
       })
       break
 

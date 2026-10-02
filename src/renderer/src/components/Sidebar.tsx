@@ -15,6 +15,8 @@ import {
   FolderPlus,
   FolderMinus,
   Ghost,
+  Laptop,
+  Monitor,
   Pencil,
   Pin,
   PinOff,
@@ -34,7 +36,7 @@ import { ExperimentalDot } from './Experimental'
 import { ModelIcon } from './ModelIcon'
 import { buildActions, exportThread } from '../actions'
 import { formatBinding } from '../keybinds'
-import type { Folder, SearchHit, Thread } from '@shared/types'
+import type { DeviceProfile, Folder, SearchHit, Thread } from '@shared/types'
 
 /** What a thread being dragged is carried as. */
 const THREAD_MIME = 'application/x-deep-pink-thread'
@@ -100,6 +102,7 @@ const ThreadRow = memo(function ThreadRow({
   generating,
   awaitingName,
   model,
+  deviceProfile,
   live,
   leaving,
   renaming,
@@ -120,6 +123,8 @@ const ThreadRow = memo(function ThreadRow({
   awaitingName: boolean
   /** What this conversation is set to use, so the row can show whose it is. */
   model: string
+  /** Origin mark, shown only when sync and its sidebar option are enabled. */
+  deviceProfile: DeviceProfile | null
   /** What it has produced so far, while it is producing. Null when it is not. */
   live: { tokens: number; perSecond: number } | null
   /** It has gone, and is still on screen only long enough to leave. */
@@ -306,6 +311,20 @@ const ThreadRow = memo(function ThreadRow({
         {/* At the end of the line rather than beside the title: the title is
             what you read down the list for, and a mark in front of it would be
             a column of logos with the names indented behind them. */}
+        {deviceProfile && (
+          <span
+            className="thread-item__device"
+            title={`Generated on ${deviceProfile.name}`}
+            aria-label={`Generated on ${deviceProfile.name}`}
+            style={{ color: deviceProfile.color }}
+          >
+            {deviceProfile.icon === 'laptop' ? (
+              <Laptop size={13} aria-hidden="true" />
+            ) : (
+              <Monitor size={13} aria-hidden="true" />
+            )}
+          </span>
+        )}
         <ModelIcon model={model} className="thread-item__model" />
       </span>
     </button>
@@ -1161,6 +1180,11 @@ export function Sidebar(): React.JSX.Element {
       generating={generatingThreadIds.includes(thread.id)}
       awaitingName={awaitingName(thread)}
       model={thread.config.model ?? defaultModel}
+      deviceProfile={
+        sync?.config.enabled && sync.config.showDeviceInSidebar && thread.deviceId
+          ? (sync.devices.find((device) => device.id === thread.deviceId) ?? null)
+          : null
+      }
       live={liveStats[thread.id] ?? null}
       leaving={goneIds.has(thread.id)}
       renaming={rename?.where === 'sidebar' && rename.threadId === thread.id}

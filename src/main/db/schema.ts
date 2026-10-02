@@ -505,5 +505,9 @@ export const MIGRATIONS: string[] = [
    WHERE key = 'settings'
      AND json_valid(value)
      AND json_type(value, '$.quickQuestion') IS NOT NULL;
+  `,
+
+  /* 27 — remember which sync device generated a thread */ `
+  ALTER TABLE threads ADD COLUMN device_id TEXT;
   `
 ]

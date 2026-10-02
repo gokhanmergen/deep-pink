@@ -1128,8 +1128,18 @@ svg.lucide {
   transition: opacity var(--quick);
 }
 
+.thread-item__device {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  opacity: 0.8;
+  transition: opacity var(--quick);
+}
+
 .thread-item:hover .thread-item__model,
-.thread-item[data-active='true'] .thread-item__model {
+.thread-item[data-active='true'] .thread-item__model,
+.thread-item:hover .thread-item__device,
+.thread-item[data-active='true'] .thread-item__device {
   opacity: 1;
 }
 
