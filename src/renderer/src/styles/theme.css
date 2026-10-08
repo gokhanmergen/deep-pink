@@ -1049,6 +1049,14 @@ svg.lucide {
   letter-spacing: var(--track-ui);
 }
 
+.thread-item__unread {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .thread-item__pin {
   color: var(--text-dim);
   flex: none;

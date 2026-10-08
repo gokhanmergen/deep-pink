@@ -208,37 +208,39 @@ export const MessageItem = memo(function MessageItem({
 
           <ImageAttachments attachments={message.attachments} />
 
-          <div className="message__body">
-            {editing ? (
-              <div>
-                <textarea
-                  className="textarea"
-                  rows={Math.min(draft.split('\n').length + 2, 20)}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    // A way out that does not need the mouse, now that there is
-                    // a way in that does not either.
-                    if (event.key === 'Escape') {
-                      event.stopPropagation()
-                      editMessage(null)
-                    }
-                  }}
-                  autoFocus
-                />
-                <div className="row" style={{ marginTop: 8 }}>
-                  <button className="btn btn--primary" onClick={() => void saveEdit()} type="button">
-                    Save
-                  </button>
-                  <button className="btn" onClick={() => editMessage(null)} type="button">
-                    Cancel
-                  </button>
+          {(editing || message.content) && (
+            <div className="message__body">
+              {editing ? (
+                <div>
+                  <textarea
+                    className="textarea"
+                    rows={Math.min(draft.split('\n').length + 2, 20)}
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      // A way out that does not need the mouse, now that there is
+                      // a way in that does not either.
+                      if (event.key === 'Escape') {
+                        event.stopPropagation()
+                        editMessage(null)
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <div className="row" style={{ marginTop: 8 }}>
+                    <button className="btn btn--primary" onClick={() => void saveEdit()} type="button">
+                      Save
+                    </button>
+                    <button className="btn" onClick={() => editMessage(null)} type="button">
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <Markdown content={message.content} codeTheme={ui.codeTheme} />
-            )}
-          </div>
+              ) : (
+                <Markdown content={message.content} codeTheme={ui.codeTheme} />
+              )}
+            </div>
+          )}
         </>
       ) : (
         /*

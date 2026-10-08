@@ -209,9 +209,10 @@ export function App(): React.JSX.Element {
         }
       }
 
-      // A printable key starts a prompt when focus is on the conversation or
-      // other non-editable chrome. Insert the first key explicitly: focusing a
-      // textarea during keydown does not retarget that keystroke to it.
+      // Typing or Backspace focuses the prompt from non-editable chrome.
+      // Apply the first edit explicitly: focusing a textarea during keydown
+      // does not retarget that keystroke to it.
+      const backspace = event.key === 'Backspace'
       if (
         editable ||
         event.defaultPrevented ||
@@ -219,7 +220,7 @@ export function App(): React.JSX.Element {
         event.ctrlKey ||
         event.metaKey ||
         event.altKey ||
-        event.key.length !== 1 ||
+        (!backspace && event.key.length !== 1) ||
         (event.key === ' ' && event.target instanceof HTMLButtonElement)
       ) {
         return
@@ -244,9 +245,15 @@ export function App(): React.JSX.Element {
 
       event.preventDefault()
       composer.focus({ preventScroll: true })
-      const start = composer.selectionStart ?? composer.value.length
+      let start = composer.selectionStart ?? composer.value.length
       const end = composer.selectionEnd ?? start
-      composer.setRangeText(event.key, start, end, 'end')
+      if (backspace && start === end) {
+        // Keep surrogate pairs intact when deleting an emoji or other
+        // character outside the basic multilingual plane.
+        const previousCharacter = Array.from(composer.value.slice(0, start)).at(-1) ?? ''
+        start -= previousCharacter.length
+      }
+      composer.setRangeText(backspace ? '' : event.key, start, end, 'end')
       store.setDraft(threadId, composer.value)
     }
 

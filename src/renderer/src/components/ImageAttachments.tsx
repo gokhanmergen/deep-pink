@@ -24,7 +24,11 @@ export function ImageAttachments({ attachments }: { attachments: Attachment[] })
   const imagesOnScreen = (): Attachment[] =>
     useStore
       .getState()
-      .messages.flatMap((entry) => entry.attachments.filter((file) => file.kind === 'image'))
+      .messages.flatMap((entry) =>
+        entry.attachments.filter(
+          (file) => file.kind === 'image' && !file.id.startsWith('optimistic-')
+        )
+      )
 
   return (
     <div className="attachments">
@@ -34,6 +38,12 @@ export function ImageAttachments({ attachments }: { attachments: Attachment[] })
           className="attachment"
           href={image.url}
           onClick={(event) => {
+            // The optimistic preview has not been stored yet, so it has no id
+            // the image viewer can use for save, copy or adjacent-image steps.
+            if (image.id.startsWith('optimistic-')) {
+              event.preventDefault()
+              return
+            }
             // Opens in the app's own viewer, where it can be zoomed, saved and
             // stepped through — handing it to the desktop's image program is
             // still offered, from in there.

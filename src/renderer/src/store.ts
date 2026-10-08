@@ -23,6 +23,29 @@ import type {
 import { wantKeyPoint } from './keyPoint'
 import { canMoveFolder, folderAncestors } from '@shared/folders'
 
+const UNREAD_THREADS_KEY = 'deep-pink.unread-threads'
+
+/** Unread replies belong to this device and are not part of a synced thread. */
+function storedUnreadThreads(): string[] {
+  try {
+    if (typeof localStorage === 'undefined') return []
+    const value: unknown = JSON.parse(localStorage.getItem(UNREAD_THREADS_KEY) ?? '[]')
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function saveUnreadThreads(ids: string[]): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(UNREAD_THREADS_KEY, JSON.stringify(ids))
+    }
+  } catch {
+    // The dot still works for this session if browser storage is unavailable.
+  }
+}
+
 export type Overlay =
   | null
   | 'palette'
@@ -163,6 +186,8 @@ interface State {
   settings: Settings | null
   models: OpenRouterModel[]
   threads: Thread[]
+  /** Threads with replies completed while they were out of view. */
+  unreadThreadIds: string[]
   folders: Folder[]
   /**
    * Folders currently open, in the order they were opened. Held here rather
@@ -721,6 +746,7 @@ export const useStore = create<State>((set, get) => ({
   settings: null,
   models: [],
   threads: [],
+  unreadThreadIds: storedUnreadThreads(),
   folders: [],
   openFolderIds: [],
   draggingThreadId: null,
@@ -844,6 +870,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectThread(id) {
+    if (id) setThreadUnread(id, false, set, get)
+
     // Opening a thread is leaving the comparison, wherever it was opened from —
     // the list, a search hit, a new chat. Both sides are threads in the list
     // already, so nothing is lost by it.
@@ -875,6 +903,7 @@ export const useStore = create<State>((set, get) => ({
         !thread.folderId
 
       if (thread.temporary || abandoned) {
+        setThreadUnread(thread.id, false, set, get)
         const drafts = { ...get().drafts }
         delete drafts[thread.id]
         set({
@@ -1142,6 +1171,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async deleteThread(id) {
+    setThreadUnread(id, false, set, get)
     forgetPlace(id)
     await api.threads.remove(id)
     const drafts = { ...get().drafts }
@@ -1285,7 +1315,10 @@ export const useStore = create<State>((set, get) => ({
     }
 
     // Paint the user's message immediately rather than waiting on the round trip.
-    set({ messages: [...get().messages, optimisticMessage(threadId, content)], generating: true })
+    set({
+      messages: [...get().messages, optimisticMessage(threadId, content, pending)],
+      generating: true
+    })
 
     await api.chat.send({ threadId, content, attachments: pending })
     await get().refreshThreads()
@@ -1431,8 +1464,8 @@ export const useStore = create<State>((set, get) => ({
     // The question shown on both sides at once, before either has answered.
     set({
       compare: [
-        { ...emptyPane(a.id, left), messages: [optimisticMessage(a.id, content)], generating: true },
-        { ...emptyPane(b.id, right), messages: [optimisticMessage(b.id, content)], generating: true }
+        { ...emptyPane(a.id, left), messages: [optimisticMessage(a.id, content, pending)], generating: true },
+        { ...emptyPane(b.id, right), messages: [optimisticMessage(b.id, content, pending)], generating: true }
       ]
     })
     await get().refreshThreads()
@@ -1451,7 +1484,7 @@ export const useStore = create<State>((set, get) => ({
     if (!pane?.threadId || pane.generating) return
     const threadId = pane.threadId
     patchPane(set, get, side, threadId, (p) => ({
-      messages: [...p.messages, optimisticMessage(threadId, content)],
+      messages: [...p.messages, optimisticMessage(threadId, content, pending)],
       generating: true
     }))
     await sendInPane(side, { threadId, content, attachments: pending }, set, get)
@@ -1808,6 +1841,16 @@ export const useStore = create<State>((set, get) => ({
 type Setter = (partial: Partial<State> | ((state: State) => Partial<State>)) => void
 type Getter = () => State
 
+function setThreadUnread(threadId: string, unread: boolean, set: Setter, get: Getter): void {
+  const current = get().unreadThreadIds
+  const next = unread
+    ? current.includes(threadId) ? current : [...current, threadId]
+    : current.filter((id) => id !== threadId)
+  if (next.length === current.length) return
+  saveUnreadThreads(next)
+  set({ unreadThreadIds: next })
+}
+
 function patchMessage(
   messages: Message[],
   id: string,
@@ -1876,15 +1919,21 @@ function settleLive(messages: Message[], settled: LiveStream[]): Message[] {
 }
 
 /** Your message, painted before the round trip that stores it. */
-function optimisticMessage(threadId: string, content: string): Message {
+function optimisticMessage(
+  threadId: string,
+  content: string,
+  pending: PendingAttachment[] = []
+): Message {
+  const createdAt = Date.now()
+  const id = `optimistic-${createdAt}-${Math.random().toString(36).slice(2)}`
   return {
-    id: `optimistic-${Date.now()}`,
+    id,
     threadId,
     role: 'user',
     content,
     reasoning: null,
     reasoningChars: 0,
-    createdAt: Date.now(),
+    createdAt,
     model: null,
     provider: null,
     status: 'complete',
@@ -1897,7 +1946,25 @@ function optimisticMessage(threadId: string, content: string): Message {
     isCompactionSummary: false,
     compactedInto: null,
     usage: null,
-    attachments: []
+    attachments: pending.flatMap((file, index) => {
+      // Show image bytes immediately. Text attachments need the main process's
+      // stored id, so they join the message with the first transcript read.
+      if (!file.mime.startsWith('image/')) return []
+      const padding = file.data.endsWith('==') ? 2 : file.data.endsWith('=') ? 1 : 0
+      return [{
+        id: `${id}-${index}`,
+        messageId: id,
+        mime: file.mime,
+        filename: file.filename,
+        bytes: Math.max(0, Math.floor((file.data.length * 3) / 4) - padding),
+        width: file.width,
+        height: file.height,
+        createdAt,
+        url: `data:${file.mime};base64,${file.data}`,
+        kind: 'image' as const,
+        preview: null
+      }]
+    })
   }
 }
 
@@ -2083,7 +2150,7 @@ function routeToPane(event: StreamEvent, set: Setter, get: Getter): boolean {
           : {
               generating: true,
               messages: [
-                ...pane.messages.filter((m) => !m.id.startsWith('optimistic-')),
+                ...pane.messages,
                 streamingPlaceholder(event.messageId, threadId)
               ]
             }
@@ -2324,13 +2391,21 @@ function trackGenerating(event: StreamEvent, set: Setter, get: Getter): void {
       void get().refreshThreads()
       break
     case 'done': {
+      const threadId = event.message?.threadId ?? threadOfMessage.get(event.messageId)
       threadOfMessage.delete(event.messageId)
       // The thread it names, or the one it was started under. A `done` whose
       // message has gone — deleted mid-turn, or a thread swept from under it —
       // used to throw here, which left the row believing a reply was still on
       // its way and stopped everything below this line from running.
-      const threadId = event.message?.threadId ?? threadOfMessage.get(event.messageId)
       if (!threadId) break
+      if (
+        event.message.status === 'complete' &&
+        !event.message.toolCalls?.length &&
+        threadId !== get().activeThreadId &&
+        !get().compare?.some((pane) => pane.threadId === threadId)
+      ) {
+        setThreadUnread(threadId, true, set, get)
+      }
       emitted.delete(threadId)
       working(threadId, false)
       break
@@ -2408,11 +2483,12 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
         break
       }
 
-      // Drop the optimistic echo of the user's message; the real row is on disk.
+      // Keep the optimistic message visible until the stored row arrives. For
+      // image-only sends it is the only place the bytes exist at first.
       set({
         generating: true,
         messages: [
-          ...state.messages.filter((m) => !m.id.startsWith('optimistic-')),
+          ...state.messages,
           streamingPlaceholder(event.messageId, event.threadId)
         ]
       })

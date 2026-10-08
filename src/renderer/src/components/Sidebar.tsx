@@ -100,6 +100,7 @@ const ThreadRow = memo(function ThreadRow({
   active,
   wip,
   generating,
+  unread,
   awaitingName,
   model,
   deviceProfile,
@@ -119,6 +120,8 @@ const ThreadRow = memo(function ThreadRow({
   wip: boolean
   /** A reply is arriving in this thread, whether or not you are looking at it. */
   generating: boolean
+  /** A completed reply arrived while this thread was out of view. */
+  unread: boolean
   /** It has no name yet and one is coming, so there is nothing to write here. */
   awaitingName: boolean
   /** What this conversation is set to use, so the row can show whose it is. */
@@ -195,15 +198,13 @@ const ThreadRow = memo(function ThreadRow({
       tabIndex={leaving ? -1 : undefined}
       onClick={() => onSelect(thread.id)}
       onContextMenu={(event) => onMenu(event, thread)}
-      title={
-        thread.temporary
-          ? 'Temporary chat — deleted when you leave it or close the app'
-          : wip
-            ? 'Unsent prompt draft — kept until the app restarts'
-            : awaitingName
-              ? 'Naming this conversation…'
-              : threadLabel(thread)
-      }
+      title={`${thread.temporary
+        ? 'Temporary chat — deleted when you leave it or close the app'
+        : wip
+          ? 'Unsent prompt draft — kept until the app restarts'
+          : awaitingName
+            ? 'Naming this conversation…'
+            : threadLabel(thread)}${unread ? '\nUnread reply' : ''}`}
       type="button"
     >
       <span className="thread-item__head">
@@ -261,6 +262,7 @@ const ThreadRow = memo(function ThreadRow({
             {wip && !thread.title ? 'WIP Thread' : threadLabel(thread)}
           </span>
         )}
+        {unread && <span className="thread-item__unread" aria-label="Unread reply" />}
         {/* The time the list is ordered by, where the eye already is. */}
         <span
           className="thread-item__time"
@@ -365,6 +367,7 @@ export function Sidebar(): React.JSX.Element {
   const openFolderIds = useStore((s) => s.openFolderIds)
   const draggingThreadId = useStore((s) => s.draggingThreadId)
   const activeThreadId = useStore((s) => s.activeThreadId)
+  const unreadThreadIds = useStore((s) => s.unreadThreadIds)
   // Side by side, both sides are what is open. Two values rather than the
   // pair, so the list does not re-render every time a reply in either grows.
   const compareLeft = useStore((s) => s.compare?.[0].threadId ?? null)
@@ -1178,6 +1181,7 @@ export function Sidebar(): React.JSX.Element {
       active={isOpen(thread.id)}
       wip={!isOpen(thread.id) && Boolean(drafts[thread.id]?.trim())}
       generating={generatingThreadIds.includes(thread.id)}
+      unread={unreadThreadIds.includes(thread.id)}
       awaitingName={awaitingName(thread)}
       model={thread.config.model ?? defaultModel}
       deviceProfile={
