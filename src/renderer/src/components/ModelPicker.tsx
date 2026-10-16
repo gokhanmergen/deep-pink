@@ -19,6 +19,7 @@ interface Props {
     | 'pregenTitle'
     | 'default'
     | 'keyPoint'
+    | 'webServer'
     | 'compareLeft'
     | 'compareRight'
   onClose: () => void
@@ -70,6 +71,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     case 'keyPoint':
       current = settings?.keyPointModel
       break
+    case 'webServer':
+      current = settings?.webServer.model
+      break
     case 'title':
       current = settings?.titleModel
       break
@@ -102,7 +106,8 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     title: 'Model for generating thread names…',
     pregenTitle: 'Model for the first name, written from the question…',
     default: 'Model that new threads start with…',
-    keyPoint: 'Search models…'
+    keyPoint: 'Search models…',
+    webServer: 'Model for the localhost web server…'
   }[mode]
 
   const filtered = useMemo(() => {
@@ -112,9 +117,14 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     return models
       .filter((m) => !toolsOnly || m.supportsTools)
       .filter((m) => !drawsOnly || m.outputModalities.includes('image'))
+      .filter(
+        (m) =>
+          mode !== 'webServer' ||
+          (m.inputModalities.includes('text') && m.outputModalities.includes('text'))
+      )
       .filter((m) => matchesQuery(m, words))
       .slice(0, 300)
-  }, [models, query, toolsOnly, drawsOnly])
+  }, [models, query, toolsOnly, drawsOnly, mode])
 
   useEffect(() => setCursor(0), [query, toolsOnly, drawsOnly])
 
@@ -155,6 +165,9 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     } else if (mode === 'pregenTitle') {
       await saveSettings({ titlePregenModel: modelId })
       showToast(`First names will use ${modelShortName(modelId)}`)
+    } else if (mode === 'webServer') {
+      await saveSettings({ webServer: { model: modelId } })
+      showToast(`The web server will use ${modelShortName(modelId)}`)
     } else if (mode === 'default') {
       // Deliberately does not touch the open thread: this is the model new
       // threads start with, which is a different question from what this one

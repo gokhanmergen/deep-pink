@@ -36,6 +36,7 @@ import { keyPointCeiling } from '@shared/defaults'
 import { loadSettings, saveSettings } from './settings'
 import { isEncryptionAvailable, setApiKey } from './secrets'
 import { reportProblem } from './report'
+import * as webServer from './webServer'
 
 const CHAT_EVENT = 'chat:event'
 const MCP_STATUS_EVENT = 'mcp:status'
@@ -182,11 +183,14 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:get', (): Settings => loadSettings())
 
-  ipcMain.handle('settings:save', (_e, patch: SettingsPatch): Settings => {
+  ipcMain.handle('settings:save', async (_e, patch: SettingsPatch): Promise<Settings> => {
     const next = saveSettings(patch)
+    await webServer.configure(next.webServer, next.hideExperimental)
     syncSoon()
     return next
   })
+
+  ipcMain.handle('webServer:status', () => webServer.getStatus())
 
   ipcMain.handle('settings:setApiKey', (_e, key: string): Settings => {
     setApiKey(key)

@@ -6,3 +6,4 @@
 - Backspace now focuses the prompt and deletes on the first press.
 - Threads get an unread dot when a reply finishes while they are out of view.
 - Image-only messages show the image immediately without an empty text bubble.
+- Experimental localhost web server: submit a prompt for a complete reply, then open that result as a saved thread.

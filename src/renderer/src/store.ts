@@ -57,6 +57,7 @@ export type Overlay =
   | 'titleModel'
   | 'pregenTitleModel'
   | 'keyPointModel'
+  | 'webServerModel'
   | 'providers'
   | 'prompt'
   | 'threadStats'
@@ -128,6 +129,7 @@ export type SettingsTab =
   | 'models'
   | 'prompts'
   | 'web'
+  | 'webServer'
   | 'skills'
   | 'keyPoint'
   | 'context'
@@ -820,6 +822,18 @@ export const useStore = create<State>((set, get) => ({
 
     unsubscribers.push(api.mcp.onStatus((statuses) => set({ mcpStatuses: statuses })))
     unsubscribers.push(api.chat.onEvent((event) => handleStreamEvent(event, set, get)))
+    unsubscribers.push(
+      api.webServer.onOpenThread((threadId) => {
+        void (async () => {
+          await get().refreshThreads()
+          if (get().threads.some((thread) => thread.id === threadId)) {
+            await get().selectThread(threadId)
+          }
+        })().catch((err) =>
+          get().showToast(err instanceof Error ? err.message : String(err), 'error')
+        )
+      })
+    )
 
     // A sync that brought something in has changed the library underneath the
     // window: the list, the open thread and the settings all have to catch up,

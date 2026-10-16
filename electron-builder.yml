@@ -14,6 +14,10 @@ files:
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
 
+extraResources:
+  - from: build/icons/16x16.png
+    to: tray-icon.png
+
 npmRebuild: true
 
 # Releases are published by the GitHub Actions workflow. electron-builder must

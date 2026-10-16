@@ -1,13 +1,15 @@
 import { join } from 'node:path'
-import { BrowserWindow, app, shell } from 'electron'
+import { BrowserWindow, Menu, Tray, app, nativeImage, shell } from 'electron'
+import type { NativeImage } from 'electron'
 import { closeDb, getDb } from './db/index'
 import { deleteEmptyThreads, deleteTemporaryThreads, reconcileInterruptedMessages } from './db/repo'
 import { loadSettings } from './settings'
-import { registerIpc, startNaming, startSync, startUpdateChecks } from './ipc'
+import { registerIpc, startNaming, startSync, startUpdateChecks, syncSoon } from './ipc'
 import * as attachments from './attachments'
 import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
 import { reportUncaught } from './report'
+import * as webServer from './webServer'
 
 /*
  * Before anything that can fail.
@@ -21,8 +23,61 @@ reportUncaught()
 
 const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 let backgroundTasksStarted = false
 let canOpenWindows = false
+let isQuitting = false
+
+function keepInTray(): boolean {
+  const settings = loadSettings()
+  return (
+    !settings.hideExperimental &&
+    settings.webServer.enabled &&
+    settings.webServer.runInBackground
+  )
+}
+
+function trayIcon(): NativeImage {
+  const path = app.isPackaged
+    ? join(process.resourcesPath, 'tray-icon.png')
+    : join(app.getAppPath(), 'build/icons/16x16.png')
+  const image = nativeImage.createFromPath(path)
+  if (process.platform === 'darwin') image.setTemplateImage(true)
+  return image
+}
+
+function updateTray(): void {
+  if (isQuitting || !keepInTray()) {
+    tray?.destroy()
+    tray = null
+    return
+  }
+
+  if (!tray) {
+    tray = new Tray(trayIcon())
+    tray.setToolTip('Deep Pink — web server running in the background')
+    tray.on('click', () => openMainWindow())
+    tray.on('double-click', () => openMainWindow())
+  }
+
+  const settings = loadSettings()
+  const serverStatus = webServer.getStatus()
+  const state =
+    serverStatus.state === 'running'
+      ? `Listening on 127.0.0.1:${serverStatus.port}`
+      : serverStatus.state === 'error'
+        ? 'Web server needs attention'
+        : 'Web server is starting'
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Open Deep Pink', click: () => openMainWindow() },
+      { label: state, enabled: false },
+      { label: `API port ${settings.webServer.port}`, enabled: false },
+      { type: 'separator' },
+      { label: 'Quit Deep Pink', click: () => app.quit() }
+    ])
+  )
+}
 
 function startBackgroundTasks(): void {
   if (backgroundTasksStarted) return
@@ -56,6 +111,14 @@ function createWindow(): BrowserWindow {
     }
   })
   mainWindow = win
+
+  win.on('close', (event) => {
+    if (isQuitting || !keepInTray()) return
+    event.preventDefault()
+    win.hide()
+    if (process.platform === 'darwin') app.dock?.hide()
+    updateTray()
+  })
 
   win.on('closed', () => {
     if (mainWindow === win) {
@@ -121,11 +184,26 @@ function createWindow(): BrowserWindow {
 
 function openMainWindow(): void {
   startBackgroundTasks()
+  app.dock?.show()
   const win = createWindow()
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
 }
+
+webServer.setOpenThreadHandler((threadId) => {
+  openMainWindow()
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  const send = (): void => {
+    if (!win.isDestroyed()) win.webContents.send('webServer:open-thread', threadId)
+  }
+  if (win.webContents.isLoadingMainFrame()) win.webContents.once('did-finish-load', send)
+  else send()
+})
+webServer.setThreadCreatedHandler(() => syncSoon())
+
+webServer.onStatus(() => updateTray())
 
 // Must happen before the app is ready: Chromium decides how to treat a custom
 // scheme at startup, and attachments are served over one.
@@ -141,9 +219,10 @@ if (!app.requestSingleInstanceLock()) {
 app.on('second-instance', () => {
   if (!canOpenWindows) return
   openMainWindow()
+  void webServer.configure(loadSettings().webServer, loadSettings().hideExperimental)
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Open the database first — everything else assumes migrations have run.
   getDb()
 
@@ -178,17 +257,31 @@ app.whenReady().then(() => {
   canOpenWindows = true
   createWindow()
   startBackgroundTasks()
+  await webServer.configure(loadSettings().webServer, loadSettings().hideExperimental)
+  updateTray()
 
   app.on('activate', () => {
     openMainWindow()
+    void webServer.configure(loadSettings().webServer, loadSettings().hideExperimental)
   })
 })
 
 app.on('window-all-closed', () => {
+  if (keepInTray()) {
+    updateTray()
+    return
+  }
+  // On macOS the process stays alive after the last window closes. A server
+  // that was not explicitly configured for tray mode should not keep running.
+  webServer.shutdown()
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', async () => {
+  isQuitting = true
+  tray?.destroy()
+  tray = null
+  webServer.shutdown()
   // First, and synchronously: an async handler does not hold the app open, so
   // anything awaited before this may simply not happen. A temporary chat has to
   // be gone before the database closes, not merely scheduled to be.

@@ -31,9 +31,21 @@ import type {
   Thread,
   ThreadConfig,
   ThreadStats,
-  ThreadTotals
+  ThreadTotals,
+  WebServerStatus
 } from '@shared/types'
 import type { UpdateConfig, UpdateStatus } from '@shared/updates'
+
+const webServerOpenListeners = new Set<(threadId: string) => void>()
+const pendingWebServerOpens: string[] = []
+
+ipcRenderer.on('webServer:open-thread', (_event, threadId: string) => {
+  if (webServerOpenListeners.size === 0) {
+    pendingWebServerOpens.push(threadId)
+    return
+  }
+  for (const listener of webServerOpenListeners) listener(threadId)
+})
 
 const api = {
   settings: {
@@ -43,6 +55,20 @@ const api = {
     setApiKey: (key: string): Promise<Settings> => ipcRenderer.invoke('settings:setApiKey', key),
     encryptionAvailable: (): Promise<boolean> =>
       ipcRenderer.invoke('settings:encryptionAvailable')
+  },
+
+  webServer: {
+    status: (): Promise<WebServerStatus> => ipcRenderer.invoke('webServer:status'),
+    onStatus: (listener: (status: WebServerStatus) => void): (() => void) => {
+      const handler = (_event: unknown, status: WebServerStatus): void => listener(status)
+      ipcRenderer.on('webServer:status', handler)
+      return () => ipcRenderer.removeListener('webServer:status', handler)
+    },
+    onOpenThread: (listener: (threadId: string) => void): (() => void) => {
+      webServerOpenListeners.add(listener)
+      for (const threadId of pendingWebServerOpens.splice(0)) listener(threadId)
+      return () => webServerOpenListeners.delete(listener)
+    }
   },
 
   models: {

@@ -543,6 +543,23 @@ export interface WebSearchSettings {
   blockedDomains: string[]
 }
 
+/** Isolated settings for the experimental localhost prompt API. */
+export interface WebServerSettings {
+  enabled: boolean
+  /** Keep Deep Pink running in the tray after its window is closed. */
+  runInBackground: boolean
+  model: string
+  systemPrompt: string
+  /** Loopback HTTP port. */
+  port: number
+}
+
+export interface WebServerStatus {
+  state: 'stopped' | 'starting' | 'running' | 'error'
+  port: number
+  error: string | null
+}
+
 /* ------------------------------------------------------------------ *
  * Context compaction
  * ------------------------------------------------------------------ */
@@ -691,6 +708,7 @@ export interface Settings {
    */
   keyPointMany: boolean
   web: WebSearchSettings
+  webServer: WebServerSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */
   sendAppAttribution: boolean
@@ -704,9 +722,10 @@ export interface Settings {
  */
 export type SettingsPatch = Omit<
   Partial<Settings>,
-  'web' | 'compaction' | 'ui' | 'defaultProviderRouting'
+  'web' | 'webServer' | 'compaction' | 'ui' | 'defaultProviderRouting'
 > & {
   web?: Partial<WebSearchSettings>
+  webServer?: Partial<WebServerSettings>
   compaction?: Partial<CompactionSettings>
   /**
    * `replyChips` is partial within the partial: it is eight switches and a

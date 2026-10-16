@@ -56,6 +56,12 @@ export const SETTINGS_PAGES: Record<SettingsTab, SettingsPage> = {
       'web search fetch internet provider brave bing duckduckgo searxng openrouter domains experimental',
     experimental: true
   },
+  webServer: {
+    label: 'Web server',
+    keywords:
+      'localhost api prompt endpoint reply model system prompt background tray experimental integration',
+    experimental: true
+  },
   skills: {
     label: 'Skills',
     keywords: 'skill charts custom instructions load on demand every turn experimental',

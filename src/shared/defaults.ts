@@ -3,7 +3,8 @@ import type {
   ProviderRouting,
   Settings,
   UiSettings,
-  WebSearchSettings
+  WebSearchSettings,
+  WebServerSettings
 } from './types'
 import { DEFAULT_REASONING } from './reasoning'
 
@@ -25,6 +26,14 @@ export const DEFAULT_WEB_SETTINGS: WebSearchSettings = {
   maxResults: 5,
   fetchCharLimit: 20000,
   blockedDomains: []
+}
+
+export const DEFAULT_WEB_SERVER_SETTINGS: WebServerSettings = {
+  enabled: false,
+  runInBackground: false,
+  model: 'anthropic/claude-sonnet-4.5',
+  systemPrompt: 'You are a helpful assistant. Answer the supplied prompt directly and concisely.',
+  port: 3789
 }
 
 export const DEFAULT_COMPACTION_PROMPT = `You are compacting a conversation to free up context.
@@ -296,6 +305,7 @@ export const DEFAULT_SETTINGS: Settings = {
    */
   keyPointMany: true,
   web: DEFAULT_WEB_SETTINGS,
+  webServer: DEFAULT_WEB_SERVER_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,
   keybinds: DEFAULT_KEYBINDS,

@@ -33,8 +33,21 @@ function alreadyExperimenting(stored: Partial<Settings>): boolean {
     stored.chartsEnabled ||
     stored.keyPointEnabled ||
     stored.web?.enabled ||
+    stored.webServer?.enabled ||
     stored.sendAppAttribution === false
   )
+}
+
+function webServerSettings(input?: SettingsPatch['webServer']): Settings['webServer'] {
+  const merged = { ...DEFAULT_SETTINGS.webServer, ...input }
+  const port = Number(merged.port)
+  return {
+    ...merged,
+    port:
+      Number.isInteger(port) && port >= 1024 && port <= 65535
+        ? port
+        : DEFAULT_SETTINGS.webServer.port
+  }
 }
 
 /** Stored settings merged over defaults, so new options appear on upgrade. */
@@ -70,6 +83,7 @@ export function loadSettings(): Settings {
           ? 'local'
           : (stored.web?.engine ?? DEFAULT_SETTINGS.web.engine)
     },
+    webServer: webServerSettings(stored.webServer),
     compaction: normalizeCompaction(stored.compaction ?? {}),
     ui: {
       ...DEFAULT_SETTINGS.ui,
@@ -106,6 +120,7 @@ export function saveSettings(input: SettingsPatch): Settings {
       engine:
         patch.web?.engine === 'duckduckgo' ? 'local' : (patch.web?.engine ?? current.web.engine)
     },
+    webServer: webServerSettings({ ...current.webServer, ...patch.webServer }),
     compaction: normalizeCompaction({
       ...current.compaction,
       ...patch.compaction

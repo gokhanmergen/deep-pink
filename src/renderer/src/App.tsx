@@ -310,6 +310,7 @@ export function App(): React.JSX.Element {
       {overlay === 'titleModel' && <ModelPicker mode="title" onClose={close} />}
       {overlay === 'keyPointModel' && <ModelPicker mode="keyPoint" onClose={close} />}
       {overlay === 'pregenTitleModel' && <ModelPicker mode="pregenTitle" onClose={close} />}
+      {overlay === 'webServerModel' && <ModelPicker mode="webServer" onClose={close} />}
       {overlay === 'compareModelLeft' && <ModelPicker mode="compareLeft" onClose={close} />}
       {overlay === 'compareModelRight' && <ModelPicker mode="compareRight" onClose={close} />}
       {overlay === 'providers' && <ProviderPicker onClose={close} />}

@@ -44,7 +44,8 @@ import type {
   ImportResult,
   SyncConfig,
   SyncDirection,
-  SyncScopes
+  SyncScopes,
+  WebServerStatus
 } from '@shared/types'
 import { asSkillName, whyUnusable, type CustomSkill } from '@shared/skills'
 import { EFFORTS, REASONING_LABELS, type ReasoningMode } from '@shared/reasoning'
@@ -93,6 +94,7 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     title: 'Experimental',
     tabs: [
       pageTab('web', <Globe {...ICON} />),
+      pageTab('webServer', <Globe {...ICON} />),
       pageTab('skills', <Sparkles {...ICON} />),
       pageTab('keyPoint', <Highlighter {...ICON} />),
       pageTab('sync', <RefreshCw {...ICON} />)
@@ -589,6 +591,23 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [revealed, setRevealed] = useState<string | null>(null)
   const [keyDraft, setKeyDraft] = useState('')
   const [secretDraft, setSecretDraft] = useState('')
+  const [webServerStatus, setWebServerStatus] = useState<WebServerStatus>({
+    state: 'stopped',
+    port: 3789,
+    error: null
+  })
+
+  useEffect(() => {
+    let active = true
+    void window.deepPink.webServer.status().then((status) => {
+      if (active) setWebServerStatus(status)
+    })
+    const unsubscribe = window.deepPink.webServer.onStatus((status) => setWebServerStatus(status))
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
 
   useLayoutEffect(() => {
     const count = contentRef.current?.querySelectorAll('[data-settings-section]').length ?? 0
@@ -2012,6 +2031,107 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   })
                 }
               />
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            page="webServer"
+            activePage={tab}
+            query={query}
+            sectionId="settings-webServer-0"
+            keywords="localhost local api prompt endpoint reply model system prompt background tray experimental integration"
+          >
+            <h3 className="section-title">
+              Web server
+              <Experimental />
+            </h3>
+            <p className="field__hint">
+              A localhost-only API that waits for a complete text reply. Requests use this page’s
+              prompt and model, with no web search, MCP, or chat tools.
+            </p>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.webServer.enabled}
+                onChange={(event) =>
+                  void saveSettings({ webServer: { enabled: event.target.checked } })
+                }
+              />
+              <span>Enable the localhost web server</span>
+              <Revert path="webServer.enabled" what="the web server" />
+            </label>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.webServer.runInBackground}
+                onChange={(event) =>
+                  void saveSettings({ webServer: { runInBackground: event.target.checked } })
+                }
+              />
+              <span>Keep running in the tray after closing the window</span>
+              <Revert path="webServer.runInBackground" what="running in the tray" />
+            </label>
+            <p className="field__hint">
+              The web server must be enabled for tray mode to keep the listener running.
+            </p>
+            <div className="field">
+              <FieldLabel path="webServer.port" what="the web server port">
+                Port
+              </FieldLabel>
+              <DebouncedInput
+                id="setting-webServer-port"
+                className="input"
+                type="number"
+                min={1024}
+                max={65535}
+                value={String(settings.webServer.port)}
+                onCommit={(next) =>
+                  void saveSettings({ webServer: { port: Number(next) || 3789 } })
+                }
+              />
+              <p
+                className="field__hint"
+                role="status"
+                aria-live="polite"
+                data-tone={webServerStatus.state === 'error' ? 'error' : undefined}
+              >
+                {webServerStatus.state === 'running'
+                  ? `Listening at http://127.0.0.1:${webServerStatus.port}`
+                  : webServerStatus.state === 'starting'
+                    ? 'Starting the localhost listener…'
+                    : webServerStatus.state === 'error'
+                      ? `Could not listen on port ${webServerStatus.port}: ${webServerStatus.error}`
+                      : 'Stopped. Enable the web server to accept requests.'}
+              </p>
+            </div>
+            <div className="field field--model">
+              <FieldLabel path="webServer.model" what="the web server model">
+                Model
+              </FieldLabel>
+              <div className="row">
+                <button
+                  id="setting-webServer-model"
+                  className="btn"
+                  onClick={() => openModelPicker('webServerModel', 'webServer')}
+                  type="button"
+                >
+                  {modelShortName(settings.webServer.model)}
+                </button>
+              </div>
+              <Revert path="webServer.model" what="the web server model" />
+            </div>
+            <div className="field">
+              <FieldLabel path="webServer.systemPrompt" what="the web server system prompt">
+                System prompt
+              </FieldLabel>
+              <DebouncedTextarea
+                id="setting-webServer-systemPrompt"
+                className="textarea"
+                rows={7}
+                value={settings.webServer.systemPrompt}
+                onCommit={(next) => void saveSettings({ webServer: { systemPrompt: next } })}
+              />
+              <Revert path="webServer.systemPrompt" what="the web server system prompt" />
             </div>
           </SettingsSection>
 

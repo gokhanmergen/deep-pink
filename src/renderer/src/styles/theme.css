@@ -1798,6 +1798,10 @@ svg.lucide {
   line-height: var(--lh-small);
 }
 
+.field__hint[data-tone='error'] {
+  color: var(--red);
+}
+
 /* Beside a control rather than beneath a label, it is one item in a row and
    lines up with what it explains. */
 .row > .field__hint {
