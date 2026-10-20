@@ -2083,10 +2083,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>Use Codex’s native web search</span>
             </label>
-            <p className="field__hint">
-              Web-enabled Codex chats use Codex’s native search and page reading instead of Deep
-              Pink’s web tools. Search and page reading are the only Codex tools this enables.
-            </p>
           </SettingsSection>
 
           <SettingsSection
@@ -2100,10 +2096,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               Web server
               <Experimental />
             </h3>
-            <p className="field__hint">
-              A localhost-only API that waits for a complete text reply. Requests use this page’s
-              prompt and model, with no web search, MCP, or chat tools.
-            </p>
             <label className="switch">
               <input
                 type="checkbox"
@@ -2126,9 +2118,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               <span>Keep running in the tray after closing the window</span>
               <Revert path="webServer.runInBackground" what="running in the tray" />
             </label>
-            <p className="field__hint">
-              The web server must be enabled for tray mode to keep the listener running.
-            </p>
             <div className="field">
               <FieldLabel path="webServer.port" what="the web server port">
                 Port
@@ -2144,20 +2133,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   void saveSettings({ webServer: { port: Number(next) || 3789 } })
                 }
               />
-              <p
-                className="field__hint"
-                role="status"
-                aria-live="polite"
-                data-tone={webServerStatus.state === 'error' ? 'error' : undefined}
-              >
-                {webServerStatus.state === 'running'
-                  ? `Listening at http://127.0.0.1:${webServerStatus.port}`
-                  : webServerStatus.state === 'starting'
-                    ? 'Starting the localhost listener…'
-                    : webServerStatus.state === 'error'
-                      ? `Could not listen on port ${webServerStatus.port}: ${webServerStatus.error}`
-                      : 'Stopped. Enable the web server to accept requests.'}
-              </p>
+              {webServerStatus.state !== 'stopped' && (
+                <p
+                  className="field__hint"
+                  role="status"
+                  aria-live="polite"
+                  data-tone={webServerStatus.state === 'error' ? 'error' : undefined}
+                >
+                  {webServerStatus.state === 'running'
+                    ? `Listening at http://127.0.0.1:${webServerStatus.port}`
+                    : webServerStatus.state === 'starting'
+                      ? 'Starting the localhost listener…'
+                      : `Could not listen on port ${webServerStatus.port}: ${webServerStatus.error}`}
+                </p>
+              )}
             </div>
             <div className="field field--model">
               <FieldLabel path="webServer.model" what="the web server model">
@@ -2249,13 +2238,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                    * explanation, and saying it twice in prose underneath was
                    * the settings panel talking to itself.
                    */}
-                  <p className="field__hint">
-                    {settings.keyPointSource === 'jev'
-                      ? 'About $0.00006 a reply, to TypeSafe.'
-                      : settings.keyPointSource === 'model'
-                        ? 'A second request a reply, priced by the model you pick.'
-                        : 'No second request — a few more tokens on the one you already send.'}
-                  </p>
+                  {settings.keyPointSource !== 'self' && (
+                    <p className="field__hint">
+                      {settings.keyPointSource === 'jev'
+                        ? 'About $0.00006 a reply, to TypeSafe.'
+                        : 'A second request a reply, priced by the model you pick.'}
+                    </p>
+                  )}
                 </div>
 
                 <div className="field">
