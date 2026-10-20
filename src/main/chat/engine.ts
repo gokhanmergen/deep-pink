@@ -13,6 +13,7 @@ import { LOAD_SKILL, type Skill } from '@shared/skills'
 import { reasoningParam, resolveReasoning } from '@shared/reasoning'
 import { keyPointCeiling } from '@shared/defaults'
 import { normalizeCompaction } from '@shared/compaction'
+import { providerForModel } from '@shared/modelProviders'
 import * as repo from '../db/repo'
 import * as sync from '../sync/engine'
 import * as mcp from '../mcp/host'
@@ -24,10 +25,11 @@ import {
   knownModel,
   listModels,
   streamChat,
-  type ChatMessageParam,
+  contextLimitFor as providerContextLimit,
   type Citation,
   type StreamResult
-} from '../providers/openrouter'
+} from '../providers'
+import type { ChatMessageParam } from '../providers/types'
 import { runWebFetch, runWebSearch } from '../tools/web'
 import { runLoadSkill } from '../tools/skills'
 import { REPO_TOOL_NAMES } from '../tools/repo'
@@ -462,9 +464,9 @@ function keepCitations(
 export async function contextLimitFor(model: string): Promise<number | null> {
   try {
     const models = await listModels()
-    return models.find((m) => m.id === model)?.contextLength ?? null
+    return models.find((m) => m.id === model)?.contextLength || providerContextLimit(model)
   } catch {
-    return null
+    return providerContextLimit(model)
   }
 }
 
@@ -496,7 +498,9 @@ export async function shouldCompact(
   if (!settings.compaction.enabled || !limit) return { needed: false, used, limit }
   const compaction = normalizeCompaction(settings.compaction)
   // A request must also leave room for the configured answer.
-  const output = thread.config.maxTokens ?? settings.maxTokens ?? 0
+  const output = providerForModel(model) === 'codex'
+    ? 0
+    : (thread.config.maxTokens ?? settings.maxTokens ?? 0)
   const reserved = Number.isFinite(output) ? Math.max(0, output) : 0
   const threshold = Math.min(limit * compaction.triggerRatio, limit - reserved)
   return { needed: used >= threshold, used, limit }
@@ -818,7 +822,10 @@ export async function pregenerateTitle(threadId: string, prompt: string, emit: E
   const thread = repo.getThread(threadId)
   if (!thread || thread.title || thread.temporary) return
 
-  const model = settings.titlePregenModel || settings.titleModel
+  const threadModel = thread.config.model ?? settings.defaultModel
+  const model = providerForModel(threadModel) === 'codex'
+    ? threadModel
+    : (settings.titlePregenModel || settings.titleModel)
 
   try {
     const result = await complete({
@@ -956,6 +963,8 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
 
   const thread = repo.getThread(threadId)
   if (!thread) return null
+  const threadModel = thread.config.model ?? settings.defaultModel
+  const model = providerForModel(threadModel) === 'codex' ? threadModel : settings.titleModel
   /*
    * Someone is already asking. Say nothing and let them answer.
    *
@@ -986,14 +995,14 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
 
       try {
         const result = await complete({
-          model: settings.titleModel,
+          model,
           messages: [
             { role: 'system', content: settings.titlePrompt },
             { role: 'user', content: transcript }
           ],
           temperature: 0.4,
           maxTokens: 24,
-          providerRouting: settings.modelProviderRouting[settings.titleModel] ?? null,
+          providerRouting: settings.modelProviderRouting[model] ?? null,
           attribution: settings.sendAppAttribution
         })
 
@@ -1006,7 +1015,7 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
         // Whatever it was called before, this one read the whole exchange. A
         // pregeneration still in flight checks for a title and will stand down.
         provisionalTitles.delete(threadId)
-        recordTitleCost(threadId, settings.titleModel, result)
+        recordTitleCost(threadId, model, result)
 
         lastNameFailure = null
         emit({ type: 'title', threadId, title })
@@ -1023,7 +1032,7 @@ export async function generateTitle(threadId: string, emit: Emit): Promise<strin
         const why = err instanceof Error ? err.message : String(err)
         if (attempt === NAME_ATTEMPTS - 1) {
           reportProblem(why, `Could not name a thread after ${NAME_ATTEMPTS} attempts`)
-          lastNameFailure = `${settings.titleModel}: ${why}`
+          lastNameFailure = `${model}: ${why}`
           return giveUp(threadId, emit)
         }
         // Not reported: a retry that succeeds is not a failure the reader
@@ -1121,7 +1130,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         return
       }
 
-      const context = assembleContext(thread, settings)
+      const provider = providerForModel(model)
+      const context = assembleContext(thread, settings, provider)
       const history = repo.getMessages(thread.id)
       const allowImages = history.some((m) => m.attachments?.some((a) => a.kind === 'image'))
         ? await modelAcceptsImages(model)
@@ -1255,7 +1265,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
        * rendered, but invisible is not the same as gone.
        */
       const marked =
-        settings.keyPointEnabled && settings.keyPointSource === 'self'
+        providerForModel(model) === 'openrouter' && settings.keyPointEnabled && settings.keyPointSource === 'self'
           ? takeKeyPointMarkers(result.content, keyPointCeiling(settings.keyPointMany))
           : { content: result.content, keyPoints: [] }
 

@@ -126,11 +126,11 @@ export function Wizard({ onClose }: { onClose: () => void }): React.JSX.Element 
         {step === 'key' && (
           <>
             <div className="section-title">
-              <KeyRound {...ICON} /> Your OpenRouter key
+              <KeyRound {...ICON} /> OpenRouter key (optional)
             </div>
             <p className="field__hint">
-              Deep Pink talks to OpenRouter and nothing else. The key is kept on this
-              machine, encrypted by your keyring, and never leaves it except to OpenRouter.
+              OpenRouter models use a key stored on this machine and sent only to OpenRouter.
+              You can also use Codex models through the Codex CLI signed in on this desktop.
             </p>
             {settings?.hasApiKey ? (
               <p className="wizard__done">

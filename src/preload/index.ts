@@ -8,8 +8,9 @@ import type {
   McpServerConfig,
   McpServerStatus,
   Message,
+  ChatModel,
   ModelEndpoint,
-  OpenRouterModel,
+  ProviderStatus,
   AppInfo,
   AttachedRepo,
   ImportPreview,
@@ -72,7 +73,8 @@ const api = {
   },
 
   models: {
-    list: (force = false): Promise<OpenRouterModel[]> => ipcRenderer.invoke('models:list', force),
+    list: (force = false): Promise<ChatModel[]> => ipcRenderer.invoke('models:list', force),
+    status: (): Promise<ProviderStatus> => ipcRenderer.invoke('models:providerStatus'),
     endpoints: (modelId: string, force = false): Promise<ModelEndpoint[]> =>
       ipcRenderer.invoke('models:endpoints', modelId, force)
   },

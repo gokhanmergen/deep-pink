@@ -1,6 +1,6 @@
 # Deep Pink
 
-A local-first desktop chat client for [OpenRouter](https://openrouter.ai). Your threads, statistics and settings live in a SQLite file on your own machine, and the app makes no network request you did not ask for.
+A local-first desktop chat client for [OpenRouter](https://openrouter.ai) and Codex. Your threads, statistics and settings live in a SQLite file on your own machine, and the app makes no network request you did not ask for.
 
 MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS and Windows.
 
@@ -12,6 +12,7 @@ MIT licensed. Built with Electron, React and TypeScript. Runs on Linux, macOS an
 
 - Bring your own OpenRouter API key, stored encrypted through your OS keyring.
 - Pick any model from the full OpenRouter catalogue.
+- Use Codex models through the Codex CLI App Server already signed in on this desktop. Codex turns run in ephemeral App Server threads with the full Deep Pink conversation supplied as context. The Codex process disables shell, web search, MCP, plugins and other agent tools, and runs in a read-only, no-network sandbox. Codex models accept text and, when supported by the model, image attachments. OpenRouter-only options such as web access, charts, repository tools and upstream provider routing are disabled while a Codex model is selected.
 - Choose the *specific upstream provider* for a model — pin one outright, set an order of preference, sort by price/throughput/latency, or refuse providers that train on your data. Scope the choice to one thread or to every use of that model.
 - Choose which model writes your thread names, and edit the prompt it uses.
 - **Side by side**, for comparing two models on the same question. Press **Side by side** in the title bar — or `Ctrl/⌘ \` — and the window splits in two. Choose a model at the top of each side — once: the two are remembered, and every side by side after opens with them, changeable any time there or in Settings › Models. Write the first message once underneath both — with attachments, web access and how hard to think set there once for both — and it goes to both at the same moment. From then on each side has its own composer and carries on by itself, because what either model is asked next depends on what it said. Both sides are ordinary threads in the list, marked as a pair and each showing its model; open either and **Side by side** in its title bar brings the pair back. The arrow at the top of a side carries on with just that one. Side by side is also a mode: once you have used it, New thread opens a fresh side by side, until you close it with **Close** or `Ctrl/⌘ \` (or switch it in Settings › Models).
@@ -291,7 +292,7 @@ Chromium's hit-testing for them misbehaves under Wayland and swallows clicks.
 
 ### First run
 
-Open Settings (`Ctrl/⌘ ,`), paste an [OpenRouter key](https://openrouter.ai/keys), and start a thread.
+Open Settings (`Ctrl/⌘ ,`) and paste an [OpenRouter key](https://openrouter.ai/keys) to use OpenRouter models. To use Codex models, install the Codex CLI and sign in with `codex login` on this desktop. Both providers appear in the model picker.
 
 ### Connecting Obsidian over MCP
 
@@ -315,11 +316,12 @@ One SQLite file under your platform's user-data directory:
 
 Settings › Data shows the exact path and can open it in your file manager.
 
-The app contacts exactly three kinds of host, all of them at your instruction:
+The app contacts these services only for the actions described:
 
-1. **OpenRouter**, to list models and run completions.
-2. **MCP servers** you configure — local processes or URLs you supply.
-3. **The web**, only when web access is on and only for the searches and fetches the model makes. Built-in search sends queries from your device to search engines without cookies, credentials, referrers or chat history. The search cache stays in memory, never on disk or in sync. Queries and result snippets become part of your chat transcript, including optional encrypted chat sync, and are sent to the chat model when it uses the search tool. Loopback, link-local and private addresses are refused for page fetches and excluded from search results; a SearXNG instance you configure may use a local address.
+1. **OpenRouter**, to list models and run completions for OpenRouter models.
+2. **Codex App Server**, a local process started from the Codex CLI already signed in on this desktop. It uses the Codex account configured there; Deep Pink does not read or store its auth token. Codex turns use ephemeral App Server threads.
+3. **MCP servers** you configure — local processes or URLs you supply. These are not passed to Codex turns.
+4. **The web**, only when web access is on for an OpenRouter model and only for the searches and fetches the model makes. Built-in search sends queries from your device to search engines without cookies, credentials, referrers or chat history. The search cache stays in memory, never on disk or in sync. Queries and result snippets become part of your chat transcript, including optional encrypted chat sync, and are sent to the chat model when it uses the search tool. Loopback, link-local and private addresses are refused for page fetches and excluded from search results; a SearXNG instance you configure may use a local address.
 
 There is no telemetry, no crash reporting and no update check. The one thing that does identify anything is app attribution to OpenRouter — the header that puts a client on their public leaderboards. It names the app and its repository, never you, and it is on by default; Settings › Account turns it off and requests go out anonymously from then on.
 

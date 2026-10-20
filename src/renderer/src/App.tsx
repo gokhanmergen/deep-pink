@@ -26,6 +26,7 @@ import { watchProblems } from './problems'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Toaster } from './components/Toaster'
 import { Wizard, wizardSeen } from './components/Wizard'
+import { providerForModel } from '@shared/modelProviders'
 
 /** Bindings the composer owns; the global handler must not steal them. */
 const COMPOSER_OWNED = new Set(['message.send', 'message.newline'])
@@ -43,6 +44,17 @@ function isEditable(target: EventTarget | null): boolean {
 export function App(): React.JSX.Element {
   const ready = useStore((s) => s.ready)
   const settings = useStore((s) => s.settings)
+  const needsOpenRouterKey = useStore((s) => {
+    const modelForThread = s.threads.find((thread) => thread.id === s.activeThreadId)?.config.model ?? s.settings?.defaultModel
+    const models = s.compare
+      ? s.compare.map((pane) =>
+          pane.threadId
+            ? s.threads.find((thread) => thread.id === pane.threadId)?.config.model ?? pane.model
+            : pane.model
+        )
+      : [modelForThread]
+    return models.some((model) => providerForModel(model) === 'openrouter')
+  })
   const overlay = useStore((s) => s.overlay)
   const setOverlay = useStore((s) => s.setOverlay)
 
@@ -286,7 +298,7 @@ export function App(): React.JSX.Element {
         {comparing ? <CompareView /> : <ChatView />}
       </div>
 
-      {!settings.hasApiKey && overlay !== 'settings' && (
+      {!settings.hasApiKey && needsOpenRouterKey && overlay !== 'settings' && (
         <div className="notice">
           No OpenRouter API key yet —{' '}
           <button

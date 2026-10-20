@@ -5,7 +5,7 @@ import { DEFAULT_PROVIDER_ROUTING } from '@shared/defaults'
 import type { SystemPromptSegment, Usage, WebServerSettings, WebServerStatus } from '@shared/types'
 import { getDb } from './db'
 import * as repo from './db/repo'
-import { complete, knownModel, OpenRouterError } from './providers/openrouter'
+import { complete, knownModel, OpenRouterError } from './providers'
 import { loadSettings } from './settings'
 
 const MAX_BODY_BYTES = 256 * 1024

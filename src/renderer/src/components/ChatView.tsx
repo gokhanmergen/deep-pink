@@ -21,6 +21,7 @@ import { formatBinding } from '../keybinds'
 import { formatCost, formatTokens, threadLabel } from '../format'
 import { landingPoint, roomAbove, tailHeight } from '../landing'
 import type { Message } from '@shared/types'
+import { providerForModel } from '@shared/modelProviders'
 
 /**
  * Which messages get built, and which are frames with nothing in them yet.
@@ -1089,19 +1090,21 @@ export function ChatView(): React.JSX.Element {
               * of writing rather than part of reading. What is left here is the
               * things that have nowhere else to be.
               */}
-            <button
-              className="btn"
-              aria-label="Provider routing"
-              onClick={() => setOverlay('providers')}
-              title={`Provider routing: ${
-                thread.config.providerRouting?.order[0] ??
-                settings.modelProviderRouting[model]?.order[0] ??
-                'auto provider'
-              } — ${formatBinding(keybinds['provider.picker'])}`}
-              type="button"
-            >
-              <Route {...ICON} />
-            </button>
+            {providerForModel(model) === 'openrouter' && (
+              <button
+                className="btn"
+                aria-label="Provider routing"
+                onClick={() => setOverlay('providers')}
+                title={`Provider routing: ${
+                  thread.config.providerRouting?.order[0] ??
+                  settings.modelProviderRouting[model]?.order[0] ??
+                  'auto provider'
+                } — ${formatBinding(keybinds['provider.picker'])}`}
+                type="button"
+              >
+                <Route {...ICON} />
+              </button>
+            )}
             <button
               className="btn"
               aria-label="Inspect the system prompt"

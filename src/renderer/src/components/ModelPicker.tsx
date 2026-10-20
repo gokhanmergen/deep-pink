@@ -4,6 +4,7 @@ import { Overlay } from './Overlay'
 import { ModelIcon } from './ModelIcon'
 import { matchesQuery, wordsOf } from '../modelSearch'
 import { formatTokens, modelShortName } from '../format'
+import type { ProviderStatus } from '@shared/types'
 
 interface Props {
   /**
@@ -50,6 +51,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
   const [cursor, setCursor] = useState(0)
   const [toolsOnly, setToolsOnly] = useState(false)
   const [drawsOnly, setDrawsOnly] = useState(false)
+  const [providers, setProviders] = useState<ProviderStatus | null>(null)
   /*
    * How many rows are built for the first frame.
    *
@@ -64,6 +66,14 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
    */
   const [built, setBuilt] = useState(FIRST_FRAME)
   const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void window.deepPink.models.status().then((status) => {
+      if (!cancelled) setProviders(status)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
 
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
   let current: string | undefined
@@ -238,10 +248,20 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
           </label>
           <div style={{ flex: 1 }} />
           <span>{filtered.length} models</span>
+          {providers && (
+            <span
+              className="chip"
+              title={providers.codex.error ?? (providers.codex.available
+                ? 'Using the Codex CLI signed in on this desktop'
+                : 'Install the Codex CLI to use Codex models')}
+            >
+              {providers.codex.error ? 'Codex needs attention' : providers.codex.available ? 'Codex ready' : 'Codex unavailable'}
+            </span>
+          )}
           <button
             className="btn btn--ghost"
             onClick={() => {
-              void refreshModels(true)
+              void refreshModels(true).then(() => window.deepPink.models.status()).then(setProviders)
               showToast('Refreshing model catalogue…')
             }}
             type="button"
@@ -256,7 +276,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
         {filtered.length === 0 && (
           <div className="empty" style={{ height: 160 }}>
             {models.length === 0
-              ? 'No catalogue yet — add an API key in Settings, then refresh.'
+              ? 'No models loaded. Check your OpenRouter connection or Codex CLI sign-in, then refresh.'
               : 'No models match that search.'}
           </div>
         )}
@@ -286,6 +306,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
               <span className="cmditem__sub">{model.id}</span>
             </span>
             <span className="row" style={{ gap: 6, flex: 'none' }}>
+              <span className="chip">{model.provider === 'codex' ? 'Codex' : 'OpenRouter'}</span>
               {model.supportsTools && <span className="chip">tools</span>}
               {model.supportsReasoning && <span className="chip">reasoning</span>}
               {model.outputModalities.includes('image') && (
@@ -306,12 +327,16 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
                   images {model.pricing.imageOutput ? pricePerMillion(model.pricing.imageOutput) : ''}
                 </span>
               )}
-              <span className="chip" title="Context window">
-                {formatTokens(model.contextLength)}
-              </span>
-              <span className="chip" title="Input / output price per million tokens">
-                {pricePerMillion(model.pricing.prompt)} · {pricePerMillion(model.pricing.completion)}
-              </span>
+              {model.contextLength > 0 && (
+                <span className="chip" title="Context window">
+                  {formatTokens(model.contextLength)}
+                </span>
+              )}
+              {model.provider === 'openrouter' && (
+                <span className="chip" title="Input / output price per million tokens">
+                  {pricePerMillion(model.pricing.prompt)} · {pricePerMillion(model.pricing.completion)}
+                </span>
+              )}
             </span>
           </button>
         ))}

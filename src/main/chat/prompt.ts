@@ -1,4 +1,5 @@
 import type { Settings, SystemPromptSegment, Thread } from '@shared/types'
+import { providerForModel, type ChatProvider } from '@shared/modelProviders'
 import { keyPointPrompt } from '@shared/keyPointPrompt'
 import {
   BUILT_IN,
@@ -8,12 +9,12 @@ import {
   type Skill
 } from '@shared/skills'
 import { keyPointCeiling } from '@shared/defaults'
-import type { ToolParam } from '../providers/openrouter'
+import type { ToolParam } from '../providers/types'
 import * as mcp from '../mcp/host'
 import { WEB_FETCH_TOOL, WEB_PROMPT_SEGMENT, WEB_SEARCH_TOOL } from '../tools/web'
 import { REPO_TOOLS, repoPromptSegment } from '../tools/repo'
 import { cachedTree } from '../tools/repoService'
-import { knownModel } from '../providers/openrouter'
+import { knownModel } from '../providers'
 import { loadSkillTool } from '../tools/skills'
 
 /**
@@ -114,7 +115,11 @@ function askableBy(thread: Thread, settings: Settings): boolean {
   return info === null || info.supportsTools
 }
 
-export function assembleContext(thread: Thread, settings: Settings): AssembledContext {
+export function assembleContext(
+  thread: Thread,
+  settings: Settings,
+  provider: ChatProvider = providerForModel(thread.config.model ?? settings.defaultModel)
+): AssembledContext {
   const disabled = new Set(thread.config.disabledPromptSegments)
   const segments: SystemPromptSegment[] = []
 
@@ -172,8 +177,8 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
    * every skill on every turn — which is what this used to be, and is kept
    * for anybody who would rather pay the tokens than the round trip.
    */
-  const available = skillsFor(thread, settings)
-  const onDemand = settings.skillsOnDemand && askableBy(thread, settings)
+  const available = provider === 'openrouter' ? skillsFor(thread, settings) : []
+  const onDemand = provider === 'openrouter' && settings.skillsOnDemand && askableBy(thread, settings)
 
   if (available.length && onDemand) {
     push({
@@ -197,7 +202,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
     }
   }
 
-  const useWeb = webEnabledFor(thread, settings)
+  const useWeb = provider === 'openrouter' && webEnabledFor(thread, settings)
   if (useWeb && settings.web.engine !== 'openrouter') {
     push({
       id: 'web',
@@ -212,7 +217,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
   // An attached repository: its layout goes in up front so the model starts
   // oriented instead of spending tool calls rediscovering the directory
   // structure, which is where the tokens go.
-  const repos = thread.config.repoPaths ?? []
+  const repos = provider === 'openrouter' ? (thread.config.repoPaths ?? []) : []
   if (repos.length) {
     push({
       id: 'repo',
@@ -227,7 +232,7 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
   }
 
   // MCP-provided instructions, one segment per server, each attributed.
-  const activeServers = activeServerIdsFor(thread)
+  const activeServers = provider === 'openrouter' ? activeServerIdsFor(thread) : []
   for (const injected of mcp.getInjectableInstructions(activeServers)) {
     push({
       id: `mcp:${injected.serverId}`,
@@ -280,7 +285,11 @@ export function assembleContext(thread: Thread, settings: Settings): AssembledCo
    * After the tools segment, which is not system text at all: `systemText`
    * below drops it, so this is genuinely the last thing the model reads.
    */
-  if (!settings.hideExperimental && settings.keyPointEnabled && settings.keyPointSource === 'self') {
+  if (
+    provider === 'openrouter' &&
+    !settings.hideExperimental && settings.keyPointEnabled &&
+    settings.keyPointSource === 'self'
+  ) {
     push({
       id: 'keyPoint',
       source: 'keyPoint',

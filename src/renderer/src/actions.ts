@@ -10,6 +10,7 @@ import { threadLabel } from './format'
 import { canBecomeTemporary, useStore } from './store'
 import { COMPOSER_ID } from './components/Composer'
 import { blockUnderPointer } from './codeblocks'
+import { providerForModel } from '@shared/modelProviders'
 
 export interface AppAction {
   id: string
@@ -104,6 +105,19 @@ export function buildActions(): AppAction[] {
   const store = useStore.getState()
   const { activeThreadId, threads, settings } = store
   const thread = threads.find((t) => t.id === activeThreadId) ?? null
+  const codexSelected = store.compare
+    ? store.compare.some((pane) => {
+        const selected = pane.threadId
+          ? threads.find((item) => item.id === pane.threadId)?.config.model ?? pane.model
+          : pane.model ?? settings?.defaultModel
+        return providerForModel(selected) === 'codex'
+      })
+    : providerForModel(thread?.config.model ?? settings?.defaultModel) === 'codex'
+  const codexUnavailable = (): boolean => {
+    if (!codexSelected) return false
+    store.showToast('This capability is unavailable with Codex models')
+    return true
+  }
 
   const requireThread = (fn: (id: string) => void | Promise<void>) => () => {
     if (!activeThreadId) {
@@ -545,7 +559,11 @@ export function buildActions(): AppAction[] {
       id: 'provider.picker',
       label: 'Choose the provider for this model',
       group: 'Model',
-      run: openThreadOnly(() => store.setOverlay('providers'))
+      hidden: codexSelected,
+      run: () => {
+        if (codexUnavailable()) return
+        return openThreadOnly(() => store.setOverlay('providers'))()
+      }
     },
     {
       id: 'titleModel.picker',
@@ -565,18 +583,22 @@ export function buildActions(): AppAction[] {
       id: 'web.toggle',
       label: 'Toggle web access for this thread',
       group: 'Capabilities',
-      run: beforeSideBySide(
-        (config) => {
-          const on = config.webAccessEnabled ?? settings?.web.enabled ?? false
-          store.setCompareStartConfig({ webAccessEnabled: !on })
-          store.showToast(on ? 'Web access off for both sides' : 'Web access on for both sides')
-        },
-        requireThread((id) => {
-          const on = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
-          void store.updateThread(id, { config: { webAccessEnabled: !on } })
-          store.showToast(on ? 'Web access off' : 'Web access on')
-        })
-      )
+      hidden: codexSelected,
+      run: () => {
+        if (codexUnavailable()) return
+        return beforeSideBySide(
+          (config) => {
+            const on = config.webAccessEnabled ?? settings?.web.enabled ?? false
+            store.setCompareStartConfig({ webAccessEnabled: !on })
+            store.showToast(on ? 'Web access off for both sides' : 'Web access on for both sides')
+          },
+          requireThread((id) => {
+            const on = thread?.config.webAccessEnabled ?? settings?.web.enabled ?? false
+            void store.updateThread(id, { config: { webAccessEnabled: !on } })
+            store.showToast(on ? 'Web access off' : 'Web access on')
+          })
+        )()
+      }
     },
     {
       id: 'sync.pause',
@@ -594,18 +616,22 @@ export function buildActions(): AppAction[] {
       id: 'charts.toggle',
       label: 'Toggle charts for this thread',
       group: 'Capabilities',
-      run: beforeSideBySide(
-        (config) => {
-          const on = config.chartsEnabled ?? settings?.chartsEnabled ?? false
-          store.setCompareStartConfig({ chartsEnabled: !on })
-          store.showToast(on ? 'Charts off for both sides' : 'Charts on for both sides')
-        },
-        requireThread((id) => {
-          const on = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
-          void store.updateThread(id, { config: { chartsEnabled: !on } })
-          store.showToast(on ? 'Charts off' : 'Charts on')
-        })
-      )
+      hidden: codexSelected,
+      run: () => {
+        if (codexUnavailable()) return
+        return beforeSideBySide(
+          (config) => {
+            const on = config.chartsEnabled ?? settings?.chartsEnabled ?? false
+            store.setCompareStartConfig({ chartsEnabled: !on })
+            store.showToast(on ? 'Charts off for both sides' : 'Charts on for both sides')
+          },
+          requireThread((id) => {
+            const on = thread?.config.chartsEnabled ?? settings?.chartsEnabled ?? false
+            void store.updateThread(id, { config: { chartsEnabled: !on } })
+            store.showToast(on ? 'Charts off' : 'Charts on')
+          })
+        )()
+      }
     },
     {
       id: 'reasoning.more',

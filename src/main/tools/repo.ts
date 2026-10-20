@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, join, relative, resolve, sep } from 'node:path'
-import type { ToolParam } from '../providers/openrouter'
+import type { ToolParam } from '../providers/types'
 
 /**
  * Read-only access to a directory the user attached to a thread.

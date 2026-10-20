@@ -8,6 +8,22 @@ import type {
 } from '@shared/types'
 import { cacheStamp, getCache, setCache } from '../db/repo'
 import { getApiKey } from '../secrets'
+import type {
+  ChatRequest,
+  Citation,
+  StreamHandlers,
+  StreamResult
+} from './types'
+
+export type {
+  ChatMessageParam,
+  ChatRequest,
+  Citation,
+  ContentPart,
+  StreamHandlers,
+  StreamResult,
+  ToolParam
+} from './types'
 
 const BASE = 'https://openrouter.ai/api/v1'
 const CATALOG_TTL = 6 * 60 * 60 * 1000
@@ -268,101 +284,6 @@ export async function getCredits(
 /* ------------------------------------------------------------------ *
  * Chat completions
  * ------------------------------------------------------------------ */
-
-/** A part of a multimodal message. Images ride along as data URLs. */
-export type ContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } }
-
-export interface ChatMessageParam {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string | ContentPart[]
-  name?: string
-  tool_call_id?: string
-  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
-}
-
-export interface ToolParam {
-  type: 'function'
-  function: { name: string; description: string; parameters: unknown }
-}
-
-export interface ChatRequest {
-  model: string
-  messages: ChatMessageParam[]
-  temperature?: number
-  maxTokens?: number | null
-  tools?: ToolParam[]
-  providerRouting?: ProviderRouting | null
-  includeReasoning?: boolean
-  /**
-   * The `reasoning` field, already shaped. Built by `reasoningParam` rather
-   * than here, because deciding how hard to think is the conversation's
-   * business and this function's job is to send what it is given.
-   */
-  reasoning?: Record<string, unknown> | null
-  attribution: boolean
-  signal?: AbortSignal
-  /** Appends OpenRouter's `:online` web plugin to the model slug. */
-  webPlugin?: boolean
-  /**
-   * What to ask the model to answer with, where that is not simply text.
-   *
-   * The model's own list, passed through rather than assembled here, because
-   * getting it wrong is a 404 rather than a degraded answer. A model that
-   * draws does not draw unless asked — the same request without this comes
-   * back describing the picture it would have made — but asking an
-   * image-only model for text as well is refused outright: "No endpoints
-   * found that support the requested output modalities: image, text"
-   * (microsoft/mai-image-2.6, measured 2026-09-22). Its catalogue entry says
-   * `["image"]`, and that is what works.
-   */
-  modalities?: string[]
-}
-
-export interface StreamHandlers {
-  onContent?: (delta: string) => void
-  onReasoning?: (delta: string) => void
-  onToolCalls?: (calls: ToolCall[]) => void
-  onProvider?: (provider: string) => void
-  /**
-   * A finished picture, as a `data:` URL.
-   *
-   * Not a delta. Measured against a real generation (2026-09-22), the whole
-   * image arrives in one chunk — 948,670 characters of base64 in the first
-   * chunk of three — so there is nothing to append to and nothing to show
-   * progressively. It is done when it appears.
-   */
-  onImage?: (dataUrl: string) => void
-}
-
-/** A page OpenRouter's own web search read, on a `:online` request. */
-export interface Citation {
-  url: string
-  title: string
-  /** What it took from the page, which is what the model actually saw. */
-  snippet: string
-}
-
-export interface StreamResult {
-  content: string
-  reasoning: string
-  /** Any pictures the model drew, as `data:` URLs, in the order they arrived. */
-  images: string[]
-  /**
-   * Pages found by OpenRouter's `:online` plugin.
-   *
-   * The plugin searches server-side, so there is no tool call to watch and
-   * nothing arrives until the reply is already being written. These are the
-   * only evidence that a search happened at all — without them a web-enabled
-   * turn is indistinguishable from one that made the answer up.
-   */
-  citations: Citation[]
-  toolCalls: ToolCall[]
-  finishReason: string | null
-  provider: string | null
-  usage: Usage
-}
 
 function toProviderParam(routing: ProviderRouting | null | undefined): unknown {
   if (!routing) return undefined

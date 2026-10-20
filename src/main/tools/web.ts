@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { WebSearchSettings } from '@shared/types'
-import type { ToolParam } from '../providers/openrouter'
+import type { ToolParam } from '../providers/types'
 import { searchWeb } from './search'
 
 /**

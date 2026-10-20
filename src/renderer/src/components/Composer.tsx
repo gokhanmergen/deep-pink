@@ -8,6 +8,7 @@ import {
 } from './attachFiles'
 import { formatBytes } from '../format'
 import type { AttachedRepo, PendingAttachment, ThreadConfig } from '@shared/types'
+import { providerForModel } from '@shared/modelProviders'
 import { useStore } from '../store'
 import {
   ArrowUp,
@@ -113,6 +114,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const setDraft = useStore((s) => s.setDraft)
   const updateThread = useStore((s) => s.updateThread)
   const threads = useStore((s) => s.threads)
+  const compareModels = useStore((s) => s.compare?.map((pane) => pane.model) ?? [])
   const setOverlay = useStore((s) => s.setOverlay)
 
   const models = useStore((s) => s.models)
@@ -131,8 +133,6 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     else if (activeThreadId) void updateThread(activeThreadId, { config: patch })
   }
 
-  const webOn = config?.webAccessEnabled ?? settings?.web.enabled ?? false
-  const chartsOn = config?.chartsEnabled ?? settings?.chartsEnabled ?? false
   const reasoning = resolveReasoning(config?.reasoning, settings?.reasoning)
 
   // Web access works by giving the model tools. A model that cannot call tools
@@ -141,6 +141,10 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   // a warning about the default would be about neither of them.
   const activeModel =
     target && !target.threadId ? null : (thread?.config.model ?? settings?.defaultModel)
+  const isCodexModel = providerForModel(activeModel) === 'codex' ||
+    Boolean(target && !target.threadId && compareModels.some((model) => providerForModel(model) === 'codex'))
+  const webOn = !isCodexModel && (config?.webAccessEnabled ?? settings?.web.enabled ?? false)
+  const chartsOn = !isCodexModel && (config?.chartsEnabled ?? settings?.chartsEnabled ?? false)
   const modelInfo = models.find((m) => m.id === activeModel)
   const toolsUnsupported = webOn && modelInfo != null && !modelInfo.supportsTools
   const imagesUnsupported =
@@ -250,7 +254,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const repoPaths = config?.repoPaths ?? []
 
   useEffect(() => {
-    if (!repoPaths.length) {
+    if (!repoPaths.length || isCodexModel) {
       setRepos([])
       return
     }
@@ -261,7 +265,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     return () => {
       cancelled = true
     }
-  }, [repoPaths.join('|')])
+  }, [repoPaths.join('|'), isCodexModel])
 
   const attachRepo = async (): Promise<void> => {
     const path = await window.deepPink.repo.choose()
@@ -291,7 +295,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       icon: <ImageIcon {...ICON} />,
       onSelect: () => fileInputRef.current?.click()
     },
-    ...(hideExperimental ? [] : [{
+    ...(hideExperimental || isCodexModel ? [] : [{
       id: 'repo',
       label: 'Code repository…',
       icon: <FolderCode {...ICON} />,
@@ -375,10 +379,12 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   }
 
   const toggleWeb = (): void => {
+    if (isCodexModel) return
     writeConfig({ webAccessEnabled: !webOn })
   }
 
   const toggleCharts = (): void => {
+    if (isCodexModel) return
     writeConfig({ chartsEnabled: !chartsOn })
   }
 
@@ -392,7 +398,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
    * menu, and the button that opens it says how many are on — which is the
    * only part you need at a glance.
    */
-  const extraOptions = (): ContextMenuItem[] => [
+  const extraOptions = (): ContextMenuItem[] => isCodexModel ? [] : [
     {
       id: 'web',
       label: 'Web access',
@@ -428,9 +434,13 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       label:
         mode === 'budget'
           ? `${REASONING_LABELS[mode]} (${reasoning.budgetTokens.toLocaleString()})`
-          : REASONING_LABELS[mode],
+          : mode === 'off' && isCodexModel ? 'Minimum' : REASONING_LABELS[mode],
       on: reasoning.mode === mode,
-      hint: mode === 'auto' ? 'the model decides' : undefined,
+      hint: mode === 'auto'
+        ? 'the model decides'
+        : mode === 'off' && isCodexModel
+          ? 'Codex always reasons; this uses its lowest supported effort'
+          : undefined,
       onSelect: () => {
         writeConfig({ reasoning: { ...reasoning, mode } })
       }
@@ -449,6 +459,13 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       onFocusCapture={onInteract}
     >
       <div className="composer__inner">
+        {isCodexModel && (
+          <div className="composer__notice">
+            Codex uses the local Codex App Server. Web access, charts, repository tools, MCP tools,
+            and OpenRouter provider routing are disabled for this model. Codex always reasons; “None”
+            uses its lowest supported effort.
+          </div>
+        )}
         {toolsUnsupported && (
           <div className="composer__notice">
             <strong>{modelInfo?.name ?? activeModel}</strong> cannot call tools, so web search and
@@ -487,7 +504,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
             void add(files)
           }}
         >
-          {repos.length > 0 && (
+          {!isCodexModel && repos.length > 0 && (
             <div className="repos">
               {repos.map((repo) => (
                 <div
@@ -609,7 +626,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                 const r = event.currentTarget.getBoundingClientRect()
                 setAttachMenu({ x: Math.round(r.left), y: Math.round(r.top) })
               }}
-              title="Attach images, text files, or a code repository"
+              title={isCodexModel ? 'Attach images or text files' : 'Attach images, text files, or a code repository'}
               type="button"
               disabled={!configurable}
             >
@@ -619,7 +636,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
 
             {/* Every extra behind this button is experimental, so with them
                 put away the button opens an empty menu. It goes too. */}
-            {!hideExperimental && (
+            {!hideExperimental && !isCodexModel && (
               <button
                 className="btn"
                 data-on={extrasOn > 0}
@@ -649,7 +666,9 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                 disabled={!configurable}
               >
                 <Brain {...ICON} />
-                <span className="btn__label">{shortReasoningLabel(reasoning)}</span>
+                <span className="btn__label">
+                  {isCodexModel && reasoning.mode === 'off' ? 'Minimum' : shortReasoningLabel(reasoning)}
+                </span>
               </button>
             )}
 
@@ -667,8 +686,9 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                     that say which one without being read. */}
                 <ModelIcon model={thread?.config.model ?? settings?.defaultModel} size={14} />
                 <span className="btn__label">
-                  {(thread?.config.model ?? settings?.defaultModel ?? '').split('/').pop() ||
-                    'Choose model'}
+                  {modelInfo?.name ??
+                    ((thread?.config.model ?? settings?.defaultModel ?? '').split('/').pop() ||
+                      'Choose model')}
                 </span>
               </button>
             )}

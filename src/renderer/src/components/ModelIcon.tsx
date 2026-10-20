@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { providerModelId } from '@shared/modelProviders'
 
 /**
  * Who wrote the model, as their own mark.
@@ -25,15 +26,18 @@ import { useEffect, useState } from 'react'
 const asked = new Map<string, Promise<string | null>>()
 
 function authorOf(modelId: string): string {
-  const slash = modelId.indexOf('/')
-  return (slash === -1 ? modelId : modelId.slice(0, slash)).toLowerCase()
+  const nativeId = providerModelId(modelId)
+  if (modelId.startsWith('codex:')) return 'openai'
+  const slash = nativeId.indexOf('/')
+  return (slash === -1 ? nativeId : nativeId.slice(0, slash)).toLowerCase()
 }
 
 function iconFor(modelId: string): Promise<string | null> {
   const author = authorOf(modelId)
   let pending = asked.get(author)
   if (!pending) {
-    pending = window.deepPink.icons.author(modelId)
+    const nativeId = providerModelId(modelId)
+    pending = window.deepPink.icons.author(modelId.startsWith('codex:') ? `openai/${nativeId}` : modelId)
     asked.set(author, pending)
   }
   return pending

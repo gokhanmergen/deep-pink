@@ -1,5 +1,5 @@
 import { BUILT_IN, LOAD_SKILL, builtInById, type Skill } from '@shared/skills'
-import type { ToolParam } from '../providers/openrouter'
+import type { ToolParam } from '../providers/types'
 
 /**
  * Asking for a skill's instructions.

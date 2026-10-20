@@ -84,8 +84,9 @@ export function dateBucket(timestamp: number): string {
 }
 
 export function modelShortName(id: string): string {
-  const slash = id.indexOf('/')
-  return slash >= 0 ? id.slice(slash + 1) : id
+  const nativeId = id.startsWith('codex:') ? id.slice('codex:'.length) : id
+  const slash = nativeId.indexOf('/')
+  return slash >= 0 ? nativeId.slice(slash + 1) : nativeId
 }
 
 /**

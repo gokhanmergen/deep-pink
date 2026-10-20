@@ -30,9 +30,11 @@ import * as updates from './updates'
 import { ensureTree } from './tools/repoService'
 import * as engine from './chat/engine'
 import { assembleContext } from './chat/prompt'
-import { getCredits, listEndpoints, listModels } from './providers/openrouter'
+import { getCredits, listEndpoints } from './providers/openrouter'
+import { listModels, providerStatus } from './providers'
 import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { keyPointCeiling } from '@shared/defaults'
+import { providerForModel } from '@shared/modelProviders'
 import { loadSettings, saveSettings } from './settings'
 import { isEncryptionAvailable, setApiKey } from './secrets'
 import { reportProblem } from './report'
@@ -202,6 +204,7 @@ export function registerIpc(): void {
   /* ---------------- models ---------------- */
 
   ipcMain.handle('models:list', (_e, force = false) => listModels(force))
+  ipcMain.handle('models:providerStatus', () => providerStatus())
   ipcMain.handle('models:endpoints', (_e, modelId: string, force = false) =>
     listEndpoints(modelId, force)
   )
@@ -689,6 +692,7 @@ export function registerIpc(): void {
       // trace back to a setting.
       if (settings.hideExperimental) return null
       if (settings.keyPointSource === 'self') return null
+      if (providerForModel(repo.getMessage(messageId)?.model) === 'codex') return null
       const most = keyPointCeiling(settings.keyPointMany)
       const found =
         settings.keyPointSource === 'model'

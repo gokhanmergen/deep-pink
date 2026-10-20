@@ -456,6 +456,20 @@ export interface OpenRouterModel {
   created: number
 }
 
+/** A model offered by one of Deep Pink's registered chat providers. */
+export interface ChatModel extends OpenRouterModel {
+  provider: 'openrouter' | 'codex'
+  /** Provider-native reasoning effort names, when they differ from OpenRouter's. */
+  reasoningEfforts?: string[]
+}
+
+export interface ProviderStatus {
+  codex: {
+    available: boolean
+    error: string | null
+  }
+}
+
 /** One upstream provider serving a given model, from /models/:id/endpoints. */
 export interface ModelEndpoint {
   providerName: string

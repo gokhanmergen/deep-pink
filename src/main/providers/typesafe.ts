@@ -1,6 +1,6 @@
 import type { Usage } from '@shared/types'
 import { getSecret } from '../secrets'
-import { complete } from './openrouter'
+import { complete } from './index'
 import { loadSettings } from '../settings'
 
 /**

@@ -9,7 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { connectionError, serverFetch } from './http'
 import type { McpServerConfig, McpServerStatus, McpToolInfo } from '@shared/types'
-import type { ToolParam } from '../providers/openrouter'
+import type { ToolParam } from '../providers/types'
 import { deleteMcpServer, listMcpServers, upsertMcpServer } from '../db/repo'
 
 /**

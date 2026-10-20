@@ -6,7 +6,7 @@ import type {
   McpServerStatus,
   Message,
   MessagePage,
-  OpenRouterModel,
+  ChatModel,
   SearchHit,
   PendingAttachment,
   SendMessageRequest,
@@ -186,7 +186,7 @@ export interface PromptOptions {
 interface State {
   ready: boolean
   settings: Settings | null
-  models: OpenRouterModel[]
+  models: ChatModel[]
   threads: Thread[]
   /** Threads with replies completed while they were out of view. */
   unreadThreadIds: string[]
