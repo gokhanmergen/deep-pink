@@ -43,11 +43,6 @@ function sumUsage(messages: Message[]): Usage | null {
   }
 }
 
-function codexCostLabel(usd: number): string {
-  if (usd <= 0) return 'Estimate unavailable'
-  return `~${usd < 0.01 ? `$${usd.toFixed(6)}` : formatCost(usd)}`
-}
-
 /**
  * What a disclosure holds, fetched the first time it is opened.
  *
@@ -455,22 +450,21 @@ export const AssistantTurn = memo(function AssistantTurn({
    *
    * Built as a list rather than written out as markup because which of them
    * appear is a setting now, and seven `&&` chains is a footer nobody can see
-   * the shape of. Each still drops itself when there is nothing to say — a
-   * model that did not reason has no thinking time, and a turn with no cache
-   * hit has no cached tokens — so switching one on is permission rather than a
-   * promise.
+   * the shape of. Each drops itself when its provider has no value to show —
+   * enabling a statistic allows it to appear but cannot make a provider report
+   * it.
    */
   const chips = usage
     ? [
         {
           id: 'sent',
-          show: chipSettings.sent,
+          show: chipSettings.sent && usage.promptTokens > 0,
           text: `${formatTokens(usage.promptTokens)} sent`,
           title: 'Tokens sent: this message and everything before it'
         },
         {
           id: 'back',
-          show: chipSettings.back,
+          show: chipSettings.back && usage.completionTokens > 0,
           text: `${formatTokens(usage.completionTokens)} back`,
           title: 'Tokens in the reply'
         },
@@ -488,8 +482,10 @@ export const AssistantTurn = memo(function AssistantTurn({
         },
         {
           id: 'cost',
-          show: chipSettings.cost,
-          text: codexTurn ? codexCostLabel(usage.costUsd) : formatCost(usage.costUsd),
+          show: chipSettings.cost && (!codexTurn || usage.costUsd > 0),
+          text: codexTurn
+            ? `~${usage.costUsd < 0.01 ? `$${usage.costUsd.toFixed(6)}` : formatCost(usage.costUsd)}`
+            : formatCost(usage.costUsd),
           title: codexTurn
             ? 'Estimated Codex usage cost reported for this turn'
             : 'Cost of this turn, including any tool rounds'
