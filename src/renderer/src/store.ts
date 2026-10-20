@@ -127,6 +127,7 @@ export type SettingsTab =
   | 'about'
   | 'account'
   | 'models'
+  | 'codex'
   | 'prompts'
   | 'web'
   | 'webServer'
@@ -1627,7 +1628,14 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async saveSettings(patch) {
+    const wasCodexEnabled = get().settings?.codex.enabled
     set({ settings: await api.settings.save(patch) })
+    if (
+      patch.codex?.enabled !== undefined &&
+      patch.codex.enabled !== wasCodexEnabled
+    ) {
+      await get().refreshModels(true)
+    }
   },
 
   async refreshModels(force = false) {
@@ -2213,7 +2221,7 @@ function routeToPane(event: StreamEvent, set: Setter, get: Getter): boolean {
       break
 
     case 'done': {
-      const stillWorking = Boolean(event.message.toolCalls?.length)
+      const stillWorking = event.generating ?? Boolean(event.message.toolCalls?.length)
       patch((pane) => ({
         messages: patchMessage(pane.messages, event.messageId, (m) => finishedMessage(m, event.message)),
         generating: stillWorking
@@ -2614,7 +2622,7 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
       const merged = patchMessage(state.messages, event.messageId, (m) =>
         finishedMessage(m, event.message)
       )
-      const stillWorking = event.message.toolCalls != null && event.message.toolCalls.length > 0
+      const stillWorking = event.generating ?? (event.message.toolCalls != null && event.message.toolCalls.length > 0)
       set({ messages: merged, generating: stillWorking })
       void get().refreshTotals()
       /*

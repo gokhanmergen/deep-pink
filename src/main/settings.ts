@@ -83,6 +83,10 @@ export function loadSettings(): Settings {
           ? 'local'
           : (stored.web?.engine ?? DEFAULT_SETTINGS.web.engine)
     },
+    codex: {
+      ...DEFAULT_SETTINGS.codex,
+      ...stored.codex
+    },
     webServer: webServerSettings(stored.webServer),
     compaction: normalizeCompaction(stored.compaction ?? {}),
     ui: {
@@ -119,6 +123,10 @@ export function saveSettings(input: SettingsPatch): Settings {
       ...patch.web,
       engine:
         patch.web?.engine === 'duckduckgo' ? 'local' : (patch.web?.engine ?? current.web.engine)
+    },
+    codex: {
+      ...current.codex,
+      ...patch.codex
     },
     webServer: webServerSettings({ ...current.webServer, ...patch.webServer }),
     compaction: normalizeCompaction({

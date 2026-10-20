@@ -15,6 +15,12 @@ export const SETTINGS_PAGES: Record<SettingsTab, SettingsPage> = {
     label: 'Models',
     keywords: 'default model comparison side by side thread names titles naming'
   },
+  codex: {
+    label: 'Codex',
+    keywords:
+      'codex openai app server cli provider enable disable warning notice limitations experimental sign in login',
+    experimental: true
+  },
   appearance: {
     label: 'Appearance',
     keywords: 'color colour accent font text size spacing width theme animation reply statistics'
@@ -53,8 +59,7 @@ export const SETTINGS_PAGES: Record<SettingsTab, SettingsPage> = {
   web: {
     label: 'Web search',
     keywords:
-      'web search fetch internet provider brave bing duckduckgo searxng openrouter domains experimental',
-    experimental: true
+      'web search fetch internet provider brave bing duckduckgo searxng openrouter domains'
   },
   webServer: {
     label: 'Web server',

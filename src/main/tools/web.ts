@@ -213,14 +213,25 @@ export async function runWebFetch(
   signal?: AbortSignal
 ): Promise<string> {
   signal?.throwIfAborted()
-  const target = await assertFetchable(args.url ?? '', settings.blockedDomains)
+  let target = await assertFetchable(args.url ?? '', settings.blockedDomains)
   const limit = Math.min(args.max_chars ?? settings.fetchCharLimit, 200_000)
 
-  const res = await fetch(target, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,text/plain,*/*' },
-    redirect: 'follow',
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
-  })
+  const timeout = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+    : AbortSignal.timeout(30_000)
+  let res: Response
+  for (let redirects = 0; ; redirects++) {
+    res = await fetch(target, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,text/plain,*/*' },
+      redirect: 'manual',
+      signal: timeout
+    })
+    if (![301, 302, 303, 307, 308].includes(res.status)) break
+    const location = res.headers.get('location')
+    if (!location) throw new Error(`${target.href} returned a redirect without a location.`)
+    if (redirects >= 5) throw new Error('Refusing to follow more than five page redirects.')
+    target = await assertFetchable(new URL(location, target).href, settings.blockedDomains)
+  }
   if (!res.ok) throw new Error(`${target.href} returned HTTP ${res.status}`)
 
   const contentType = res.headers.get('content-type') ?? ''

@@ -202,8 +202,8 @@ export function assembleContext(
     }
   }
 
-  const useWeb = provider === 'openrouter' && webEnabledFor(thread, settings)
-  if (useWeb && settings.web.engine !== 'openrouter') {
+  const useWeb = (provider === 'openrouter' || provider === 'codex') && webEnabledFor(thread, settings)
+  if (useWeb && (provider === 'codex' || settings.web.engine !== 'openrouter')) {
     push({
       id: 'web',
       source: 'web',
@@ -249,7 +249,9 @@ export function assembleContext(
   // can be switched off here too.
   const candidateTools: ToolParam[] = [
     ...(available.length && onDemand ? [loadSkillTool(available)] : []),
-    ...(useWeb && settings.web.engine !== 'openrouter' ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL] : []),
+    ...(useWeb && (provider === 'codex' || settings.web.engine !== 'openrouter')
+      ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL]
+      : []),
     ...(repos.length ? REPO_TOOLS : []),
     ...mcp.getToolParams(activeServers)
   ]

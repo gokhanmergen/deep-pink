@@ -466,6 +466,7 @@ export interface ChatModel extends OpenRouterModel {
 export interface ProviderStatus {
   codex: {
     available: boolean
+    enabled: boolean
     error: string | null
   }
 }
@@ -722,6 +723,7 @@ export interface Settings {
    */
   keyPointMany: boolean
   web: WebSearchSettings
+  codex: CodexSettings
   webServer: WebServerSettings
   compaction: CompactionSettings
   /** Sends app name/url to OpenRouter for leaderboard attribution. On by default. */
@@ -736,9 +738,10 @@ export interface Settings {
  */
 export type SettingsPatch = Omit<
   Partial<Settings>,
-  'web' | 'webServer' | 'compaction' | 'ui' | 'defaultProviderRouting'
+  'web' | 'codex' | 'webServer' | 'compaction' | 'ui' | 'defaultProviderRouting'
 > & {
   web?: Partial<WebSearchSettings>
+  codex?: Partial<CodexSettings>
   webServer?: Partial<WebServerSettings>
   compaction?: Partial<CompactionSettings>
   /**
@@ -749,6 +752,12 @@ export type SettingsPatch = Omit<
    */
   ui?: Omit<Partial<UiSettings>, 'replyChips'> & { replyChips?: Partial<ReplyChips> }
   defaultProviderRouting?: Partial<ProviderRouting>
+}
+
+export interface CodexSettings {
+  enabled: boolean
+  /** Hide the provider limitations notice in Codex chat composers. */
+  hideChatNotice: boolean
 }
 
 export interface UiSettings {
@@ -857,7 +866,7 @@ export type StreamEvent =
    */
   | { type: 'image'; messageId: string; attachment: Attachment }
   | { type: 'usage'; messageId: string; usage: Usage }
-  | { type: 'done'; messageId: string; message: Message }
+  | { type: 'done'; messageId: string; message: Message; generating?: boolean }
   /*
    * `threadId` because the renderer has to know whose failure this is without
    * looking it up. It used to match the message against a map built from the

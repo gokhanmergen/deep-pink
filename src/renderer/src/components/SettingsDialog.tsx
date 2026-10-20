@@ -22,6 +22,7 @@ import {
   Sparkles,
   Trash2,
   Cpu,
+  Terminal,
   Undo2,
   X
 } from 'lucide-react'
@@ -87,13 +88,14 @@ const TAB_GROUPS: { title?: string; tabs: TabDef[] }[] = [
     tabs: [
       pageTab('prompts', <MessageSquareText {...ICON} />),
       pageTab('context', <Layers {...ICON} />),
-      pageTab('advanced', <SlidersHorizontal {...ICON} />)
+      pageTab('advanced', <SlidersHorizontal {...ICON} />),
+      pageTab('web', <Globe {...ICON} />)
     ]
   },
   {
     title: 'Experimental',
     tabs: [
-      pageTab('web', <Globe {...ICON} />),
+      pageTab('codex', <Terminal {...ICON} />),
       pageTab('webServer', <Globe {...ICON} />),
       pageTab('skills', <Sparkles {...ICON} />),
       pageTab('keyPoint', <Highlighter {...ICON} />),
@@ -1932,7 +1934,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
           >
             <h3 className="section-title">
               Web access
-              <Experimental />
             </h3>
             <label className="switch">
               <input
@@ -2032,6 +2033,55 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                 }
               />
             </div>
+          </SettingsSection>
+
+          <SettingsSection
+            page="codex"
+            activePage={tab}
+            query={query}
+            sectionId="settings-codex-0"
+            keywords="openai app server local provider command line authentication sign in login experimental warning chat limitations"
+          >
+            <h3 className="section-title">
+              Codex provider
+              <Experimental />
+            </h3>
+            <p className="field__hint">
+              Codex runs through the Codex CLI App Server already signed in on this desktop. Deep
+              Pink does not read or store its authentication token. When Web access is enabled, Codex
+              can use only Deep Pink's guarded web search and page reading. Shell, local file access,
+              computer control, charts, repository tools, MCP, plugins, and OpenRouter provider
+              routing are disabled; the App Server runs read-only with sandbox network access off.
+            </p>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.codex.enabled}
+                onChange={(event) =>
+                  void saveSettings({ codex: { enabled: event.target.checked } })
+                }
+              />
+              <span>Enable the Codex provider</span>
+            </label>
+            {!settings.codex.enabled && (
+              <p className="field__hint">
+                Codex models are removed from the model picker while disabled. Existing chats keep
+                their selected model but cannot generate until you enable Codex again.
+              </p>
+            )}
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={!settings.codex.hideChatNotice}
+                onChange={(event) =>
+                  void saveSettings({ codex: { hideChatNotice: !event.target.checked } })
+                }
+              />
+              <span>Show the notice in Codex chats</span>
+            </label>
+            <p className="field__hint">
+              Turn this off to hide the provider limitations notice above Codex chat composers.
+            </p>
           </SettingsSection>
 
           <SettingsSection

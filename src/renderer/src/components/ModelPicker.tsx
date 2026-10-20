@@ -127,6 +127,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
     return models
       .filter((m) => !toolsOnly || m.supportsTools)
       .filter((m) => !drawsOnly || m.outputModalities.includes('image'))
+      .filter((m) => m.provider !== 'codex' || settings?.codex.enabled !== false)
       .filter(
         (m) =>
           mode !== 'webServer' ||
@@ -134,7 +135,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
       )
       .filter((m) => matchesQuery(m, words))
       .slice(0, 300)
-  }, [models, query, toolsOnly, drawsOnly, mode])
+  }, [models, settings?.codex.enabled, query, toolsOnly, drawsOnly, mode])
 
   useEffect(() => setCursor(0), [query, toolsOnly, drawsOnly])
 
@@ -251,11 +252,19 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
           {providers && (
             <span
               className="chip"
-              title={providers.codex.error ?? (providers.codex.available
-                ? 'Using the Codex CLI signed in on this desktop'
-                : 'Install the Codex CLI to use Codex models')}
+              title={!providers.codex.enabled
+                ? 'Codex is disabled in Settings › Codex'
+                : providers.codex.error ?? (providers.codex.available
+                  ? 'Using the Codex CLI signed in on this desktop'
+                  : 'Install the Codex CLI to use Codex models')}
             >
-              {providers.codex.error ? 'Codex needs attention' : providers.codex.available ? 'Codex ready' : 'Codex unavailable'}
+              {!providers.codex.enabled
+                ? 'Codex disabled'
+                : providers.codex.error
+                  ? 'Codex needs attention'
+                  : providers.codex.available
+                    ? 'Codex ready'
+                    : 'Codex unavailable'}
             </span>
           )}
           <button

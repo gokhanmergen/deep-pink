@@ -145,7 +145,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     target && !target.threadId ? null : (thread?.config.model ?? settings?.defaultModel)
   const isCodexModel = providerForModel(activeModel) === 'codex' ||
     Boolean(target && !target.threadId && compareHasCodexModel)
-  const webOn = !isCodexModel && (config?.webAccessEnabled ?? settings?.web.enabled ?? false)
+  const webOn = config?.webAccessEnabled ?? settings?.web.enabled ?? false
   const chartsOn = !isCodexModel && (config?.chartsEnabled ?? settings?.chartsEnabled ?? false)
   const modelInfo = models.find((m) => m.id === activeModel)
   const toolsUnsupported = webOn && modelInfo != null && !modelInfo.supportsTools
@@ -283,11 +283,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     writeConfig({ repoPaths: repoPaths.filter((p) => p !== path) })
   }
 
-  /*
-   * The extras all carry the experimental mark, and so does reading a
-   * repository — so with the workshop put away the extras menu has nothing
-   * left in it and the attach menu is only files.
-   */
+  /* Repository access and charts stay behind the experimental features switch. */
   const hideExperimental = settings?.hideExperimental ?? true
 
   const attachOptions = (): ContextMenuItem[] => [
@@ -319,7 +315,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   // Reading a codebase means reading text the model treats as instructions. If
   // the same thread can also reach the network, anything hidden in that text has
   // a way out. Worth saying plainly rather than quietly forbidding.
-  const repoAndWeb = repos.length > 0 && webOn
+  const repoAndWeb = !isCodexModel && repos.length > 0 && webOn
 
   const pasteThreshold = settings?.ui.pasteAsFileThreshold ?? 2000
 
@@ -381,7 +377,6 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   }
 
   const toggleWeb = (): void => {
-    if (isCodexModel) return
     writeConfig({ webAccessEnabled: !webOn })
   }
 
@@ -400,7 +395,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
    * menu, and the button that opens it says how many are on — which is the
    * only part you need at a glance.
    */
-  const extraOptions = (): ContextMenuItem[] => isCodexModel ? [] : [
+  const extraOptions = (): ContextMenuItem[] => [
     {
       id: 'web',
       label: 'Web access',
@@ -409,14 +404,14 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       on: webOn,
       onSelect: toggleWeb
     },
-    {
+    ...(!isCodexModel && !hideExperimental ? [{
       id: 'charts',
       label: 'Charts',
       icon: <BarChart3 {...ICON} />,
       hint: formatBinding(keybinds['charts.toggle'] ?? 'mod+shift+b'),
       on: chartsOn,
       onSelect: toggleCharts
-    },
+    }] : [])
   ]
 
   const extrasOn = [webOn, chartsOn].filter(Boolean).length
@@ -461,10 +456,11 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       onFocusCapture={onInteract}
     >
       <div className="composer__inner">
-        {isCodexModel && (
+        {isCodexModel && !settings?.codex.hideChatNotice && (
           <div className="composer__notice">
-            Codex uses the local Codex App Server. Web access, charts, repository tools, MCP tools,
-            and OpenRouter provider routing are disabled for this model. Codex always reasons; “None”
+            Codex uses the local Codex App Server. Only Deep Pink web search and page reading are
+            available when Web access is on. Shell, local files, computer control, charts, MCP,
+            plugins, and OpenRouter provider routing are unavailable. Codex always reasons; “None”
             uses its lowest supported effort.
           </div>
         )}
@@ -636,24 +632,22 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
               Attach
             </button>
 
-            {/* Every extra behind this button is experimental, so with them
-                put away the button opens an empty menu. It goes too. */}
-            {!hideExperimental && !isCodexModel && (
-              <button
-                className="btn"
-                data-on={extrasOn > 0}
-                onClick={(event) => {
-                  const r = event.currentTarget.getBoundingClientRect()
-                  setExtraMenu({ x: Math.round(r.left), y: Math.round(r.top) })
-                }}
-                title="Web access and charts, for this thread"
-                type="button"
-                disabled={!configurable}
-              >
-                <SlidersHorizontal {...ICON} />
-                <span className="btn__label">Extras{extrasOn ? ` · ${extrasOn}` : ''}</span>
-              </button>
-            )}
+            <button
+              className="btn"
+              data-on={extrasOn > 0}
+              onClick={(event) => {
+                const r = event.currentTarget.getBoundingClientRect()
+                setExtraMenu({ x: Math.round(r.left), y: Math.round(r.top) })
+              }}
+              title={isCodexModel || hideExperimental ? 'Web access, for this thread' : 'Web access and charts, for this thread'}
+              type="button"
+              disabled={!configurable}
+            >
+              <SlidersHorizontal {...ICON} />
+              <span className="btn__label">
+                {isCodexModel || hideExperimental ? 'Web' : 'Extras'}{extrasOn ? ` · ${extrasOn}` : ''}
+              </span>
+            </button>
 
             {canReason && (
               <button

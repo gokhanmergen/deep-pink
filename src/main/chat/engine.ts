@@ -1159,6 +1159,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         model,
         systemPromptSnapshot: context.segments
       })
+      const turnThreadId = thread.id
       liveStreams.set(assistant.id, {
         threadId: thread.id,
         messageId: assistant.id,
@@ -1168,6 +1169,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       emit({ type: 'start', messageId: assistant.id, threadId: thread.id })
 
       let result: StreamResult
+      const codexToolCalls: ToolCall[] = []
       try {
         result = await streamChat(
           {
@@ -1180,7 +1182,6 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             reasoning: reasoningFor(thread, settings, model),
             attribution: settings.sendAppAttribution,
             webPlugin:
-              !settings.hideExperimental &&
               settings.web.engine === 'openrouter' &&
               (thread.config.webAccessEnabled ?? settings.web.enabled),
             modalities: await outputModalitiesFor(model),
@@ -1199,6 +1200,40 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
               emit({ type: 'reasoning', messageId: assistant.id, delta })
             },
             onImage: (dataUrl) => void keepImage(req.threadId, assistant.id, dataUrl, emit),
+            onDynamicToolCall: provider === 'codex'
+              ? async (call) => {
+                  const allowed = context.tools.some((tool) => tool.function.name === call.name) &&
+                    (call.name === 'web_search' || call.name === 'web_fetch')
+                  if (!allowed) throw new Error('Codex requested a web tool that is not enabled for this chat.')
+                  if (codexToolCalls.length >= MAX_TOOL_ROUNDS) {
+                    throw new Error(`Codex reached the ${MAX_TOOL_ROUNDS}-call web search limit for one reply.`)
+                  }
+
+                  codexToolCalls.push(call)
+                  repo.updateMessage(assistant.id, { toolCalls: [...codexToolCalls] })
+                  emit({ type: 'tool-call', messageId: assistant.id, toolCalls: [...codexToolCalls] })
+                  const toolResult = await executeToolCall(
+                    turnThreadId,
+                    assistant.id,
+                    call,
+                    settings,
+                    emit,
+                    [],
+                    [],
+                    controller.signal
+                  )
+                  if (controller.signal.aborted) throw controller.signal.reason
+                  const toolMessage = repo.insertMessage({
+                    threadId: turnThreadId,
+                    role: 'tool',
+                    content: toolResult.content,
+                    toolResult,
+                    status: toolResult.isError ? 'error' : 'complete'
+                  })
+                  emit({ type: 'tool-result', threadId: turnThreadId, messageId: toolMessage.id, result: toolResult })
+                  return toolResult
+                }
+              : undefined,
             onProvider: () => undefined
           }
         )
@@ -1300,7 +1335,16 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
       }
 
       emit({ type: 'tool-call', messageId: assistant.id, toolCalls: result.toolCalls })
-      emit({ type: 'done', messageId: assistant.id, message: stored })
+      emit({
+        type: 'done',
+        messageId: assistant.id,
+        message: stored,
+        ...(result.toolCallsHandled ? { generating: false } : {})
+      })
+
+      // Codex App Server completes dynamic web tools inside its own turn loop.
+      // OpenRouter still needs the outer engine loop below to execute tools.
+      if (result.toolCallsHandled) break
 
       for (const call of result.toolCalls) {
         if (controller.signal.aborted) return

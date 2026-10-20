@@ -1,4 +1,4 @@
-import type { ProviderRouting, ToolCall, Usage } from '@shared/types'
+import type { ProviderRouting, ToolCall, ToolResult, Usage } from '@shared/types'
 
 /** A part of a multimodal chat message. Images are represented as data URLs. */
 export type ContentPart =
@@ -38,6 +38,8 @@ export interface StreamHandlers {
   onContent?: (delta: string) => void
   onReasoning?: (delta: string) => void
   onToolCalls?: (calls: ToolCall[]) => void
+  /** Handle a client-owned Codex App Server dynamic tool call. */
+  onDynamicToolCall?: (call: ToolCall) => Promise<ToolResult>
   onProvider?: (provider: string) => void
   onImage?: (dataUrl: string) => void
 }
@@ -54,6 +56,8 @@ export interface StreamResult {
   images: string[]
   citations: Citation[]
   toolCalls: ToolCall[]
+  /** True when the provider already executed its returned tool calls in-turn. */
+  toolCallsHandled?: boolean
   finishReason: string | null
   provider: string | null
   usage: Usage
