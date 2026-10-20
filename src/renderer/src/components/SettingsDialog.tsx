@@ -429,6 +429,10 @@ function SkillsTab({
           <option value="every-turn">Every turn</option>
         </select>
       </div>
+      <p className="field__hint">
+        Codex includes enabled skill instructions with each request because it does not expose the
+        on-demand skill loader.
+      </p>
 
       <div className="section-title">Built in</div>
       <SkillCard

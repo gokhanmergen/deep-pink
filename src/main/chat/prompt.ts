@@ -107,7 +107,9 @@ export function skillsFor(thread: Thread, settings: Settings): Skill[] {
  * undrawable in a thread where charts are switched on. That is a worse
  * failure than the tokens on-demand loading exists to save, so the skills are
  * simply held open for those models and nothing is lost but the judgement,
- * which they were not going to be asked for.
+ * which they were not going to be asked for. Codex is also held open: its
+ * sandbox deliberately exposes no skill-loading tool, so all enabled skill
+ * instructions are included with the request instead.
  *
  * An unknown model — a first launch, an offline start, an id no longer in the
  * catalogue — is treated as capable. Most models are, and being wrong this
@@ -181,7 +183,9 @@ export function assembleContext(
    * every skill on every turn — which is what this used to be, and is kept
    * for anybody who would rather pay the tokens than the round trip.
    */
-  const available = provider === 'openrouter' ? skillsFor(thread, settings) : []
+  const available = skillsFor(thread, settings)
+  // Codex only receives web tools. Skills work as prompt instructions, loaded
+  // every turn when its tools cannot fetch them on demand.
   const onDemand = provider === 'openrouter' && settings.skillsOnDemand && askableBy(thread, settings)
 
   if (available.length && onDemand) {
@@ -300,7 +304,7 @@ export function assembleContext(
    * below drops it, so this is genuinely the last thing the model reads.
    */
   if (
-    provider === 'openrouter' &&
+    (provider === 'openrouter' || provider === 'codex') &&
     !settings.hideExperimental && settings.keyPointEnabled &&
     settings.keyPointSource === 'self'
   ) {

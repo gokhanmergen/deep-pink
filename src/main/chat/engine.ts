@@ -1299,9 +1299,9 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
        * reaches an export, the clipboard, or the next turn's context — it is
        * invisible on screen either way, since raw HTML in a reply is not
        * rendered, but invisible is not the same as gone.
-       */
+      */
       const marked =
-        providerForModel(model) === 'openrouter' && settings.keyPointEnabled && settings.keyPointSource === 'self'
+        !settings.hideExperimental && settings.keyPointEnabled && settings.keyPointSource === 'self'
           ? takeKeyPointMarkers(result.content, keyPointCeiling(settings.keyPointMany))
           : { content: result.content, keyPoints: [] }
 

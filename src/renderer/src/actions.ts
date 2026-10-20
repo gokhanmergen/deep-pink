@@ -583,9 +583,7 @@ export function buildActions(): AppAction[] {
       id: 'web.toggle',
       label: 'Toggle web access for this thread',
       group: 'Capabilities',
-      hidden: codexSelected,
       run: () => {
-        if (codexUnavailable()) return
         return beforeSideBySide(
           (config) => {
             const on = config.webAccessEnabled ?? settings?.web.enabled ?? false
@@ -616,9 +614,7 @@ export function buildActions(): AppAction[] {
       id: 'charts.toggle',
       label: 'Toggle charts for this thread',
       group: 'Capabilities',
-      hidden: codexSelected,
       run: () => {
-        if (codexUnavailable()) return
         return beforeSideBySide(
           (config) => {
             const on = config.chartsEnabled ?? settings?.chartsEnabled ?? false

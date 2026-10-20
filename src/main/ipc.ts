@@ -34,7 +34,6 @@ import { getCredits, listEndpoints } from './providers/openrouter'
 import { listModels, providerStatus } from './providers'
 import { askKeyPoint, askKeyPointViaModel } from './providers/typesafe'
 import { keyPointCeiling } from '@shared/defaults'
-import { providerForModel } from '@shared/modelProviders'
 import { loadSettings, saveSettings } from './settings'
 import { isEncryptionAvailable, setApiKey } from './secrets'
 import { reportProblem } from './report'
@@ -692,7 +691,6 @@ export function registerIpc(): void {
       // trace back to a setting.
       if (settings.hideExperimental) return null
       if (settings.keyPointSource === 'self') return null
-      if (providerForModel(repo.getMessage(messageId)?.model) === 'codex') return null
       const most = keyPointCeiling(settings.keyPointMany)
       const found =
         settings.keyPointSource === 'model'

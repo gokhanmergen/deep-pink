@@ -146,8 +146,9 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     target && !target.threadId ? null : (thread?.config.model ?? settings?.defaultModel)
   const isCodexModel = providerForModel(activeModel) === 'codex' ||
     Boolean(target && !target.threadId && compareHasCodexModel)
+  const hideExperimental = settings?.hideExperimental ?? true
   const webOn = config?.webAccessEnabled ?? settings?.web.enabled ?? false
-  const chartsOn = !isCodexModel && (config?.chartsEnabled ?? settings?.chartsEnabled ?? false)
+  const chartsOn = !hideExperimental && (config?.chartsEnabled ?? settings?.chartsEnabled ?? false)
   const modelInfo = models.find((m) => m.id === activeModel)
   const toolsUnsupported = webOn && modelInfo != null && !modelInfo.supportsTools
   const imagesUnsupported =
@@ -285,7 +286,6 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   }
 
   /* Repository access and charts stay behind the experimental features switch. */
-  const hideExperimental = settings?.hideExperimental ?? true
 
   const attachOptions = (): ContextMenuItem[] => [
     {
@@ -382,7 +382,6 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   }
 
   const toggleCharts = (): void => {
-    if (isCodexModel) return
     writeConfig({ chartsEnabled: !chartsOn })
   }
 
@@ -405,7 +404,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       on: webOn,
       onSelect: toggleWeb
     },
-    ...(!isCodexModel && !hideExperimental ? [{
+    ...(!hideExperimental ? [{
       id: 'charts',
       label: 'Charts',
       icon: <BarChart3 {...ICON} />,
@@ -464,10 +463,13 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
             onClick={() => openSettings('codex')}
             type="button"
           >
-            Codex uses the local Codex App Server. Only web search and page reading are available
-            when Web access is on. Shell, local files, computer control, charts, MCP, plugins, and
-            OpenRouter provider routing are unavailable. Codex always reasons; “None” uses its
-            lowest supported effort. Click to open Codex settings.
+            Codex uses the local Codex App Server. When enabled, Web access allows only search and
+            page reading.
+            Shell, local file access, computer control, repository tools, MCP, plugins, and
+            OpenRouter provider routing are unavailable. Charts and prompt-based skills are
+            supported when experimental features are shown.
+            Codex always reasons; “None” uses its lowest supported effort. Click to open Codex
+            settings.
           </button>
         )}
         {toolsUnsupported && (
@@ -645,13 +647,13 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                 const r = event.currentTarget.getBoundingClientRect()
                 setExtraMenu({ x: Math.round(r.left), y: Math.round(r.top) })
               }}
-              title={isCodexModel || hideExperimental ? 'Web access, for this thread' : 'Web access and charts, for this thread'}
+              title={hideExperimental ? 'Web access, for this thread' : 'Web access and charts, for this thread'}
               type="button"
               disabled={!configurable}
             >
               <SlidersHorizontal {...ICON} />
               <span className="btn__label">
-                {isCodexModel || hideExperimental ? 'Web' : 'Extras'}{extrasOn ? ` · ${extrasOn}` : ''}
+                {hideExperimental ? 'Web' : 'Extras'}{extrasOn ? ` · ${extrasOn}` : ''}
               </span>
             </button>
 
