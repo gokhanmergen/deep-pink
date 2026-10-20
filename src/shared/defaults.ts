@@ -307,7 +307,7 @@ export const DEFAULT_SETTINGS: Settings = {
   web: DEFAULT_WEB_SETTINGS,
   // Existing Codex selections continue to work; the experimental page offers
   // a switch for people who want to turn the provider off.
-  codex: { enabled: true, hideChatNotice: false },
+  codex: { enabled: true, hideChatNotice: false, nativeWebSearch: false },
   webServer: DEFAULT_WEB_SERVER_SETTINGS,
   compaction: DEFAULT_COMPACTION,
   sendAppAttribution: true,

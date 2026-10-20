@@ -118,6 +118,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     (s) => s.compare?.some((pane) => providerForModel(pane.model) === 'codex') ?? false
   )
   const setOverlay = useStore((s) => s.setOverlay)
+  const openSettings = useStore((s) => s.openSettings)
 
   const models = useStore((s) => s.models)
 
@@ -457,12 +458,17 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     >
       <div className="composer__inner">
         {isCodexModel && !settings?.codex.hideChatNotice && (
-          <div className="composer__notice">
-            Codex uses the local Codex App Server. Only Deep Pink web search and page reading are
-            available when Web access is on. Shell, local files, computer control, charts, MCP,
-            plugins, and OpenRouter provider routing are unavailable. Codex always reasons; “None”
-            uses its lowest supported effort.
-          </div>
+          <button
+            aria-label="Open Codex settings to hide this notice"
+            className="composer__notice composer__notice--action"
+            onClick={() => openSettings('codex')}
+            type="button"
+          >
+            Codex uses the local Codex App Server. Only web search and page reading are available
+            when Web access is on. Shell, local files, computer control, charts, MCP, plugins, and
+            OpenRouter provider routing are unavailable. Codex always reasons; “None” uses its
+            lowest supported effort. Click to open Codex settings.
+          </button>
         )}
         {toolsUnsupported && (
           <div className="composer__notice">

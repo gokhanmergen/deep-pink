@@ -43,6 +43,11 @@ function sumUsage(messages: Message[]): Usage | null {
   }
 }
 
+function codexCostLabel(usd: number): string {
+  if (usd <= 0) return 'Estimate unavailable'
+  return `~${usd < 0.01 ? `$${usd.toFixed(6)}` : formatCost(usd)}`
+}
+
 /**
  * What a disclosure holds, fetched the first time it is opened.
  *
@@ -396,6 +401,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   const first = messages[0]
   const attributed = messages.find((m) => m.model) ?? first
   const usage = sumUsage(messages)
+  const codexTurn = messages.some((message) => message.provider === 'Codex')
   const chipSettings = ui.replyChips
   const streaming = messages.some((m) => m.status === 'streaming')
 
@@ -483,8 +489,10 @@ export const AssistantTurn = memo(function AssistantTurn({
         {
           id: 'cost',
           show: chipSettings.cost,
-          text: formatCost(usage.costUsd),
-          title: 'Cost of this turn, including any tool rounds'
+          text: codexTurn ? codexCostLabel(usage.costUsd) : formatCost(usage.costUsd),
+          title: codexTurn
+            ? 'Estimated Codex usage cost reported for this turn'
+            : 'Cost of this turn, including any tool rounds'
         },
         {
           id: 'speed',

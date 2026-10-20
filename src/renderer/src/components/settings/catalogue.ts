@@ -18,7 +18,7 @@ export const SETTINGS_PAGES: Record<SettingsTab, SettingsPage> = {
   codex: {
     label: 'Codex',
     keywords:
-      'codex openai app server cli provider enable disable warning notice limitations experimental sign in login',
+      'codex openai app server cli provider enable disable warning notice limitations experimental sign in login web search native built in',
     experimental: true
   },
   appearance: {

@@ -559,8 +559,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
    * showing nothing at all, which reads as broken rather than as a setting
    * having been applied.
    */
+  // The Codex composer links here directly so its notice can always be hidden,
+  // even when the other Experimental tabs are tucked away.
   const hidden =
     (settings?.hideExperimental ?? true) &&
+    asked !== 'codex' &&
     TAB_GROUPS.some((g) => g.tabs.some((t) => t.id === asked && t.experimental))
   const tab: Tab = hidden ? 'general' : asked
   const [query, setQuery] = useState('')
@@ -1885,11 +1888,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                * maximum on a large model is most of the cost and most of the
                * wait.
                */}
-              {settings.reasoning.mode !== 'auto' && (
+              {settings.reasoning.mode === 'off' && (
                 <p className="field__hint">
-                  {settings.reasoning.mode === 'off'
-                    ? 'Request no reasoning where supported.'
-                    : 'More reasoning can increase cost and response time.'}
+                  Request no reasoning where supported.
                 </p>
               )}
             </div>
@@ -1960,7 +1961,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
                   })
                 }
               >
-                <option value="local">Built-in private search (free, automatic fallback)</option>
+                <option value="local">Built-in</option>
                 <option value="searxng">SearXNG + built-in fallback</option>
                 <option value="openrouter">OpenRouter web plugin (billed per search)</option>
               </select>
@@ -2046,13 +2047,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               Codex provider
               <Experimental />
             </h3>
-            <p className="field__hint">
-              Codex runs through the Codex CLI App Server already signed in on this desktop. Deep
-              Pink does not read or store its authentication token. When Web access is enabled, Codex
-              can use only Deep Pink's guarded web search and page reading. Shell, local file access,
-              computer control, charts, repository tools, MCP, plugins, and OpenRouter provider
-              routing are disabled; the App Server runs read-only with sandbox network access off.
-            </p>
             <label className="switch">
               <input
                 type="checkbox"
@@ -2079,8 +2073,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               />
               <span>Show the notice in Codex chats</span>
             </label>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={settings.codex.nativeWebSearch}
+                onChange={(event) =>
+                  void saveSettings({ codex: { nativeWebSearch: event.target.checked } })
+                }
+              />
+              <span>Use Codex’s native web search</span>
+            </label>
             <p className="field__hint">
-              Turn this off to hide the provider limitations notice above Codex chat composers.
+              Web-enabled Codex chats use Codex’s native search and page reading instead of Deep
+              Pink’s web tools. Search and page reading are the only Codex tools this enables.
             </p>
           </SettingsSection>
 

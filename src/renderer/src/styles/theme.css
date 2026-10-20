@@ -2914,6 +2914,19 @@ svg.lucide {
   line-height: 1.5;
 }
 
+.composer__notice--action {
+  display: block;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer__notice--action:hover,
+.composer__notice--action:focus-visible {
+  border-color: var(--amber);
+}
+
 /* ------------------------------------------------------------------ *
  * Overlays
  * ------------------------------------------------------------------ */

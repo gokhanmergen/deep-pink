@@ -758,6 +758,8 @@ export interface CodexSettings {
   enabled: boolean
   /** Hide the provider limitations notice in Codex chat composers. */
   hideChatNotice: boolean
+  /** Use Codex's native web search instead of Deep Pink's client-side tools. */
+  nativeWebSearch: boolean
 }
 
 export interface UiSettings {

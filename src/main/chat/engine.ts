@@ -1184,6 +1184,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             webPlugin:
               settings.web.engine === 'openrouter' &&
               (thread.config.webAccessEnabled ?? settings.web.enabled),
+            nativeWebSearch: provider === 'codex' && context.codexNativeWebSearch,
             modalities: await outputModalitiesFor(model),
             signal: controller.signal
           },
