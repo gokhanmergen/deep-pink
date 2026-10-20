@@ -59,7 +59,11 @@ function persistProgress(messageId: string): void {
   if (now - previous < PROGRESS_INTERVAL_MS) return
 
   lastPersisted.set(messageId, now)
-  repo.updateMessage(messageId, { content: live.content, reasoning: live.reasoning || null })
+  repo.updateMessage(messageId, {
+    content: live.content,
+    commentary: live.commentary || null,
+    reasoning: live.reasoning || null
+  })
 }
 
 /** Hard stop so a misbehaving tool loop cannot run forever. */
@@ -82,6 +86,7 @@ interface LiveStream {
   threadId: string
   messageId: string
   content: string
+  commentary: string
   reasoning: string
 }
 
@@ -1164,12 +1169,15 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         threadId: thread.id,
         messageId: assistant.id,
         content: '',
+        commentary: '',
         reasoning: ''
       })
       emit({ type: 'start', messageId: assistant.id, threadId: thread.id })
 
       let result: StreamResult
       const codexToolCalls: ToolCall[] = []
+      const nativeCodexToolIds = new Map<string, string>()
+      const completedNativeCodexTools = new Set<string>()
       try {
         result = await streamChat(
           {
@@ -1189,6 +1197,12 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             signal: controller.signal
           },
           {
+            onCommentary: (delta) => {
+              const live = liveStreams.get(assistant.id)
+              if (live) live.commentary += delta
+              persistProgress(assistant.id)
+              emit({ type: 'commentary', messageId: assistant.id, delta })
+            },
             onContent: (delta) => {
               const live = liveStreams.get(assistant.id)
               if (live) live.content += delta
@@ -1233,11 +1247,54 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
                   })
                   emit({ type: 'tool-result', threadId: turnThreadId, messageId: toolMessage.id, result: toolResult })
                   return toolResult
+              }
+              : undefined,
+            onNativeWebTool: provider === 'codex'
+              ? (call, toolResult) => {
+                  if (!context.codexNativeWebSearch || !['web_search', 'web_fetch'].includes(call.name)) return
+
+                  let transcriptId = nativeCodexToolIds.get(call.id)
+                  if (!transcriptId) {
+                    transcriptId = `codex-native-web-${assistant.id}:${call.id}`
+                    nativeCodexToolIds.set(call.id, transcriptId)
+                    codexToolCalls.push({ ...call, id: transcriptId })
+                    repo.updateMessage(assistant.id, { toolCalls: [...codexToolCalls] })
+                    emit({ type: 'tool-call', messageId: assistant.id, toolCalls: [...codexToolCalls] })
+                  }
+
+                  if (!toolResult || completedNativeCodexTools.has(call.id)) return
+                  completedNativeCodexTools.add(call.id)
+                  const transcriptResult = { ...toolResult, toolCallId: transcriptId }
+                  repo.recordToolInvocation({
+                    threadId: turnThreadId,
+                    messageId: assistant.id,
+                    source: 'web',
+                    serverId: null,
+                    toolName: call.name,
+                    isError: transcriptResult.isError,
+                    durationMs: transcriptResult.durationMs,
+                    resultChars: transcriptResult.content.length
+                  })
+                  const toolMessage = repo.insertMessage({
+                    threadId: turnThreadId,
+                    role: 'tool',
+                    content: transcriptResult.content,
+                    toolResult: transcriptResult,
+                    status: transcriptResult.isError ? 'error' : 'complete'
+                  })
+                  emit({ type: 'tool-result', threadId: turnThreadId, messageId: toolMessage.id, result: transcriptResult })
                 }
               : undefined,
             onProvider: () => undefined
           }
         )
+        result = {
+          ...result,
+          toolCalls: result.toolCalls.map((call) => {
+            const transcriptId = nativeCodexToolIds.get(call.id)
+            return transcriptId ? { ...call, id: transcriptId } : call
+          })
+        }
       } catch (err) {
         const aborted = controller.signal.aborted
         const message =
@@ -1250,12 +1307,14 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         // A turn that produced nothing leaves nothing behind. Keeping the empty
         // placeholder would show a bubble that never says anything, and on a
         // later launch it would still claim to be streaming.
+        const live = liveStreams.get(assistant.id)
         liveStreams.delete(assistant.id)
         lastPersisted.delete(assistant.id)
         const current = repo.getMessage(assistant.id)
         const producedNothing =
-          !current?.content &&
-          !current?.reasoning &&
+          !live?.content && !current?.content &&
+          !live?.commentary && !current?.commentary &&
+          !live?.reasoning && !current?.reasoning &&
           !current?.toolCalls?.length &&
           // A drawn picture is something produced, and the only thing that
           // survives a turn where the model said nothing about it. Deleting
@@ -1277,7 +1336,12 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
              * handler running and left the row saying a reply was still on its
              * way. Nothing to show is what `aborted` means.
              */
-            const finished = repo.updateMessage(assistant.id, { status: 'aborted' })
+            const finished = repo.updateMessage(assistant.id, {
+              status: 'aborted',
+              content: live?.content ?? current?.content,
+              commentary: live?.commentary || current?.commentary || null,
+              reasoning: live?.reasoning || current?.reasoning || null
+            })
             if (finished) emit({ type: 'done', messageId: assistant.id, message: finished })
             else emit({ type: 'aborted', messageId: assistant.id, threadId: thread.id })
           }
@@ -1285,11 +1349,18 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         }
 
         // Errors keep their message so the failure is visible in the transcript.
-        repo.updateMessage(assistant.id, { status: 'error', error: message })
+        repo.updateMessage(assistant.id, {
+          status: 'error',
+          error: message,
+          content: live?.content ?? current?.content,
+          commentary: live?.commentary || current?.commentary || null,
+          reasoning: live?.reasoning || current?.reasoning || null
+        })
         emit({ type: 'error', messageId: assistant.id, threadId: thread.id, error: message })
         return
       }
 
+      const live = liveStreams.get(assistant.id)
       liveStreams.delete(assistant.id)
       lastPersisted.delete(assistant.id)
       /*
@@ -1307,6 +1378,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
 
       const stored = repo.updateMessage(assistant.id, {
         content: marked.content,
+        commentary: live?.commentary || null,
         reasoning: result.reasoning || null,
         provider: result.provider,
         toolCalls: result.toolCalls.length ? result.toolCalls : null,

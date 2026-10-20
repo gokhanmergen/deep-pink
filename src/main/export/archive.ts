@@ -63,6 +63,7 @@ export interface ArchivedMessage {
   id: string
   role: Role
   content: string
+  commentary: string | null
   reasoning: string | null
   createdAt: number
   model: string | null
@@ -298,6 +299,7 @@ function toMessage(value: unknown, index: number, threadAt: number): ArchivedMes
     id: str(raw['id'], `imported-${index}`),
     role,
     content: str(raw['content']),
+    commentary: strOrNull(raw['commentary']),
     reasoning: strOrNull(raw['reasoning']),
     createdAt,
     model: strOrNull(raw['model']),
@@ -319,6 +321,7 @@ function toMessage(value: unknown, index: number, threadAt: number): ArchivedMes
 function isEmpty(message: ArchivedMessage): boolean {
   return (
     !message.content.trim() &&
+    !message.commentary?.trim() &&
     !message.reasoning?.trim() &&
     !message.toolCalls &&
     !message.toolResult &&

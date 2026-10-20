@@ -1897,6 +1897,8 @@ function mergeStreamed(persisted: Message[], onScreen: Message[]): Message[] {
     return {
       ...stored,
       content: painted.content || stored.content,
+      commentary: painted.commentary || stored.commentary,
+      commentaryChars: Math.max(stored.commentaryChars, painted.commentary?.length ?? 0),
       reasoning: painted.reasoning ?? stored.reasoning,
       status: 'streaming',
       usage: stored.usage ?? painted.usage
@@ -1919,6 +1921,8 @@ function catchUp(messages: Message[], live: LiveStream[]): Message[] {
     return {
       ...message,
       content: stream.content || message.content,
+      commentary: stream.commentary || message.commentary,
+      commentaryChars: Math.max(message.commentaryChars, stream.commentary.length),
       reasoning: stream.reasoning || message.reasoning,
       status: 'streaming' as const
     }
@@ -1935,8 +1939,18 @@ function catchUp(messages: Message[], live: LiveStream[]): Message[] {
 function settleLive(messages: Message[], settled: LiveStream[]): Message[] {
   return messages.map((message) => {
     const stream = settled.find((s) => s.messageId === message.id)
-    if (!stream || stream.content.length <= message.content.length) return message
-    return { ...message, content: stream.content, reasoning: stream.reasoning || message.reasoning }
+    if (
+      !stream ||
+      (stream.content.length <= message.content.length &&
+        stream.commentary.length <= (message.commentary?.length ?? 0))
+    ) return message
+    return {
+      ...message,
+      content: stream.content,
+      commentary: stream.commentary || message.commentary,
+      commentaryChars: Math.max(message.commentaryChars, stream.commentary.length),
+      reasoning: stream.reasoning || message.reasoning
+    }
   })
 }
 
@@ -1953,6 +1967,8 @@ function optimisticMessage(
     threadId,
     role: 'user',
     content,
+    commentary: null,
+    commentaryChars: 0,
     reasoning: null,
     reasoningChars: 0,
     createdAt,
@@ -1997,6 +2013,8 @@ function streamingPlaceholder(messageId: string, threadId: string): Message {
     threadId,
     role: 'assistant',
     content: '',
+    commentary: null,
+    commentaryChars: 0,
     reasoning: null,
     reasoningChars: 0,
     createdAt: Date.now(),
@@ -2024,6 +2042,8 @@ function finishedMessage(painted: Message, stored: Message): Message {
   return {
     ...stored,
     content: stored.content || painted.content,
+    commentary: stored.commentary || painted.commentary,
+    commentaryChars: Math.max(stored.commentaryChars, painted.commentary?.length ?? 0),
     reasoning: stored.reasoning ?? painted.reasoning,
     usage: stored.usage ?? painted.usage
   }
@@ -2189,6 +2209,14 @@ function routeToPane(event: StreamEvent, set: Setter, get: Getter): boolean {
 
     case 'content':
       patchOne(event.messageId, (m) => ({ ...m, content: m.content + event.delta }))
+      break
+
+    case 'commentary':
+      patchOne(event.messageId, (m) => ({
+        ...m,
+        commentary: (m.commentary ?? '') + event.delta,
+        commentaryChars: m.commentaryChars + event.delta.length
+      }))
       break
 
     case 'reasoning':
@@ -2542,6 +2570,16 @@ function handleStreamEvent(event: StreamEvent, set: Setter, get: Getter): void {
         messages: patchMessage(state.messages, event.messageId, (m) => ({
           ...m,
           content: m.content + event.delta
+        }))
+      })
+      break
+
+    case 'commentary':
+      set({
+        messages: patchMessage(state.messages, event.messageId, (m) => ({
+          ...m,
+          commentary: (m.commentary ?? '') + event.delta,
+          commentaryChars: m.commentaryChars + event.delta.length
         }))
       })
       break

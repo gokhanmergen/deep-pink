@@ -21,6 +21,7 @@ export function isEmptyAssistantMessage(message: Message): boolean {
   return (
     message.role === 'assistant' &&
     !message.content &&
+    !(message.commentaryChars ?? message.commentary?.length) &&
     // The length rather than the text. A transcript read from disk leaves
     // traces behind until they are opened, so a reply that was *only* thinking
     // arrives with `reasoning` null — and testing the text would have called

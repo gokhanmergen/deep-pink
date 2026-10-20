@@ -61,6 +61,7 @@ export function estimateHeight(message: Message, chatWidth: number): number {
 
   let height = FURNITURE + lines * LINE
   if (message.reasoningChars > 0) height += REASONING_LINE
+  if (message.commentaryChars > 0) height += REASONING_LINE
 
   // A picture is drawn at its own shape, up to the width of the column.
   for (const file of message.attachments) {

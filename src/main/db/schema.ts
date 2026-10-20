@@ -509,5 +509,9 @@ export const MIGRATIONS: string[] = [
 
   /* 27 — remember which sync device generated a thread */ `
   ALTER TABLE threads ADD COLUMN device_id TEXT;
+  `,
+
+  /* 28 — keep Codex's interim notes separate from its final reply */ `
+  ALTER TABLE messages ADD COLUMN commentary TEXT;
   `
 ]

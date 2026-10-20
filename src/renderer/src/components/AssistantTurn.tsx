@@ -57,7 +57,7 @@ function sumUsage(messages: Message[]): Usage | null {
 function useHiddenPart(
   messageId: string,
   present: string | null,
-  wanted: 'reasoning' | 'content'
+  wanted: 'reasoning' | 'commentary' | 'content'
 ): { open: boolean; onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => void; text: string | null } {
   const [open, setOpen] = useState(false)
   const [fetched, setFetched] = useState<string | null>(null)
@@ -75,6 +75,28 @@ function useHiddenPart(
 /** How much thinking there is, whether or not the text came with the message. */
 function reasoningLength(message: Message): number {
   return message.reasoning?.length ?? message.reasoningChars
+}
+
+function commentaryLength(message: Message): number {
+  return message.commentary?.length ?? message.commentaryChars
+}
+
+/** Interim Codex status messages stay distinct from the answer itself. */
+function CodexUpdates({ message }: { message: Message }): React.JSX.Element | null {
+  const updates = useHiddenPart(message.id, message.commentary, 'commentary')
+  if (commentaryLength(message) === 0) return null
+
+  return (
+    <details className="aside codex-updates" onToggle={updates.onToggle}>
+      <summary className="aside__summary">
+        Codex updates
+        <ChevronRight className="aside__caret" size={13} strokeWidth={2} />
+      </summary>
+      <div className="aside__body">
+        {updates.open ? <LongText text={updates.text ?? 'Loading…'} /> : <pre />}
+      </div>
+    </details>
+  )
 }
 
 /**
@@ -265,11 +287,12 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
  * "Ran x" or "x failed", because both are how it would be said aloud, and the
  * failing one puts the word that matters where the eye already is.
  */
-/** The prefix `keepCitations` gives a search that had no call of its own. */
+/** Provider-owned web activity is stored alongside the assistant reply it informed. */
 const PLUGIN_SEARCH = 'openrouter-search-'
+const CODEX_NATIVE_WEB = 'codex-native-web-'
 
 /**
- * A search OpenRouter ran, put where a search belongs.
+ * A web search or page read from inside a provider turn, put where it belongs.
  *
  * The `:online` plugin searches before it answers, but says what it read
  * while the answer is already streaming — so the record of it is written
@@ -290,7 +313,7 @@ const PLUGIN_SEARCH = 'openrouter-search-'
  * this is about reading, and the database is right that it learned about the
  * search last.
  */
-function liftPluginSearches(messages: Message[]): {
+function liftWebSearches(messages: Message[]): {
   sequence: Message[]
   byOwner: Map<string, Message[]>
 } {
@@ -299,11 +322,22 @@ function liftPluginSearches(messages: Message[]): {
 
   const owner = (m: Message): string | null => {
     const id = m.toolResult?.toolCallId
-    if (m.role !== 'tool' || !id?.startsWith(PLUGIN_SEARCH)) return null
+    if (m.role !== 'tool' || !id) return null
+    let assistantId: string
+    if (id.startsWith(PLUGIN_SEARCH)) {
+      assistantId = id.slice(PLUGIN_SEARCH.length)
+    } else if (id.startsWith(CODEX_NATIVE_WEB)) {
+      const rest = id.slice(CODEX_NATIVE_WEB.length)
+      const separator = rest.indexOf(':')
+      if (separator < 1) return null
+      assistantId = rest.slice(0, separator)
+    } else {
+      return null
+    }
+
     // Only if the reply it belongs to is on screen. A window that starts
     // mid-turn would otherwise drop the search out of the transcript
     // altogether rather than merely drawing it in the old place.
-    const assistantId = id.slice(PLUGIN_SEARCH.length)
     return present.has(assistantId) ? assistantId : null
   }
 
@@ -336,9 +370,8 @@ function ToolStep({
     >
       <summary className="aside__summary" title={args}>
         {result?.isError ? `${name} failed` : `Ran ${name}`}
-        {/* Zero is "not timed", not "instant". A search OpenRouter ran inside
-            the turn has no duration of its own to report, and "0ms" claims
-            one — that it happened in no time at all. */}
+        {/* Zero is "not timed", not "instant". An internal search with no
+            duration to report should not claim it happened in no time. */}
         {result?.durationMs ? (
           <span className="aside__note">{formatDuration(result.durationMs)}</span>
         ) : null}
@@ -443,7 +476,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   }
 
   // The rows to draw in order, and the searches that belong inside one of them.
-  const { sequence, byOwner: searchesFor } = liftPluginSearches(messages)
+  const { sequence, byOwner: searchesFor } = liftWebSearches(messages)
 
   /**
    * The figures under a finished reply, in the order they read in.
@@ -597,11 +630,12 @@ export const AssistantTurn = memo(function AssistantTurn({
 
             return (
               <div key={message.id} className="turn-part">
+                <CodexUpdates message={message} />
                 <ReasoningTrace message={message} />
 
-                {/* What OpenRouter's own search read, in the place a tool
-                    round would have gone: after the thinking, before the
-                    reply it informed. See `liftPluginSearches`. */}
+                {/* Web activity performed inside the provider turn, in the
+                    place a tool round would have gone: after the updates and
+                    before the reply it informed. See `liftWebSearches`. */}
                 {searchesFor.get(message.id)?.map((search) => (
                   <ToolStep key={search.id} message={search} />
                 ))}

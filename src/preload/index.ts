@@ -146,7 +146,11 @@ const api = {
      * body of a tool result. Fetched when the disclosure holding them is
      * opened, which for most messages never happens.
      */
-    hidden: (messageId: string): Promise<{ reasoning: string | null; content: string }> =>
+    hidden: (messageId: string): Promise<{
+      reasoning: string | null
+      commentary: string | null
+      content: string
+    }> =>
       ipcRenderer.invoke('messages:hidden', messageId),
     /**
      * Asks which of these sentences are the ones to read first, and

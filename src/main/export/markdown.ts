@@ -118,6 +118,10 @@ function renderMessage(message: Message): string {
 
   for (const attachment of message.attachments) blocks.push(attachmentLine(attachment))
 
+  if (message.commentary?.trim()) {
+    blocks.push(`<details>\n<summary>Codex updates</summary>\n\n${message.commentary.trim()}\n\n</details>`)
+  }
+
   if (message.reasoning?.trim()) {
     // Collapsed rather than dropped: a reasoning trace is usually longer than
     // the answer, and burying it would make the transcript unreadable.

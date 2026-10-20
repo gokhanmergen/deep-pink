@@ -148,6 +148,7 @@ export function importArchive(
         threadId: thread.id,
         role: message.role,
         content: message.content,
+        commentary: message.commentary,
         reasoning: message.reasoning,
         createdAt: message.createdAt,
         model: message.model,

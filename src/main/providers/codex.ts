@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:
 import { homedir, tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { createInterface, type Interface } from 'node:readline'
-import type { ChatModel, ProviderStatus, Usage } from '@shared/types'
+import type { ChatModel, ProviderStatus, ToolCall, ToolResult, Usage } from '@shared/types'
 import { modelIdForProvider, providerModelId } from '@shared/modelProviders'
 import { WEB_FETCH_TOOL, WEB_SEARCH_TOOL } from '../tools/web'
 import type { ChatRequest, ContentPart, StreamHandlers, StreamResult } from './types'
@@ -553,6 +553,84 @@ function estimatedThreadCostUsd(raw: CodexAccountUsage): number | null {
   return Number.isFinite(amount) && amount >= 0 ? amount / 1_000_000 : null
 }
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+/** Turns the App Server's native web-search item into one of Deep Pink's two web tool rows. */
+function nativeWebToolCall(item: Record<string, unknown>, allowQueryFallback = false): ToolCall | null {
+  if (typeof item.id !== 'string' || !item.id) return null
+  const action = objectValue(item.action)
+  const actionType = typeof action?.type === 'string' ? action.type : ''
+  let name: string
+  let args: Record<string, string>
+
+  if (actionType === 'search') {
+    const queries = Array.isArray(action?.queries)
+      ? action.queries.filter((query): query is string => typeof query === 'string')
+      : []
+    const query = queries.join('\n') ||
+      (typeof action?.query === 'string' ? action.query : '') ||
+      (typeof item.query === 'string' ? item.query : '')
+    if (!query) return null
+    name = 'web_search'
+    args = { query }
+  } else if (actionType === 'openPage' || actionType === 'open_page') {
+    if (typeof action?.url !== 'string' || !action.url) return null
+    name = 'web_fetch'
+    args = { url: action.url }
+  } else if (actionType === 'findInPage' || actionType === 'find_in_page') {
+    if (typeof action?.url !== 'string' || !action.url) return null
+    name = 'web_fetch'
+    args = {
+      url: action.url,
+      ...(typeof action.pattern === 'string' && action.pattern ? { pattern: action.pattern } : {})
+    }
+  } else if (!actionType && allowQueryFallback && typeof item.query === 'string' && item.query) {
+    name = 'web_search'
+    args = { query: item.query }
+  } else {
+    return null
+  }
+
+  return { id: `codex-native-web-${item.id}`, name, arguments: JSON.stringify(args) }
+}
+
+function nativeWebToolResult(
+  item: Record<string, unknown>,
+  call: ToolCall,
+  startedAtMs: number | undefined,
+  completedAtMs: number | undefined
+): ToolResult {
+  let args: Record<string, unknown> = {}
+  try {
+    args = objectValue(JSON.parse(call.arguments)) ?? {}
+  } catch { /* The call was built locally; malformed args are still displayable. */ }
+
+  const action = objectValue(item.action)
+  const pattern = typeof action?.pattern === 'string' ? action.pattern : ''
+  const headline = call.name === 'web_search'
+    ? `Searched the web for: ${String(args['query'] ?? item.query ?? '')}`
+    : pattern
+      ? `Searched ${String(args['url'] ?? '')} for: ${pattern}`
+      : `Opened ${String(args['url'] ?? '')}`
+  const results = Array.isArray(item.results) ? item.results : []
+  const details = results.slice(0, 20).map((result) => JSON.stringify(result, null, 2)).join('\n\n')
+  const durationMs = startedAtMs != null && completedAtMs != null
+    ? Math.max(0, completedAtMs - startedAtMs)
+    : 0
+
+  return {
+    toolCallId: call.id,
+    name: call.name,
+    content: details ? `${headline}\n\n${details}` : headline,
+    isError: false,
+    durationMs
+  }
+}
+
 export async function streamChat(
   request: ChatRequest,
   handlers: StreamHandlers = {}
@@ -564,6 +642,11 @@ export async function streamChat(
   const dynamicTools = nativeWebSearch ? [] : dynamicToolsFor(request)
   const dynamicToolNames = new Set(dynamicTools.map((tool) => tool.name))
   const dynamicToolCalls: NonNullable<StreamResult['toolCalls']> = []
+  const nativeWebToolCalls: NonNullable<StreamResult['toolCalls']> = []
+  const nativeWebCallsByItem = new Map<string, ToolCall>()
+  const nativeWebStartedAt = new Map<string, number>()
+  const nativeWebCompleted = new Set<string>()
+  const messagePhases = new Map<string, string>()
   const includeReasoning = request.reasoning?.['exclude'] !== true
   const workspace = mkdtempSync(join(tmpdir(), 'deep-pink-codex-'))
   let firstTokenAt: number | null = null
@@ -625,10 +708,54 @@ export async function streamChat(
         }
       }
       server.onNotification = (method, params) => {
+        if (method === 'item/started' || method === 'item/completed') {
+          const item = objectValue(params.item)
+          if (item?.type === 'agentMessage' && typeof item.id === 'string') {
+            if (item.phase === 'commentary' || item.phase === 'final_answer') {
+              messagePhases.set(item.id, item.phase)
+            }
+          }
+
+          if (nativeWebSearch && item?.type === 'webSearch' && typeof item.id === 'string') {
+            if (method === 'item/started' && typeof params.startedAtMs === 'number') {
+              nativeWebStartedAt.set(item.id, params.startedAtMs)
+            }
+
+            let call = nativeWebCallsByItem.get(item.id)
+            if (!call) {
+              call = nativeWebToolCall(item, method === 'item/completed') ?? undefined
+              if (call) {
+                nativeWebCallsByItem.set(item.id, call)
+                nativeWebToolCalls.push(call)
+                handlers.onNativeWebTool?.(call)
+              }
+            }
+
+            if (
+              method === 'item/completed' &&
+              call &&
+              !nativeWebCompleted.has(item.id)
+            ) {
+              nativeWebCompleted.add(item.id)
+              const completedAtMs = typeof params.completedAtMs === 'number' ? params.completedAtMs : undefined
+              handlers.onNativeWebTool?.(
+                call,
+                nativeWebToolResult(item, call, nativeWebStartedAt.get(item.id), completedAtMs)
+              )
+            }
+          }
+        }
+
         if (method === 'item/agentMessage/delta' && typeof params.delta === 'string') {
+          const itemId = typeof params.itemId === 'string' ? params.itemId : ''
+          const phase = (typeof params.phase === 'string' ? params.phase : messagePhases.get(itemId))
           firstTokenAt ??= Date.now()
-          content += params.delta
-          handlers.onContent?.(params.delta)
+          if (phase === 'commentary') {
+            handlers.onCommentary?.(params.delta)
+          } else {
+            content += params.delta
+            handlers.onContent?.(params.delta)
+          }
         } else if (
           includeReasoning &&
           method === 'item/reasoning/summaryTextDelta' &&
@@ -733,7 +860,7 @@ export async function streamChat(
       reasoning,
       images: [],
       citations: [],
-      toolCalls: dynamicToolCalls,
+      toolCalls: [...dynamicToolCalls, ...nativeWebToolCalls],
       toolCallsHandled: true,
       finishReason: 'stop',
       provider: 'Codex',

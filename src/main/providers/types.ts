@@ -38,10 +38,14 @@ export interface ChatRequest {
 
 export interface StreamHandlers {
   onContent?: (delta: string) => void
+  /** User-facing interim commentary, separate from the final answer text. */
+  onCommentary?: (delta: string) => void
   onReasoning?: (delta: string) => void
   onToolCalls?: (calls: ToolCall[]) => void
   /** Handle a client-owned Codex App Server dynamic tool call. */
   onDynamicToolCall?: (call: ToolCall) => Promise<ToolResult>
+  /** Report Codex App Server's native web search and page-reading activity. */
+  onNativeWebTool?: (call: ToolCall, result?: ToolResult) => void
   onProvider?: (provider: string) => void
   onImage?: (dataUrl: string) => void
 }

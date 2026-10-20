@@ -87,6 +87,7 @@ function archiveThread(threadId: string): ArchivedThread | null {
     id: message.id,
     role: message.role,
     content: message.content,
+    commentary: message.commentary,
     reasoning: message.reasoning,
     createdAt: message.createdAt,
     model: message.model,

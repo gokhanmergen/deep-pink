@@ -72,6 +72,10 @@ export interface Message {
   threadId: string
   role: Role
   content: string
+  /** Interim Codex App Server commentary, kept apart from the final reply. */
+  commentary: string | null
+  /** Length of the interim commentary even when its text is folded away. */
+  commentaryChars: number
   /**
    * Reasoning / thinking trace, when the model returns one.
    *
@@ -845,6 +849,7 @@ export interface ReplyChips {
 
 export type StreamEvent =
   | { type: 'start'; messageId: string; threadId: string }
+  | { type: 'commentary'; messageId: string; delta: string }
   | { type: 'reasoning'; messageId: string; delta: string }
   | { type: 'content'; messageId: string; delta: string }
   | { type: 'tool-call'; messageId: string; toolCalls: ToolCall[] }
@@ -1118,6 +1123,7 @@ export interface LiveStream {
   threadId: string
   messageId: string
   content: string
+  commentary: string
   reasoning: string
 }
 

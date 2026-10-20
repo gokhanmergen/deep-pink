@@ -256,14 +256,15 @@ export function applyRecord(record: SyncRecord): void {
     case 'message': {
       if (!threadExists(text(row['thread_id']))) return
       db.prepare(
-        `INSERT INTO messages (id, thread_id, seq, role, content, reasoning, created_at, updated_at,
+        `INSERT INTO messages (id, thread_id, seq, role, content, commentary, reasoning, created_at, updated_at,
                                model, provider, status, error, tool_calls, tool_result,
                                system_prompt_snapshot, is_compaction_summary, compacted_into)
-         VALUES (@id, @thread_id, @seq, @role, @content, @reasoning, @created_at, @updated_at,
+         VALUES (@id, @thread_id, @seq, @role, @content, @commentary, @reasoning, @created_at, @updated_at,
                  @model, @provider, @status, @error, @tool_calls, @tool_result,
                  @system_prompt_snapshot, @is_compaction_summary, @compacted_into)
          ON CONFLICT (id) DO UPDATE SET
            seq = excluded.seq, role = excluded.role, content = excluded.content,
+           commentary = CASE WHEN @has_commentary = 1 THEN excluded.commentary ELSE messages.commentary END,
            reasoning = excluded.reasoning, created_at = excluded.created_at,
            updated_at = excluded.updated_at, model = excluded.model,
            provider = excluded.provider, status = excluded.status, error = excluded.error,
@@ -277,6 +278,8 @@ export function applyRecord(record: SyncRecord): void {
         seq: int(row['seq']),
         role: text(row['role']) ?? 'user',
         content: text(row['content']) ?? '',
+        commentary: text(row['commentary']),
+        has_commentary: Object.prototype.hasOwnProperty.call(row, 'commentary') ? 1 : 0,
         reasoning: text(row['reasoning']),
         created_at: int(row['created_at']),
         updated_at: record.rev,

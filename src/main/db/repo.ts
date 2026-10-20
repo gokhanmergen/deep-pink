@@ -56,6 +56,7 @@ interface MessageRow {
   seq: number
   role: string
   content: string
+  commentary: string | null
   reasoning: string | null
   created_at: number
   model: string | null
@@ -183,6 +184,8 @@ function toMessage(
     threadId: row.thread_id,
     role: row.role as Role,
     content: folded && isTool ? '' : row.content,
+    commentary: folded ? null : row.commentary,
+    commentaryChars: row.commentary?.length ?? 0,
     reasoning: folded ? null : row.reasoning,
     // Always the true length, whether or not the text came with it.
     reasoningChars: row.reasoning?.length ?? 0,
@@ -758,10 +761,10 @@ export function branchThread(threadId: string, throughMessageId: string): Thread
     .all(threadId, pivot.seq) as MessageRow[]
 
   const insert = db.prepare(
-    `INSERT INTO messages (id, thread_id, seq, role, content, reasoning, created_at, model,
+    `INSERT INTO messages (id, thread_id, seq, role, content, commentary, reasoning, created_at, model,
                            provider, status, error, tool_calls, tool_result,
                            system_prompt_snapshot, is_compaction_summary, compacted_into)
-     VALUES (@id, @thread_id, @seq, @role, @content, @reasoning, @created_at, @model,
+     VALUES (@id, @thread_id, @seq, @role, @content, @commentary, @reasoning, @created_at, @model,
              @provider, @status, @error, @tool_calls, @tool_result,
              @system_prompt_snapshot, @is_compaction_summary, @compacted_into)`
   )
@@ -792,11 +795,11 @@ export function insertMessage(
   const id = input.id ?? randomUUID()
   getDb()
     .prepare(
-      `INSERT INTO messages (id, thread_id, seq, role, content, reasoning, created_at, model,
+      `INSERT INTO messages (id, thread_id, seq, role, content, commentary, reasoning, created_at, model,
                              provider, status, error, tool_calls, tool_result,
                              system_prompt_snapshot, is_compaction_summary, compacted_into,
                              updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -804,6 +807,7 @@ export function insertMessage(
       nextSeq(input.threadId),
       input.role,
       input.content ?? '',
+      input.commentary ?? null,
       input.reasoning ?? null,
       input.createdAt ?? Date.now(),
       input.model ?? null,
@@ -830,13 +834,14 @@ export function updateMessage(id: string, patch: Partial<Message>): Message | nu
   getDb()
     .prepare(
       `UPDATE messages
-          SET content = ?, reasoning = ?, model = ?, provider = ?, status = ?, error = ?,
+          SET content = ?, commentary = ?, reasoning = ?, model = ?, provider = ?, status = ?, error = ?,
               tool_calls = ?, tool_result = ?, system_prompt_snapshot = ?,
               is_compaction_summary = ?, compacted_into = ?, updated_at = ?
         WHERE id = ?`
     )
     .run(
       patch.content ?? existing.content,
+      patch.commentary !== undefined ? patch.commentary : existing.commentary,
       patch.reasoning !== undefined ? patch.reasoning : existing.reasoning,
       patch.model !== undefined ? patch.model : existing.model,
       patch.provider !== undefined ? patch.provider : existing.provider,
@@ -916,13 +921,26 @@ function hydrate(threadId: string, rows: MessageRow[], folded = false): Message[
  * Asked for when a reader opens the disclosure holding them, which for most
  * messages is never.
  */
-export function getHiddenParts(messageId: string): { reasoning: string | null; content: string } {
+export function getHiddenParts(messageId: string): {
+  reasoning: string | null
+  commentary: string | null
+  content: string
+} {
   const row = getDb()
-    .prepare('SELECT reasoning, content, role FROM messages WHERE id = ?')
-    .get(messageId) as { reasoning: string | null; content: string; role: string } | undefined
+    .prepare('SELECT reasoning, commentary, content, role FROM messages WHERE id = ?')
+    .get(messageId) as {
+      reasoning: string | null
+      commentary: string | null
+      content: string
+      role: string
+    } | undefined
 
-  if (!row) return { reasoning: null, content: '' }
-  return { reasoning: row.reasoning, content: row.role === 'tool' ? row.content : '' }
+  if (!row) return { reasoning: null, commentary: null, content: '' }
+  return {
+    reasoning: row.reasoning,
+    commentary: row.commentary,
+    content: row.role === 'tool' ? row.content : ''
+  }
 }
 
 export function getMessages(threadId: string, includeCompacted = false): Message[] {
@@ -1313,6 +1331,7 @@ export function reconcileInterruptedMessages(): { removed: number; settled: numb
           WHERE role = 'assistant'
             AND status <> 'complete'
             AND content = ''
+            AND (commentary IS NULL OR commentary = '')
             AND (reasoning IS NULL OR reasoning = '')
             AND tool_calls IS NULL`
       )
