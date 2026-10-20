@@ -114,7 +114,9 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const setDraft = useStore((s) => s.setDraft)
   const updateThread = useStore((s) => s.updateThread)
   const threads = useStore((s) => s.threads)
-  const compareModels = useStore((s) => s.compare?.map((pane) => pane.model) ?? [])
+  const compareHasCodexModel = useStore(
+    (s) => s.compare?.some((pane) => providerForModel(pane.model) === 'codex') ?? false
+  )
   const setOverlay = useStore((s) => s.setOverlay)
 
   const models = useStore((s) => s.models)
@@ -142,7 +144,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const activeModel =
     target && !target.threadId ? null : (thread?.config.model ?? settings?.defaultModel)
   const isCodexModel = providerForModel(activeModel) === 'codex' ||
-    Boolean(target && !target.threadId && compareModels.some((model) => providerForModel(model) === 'codex'))
+    Boolean(target && !target.threadId && compareHasCodexModel)
   const webOn = !isCodexModel && (config?.webAccessEnabled ?? settings?.web.enabled ?? false)
   const chartsOn = !isCodexModel && (config?.chartsEnabled ?? settings?.chartsEnabled ?? false)
   const modelInfo = models.find((m) => m.id === activeModel)
