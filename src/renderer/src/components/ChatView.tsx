@@ -4,17 +4,22 @@ import { canBecomeTemporary, placeOf, rememberPlace, useStore } from '../store'
 import { MessageItem } from './MessageItem'
 import { AssistantTurn } from './AssistantTurn'
 import { groupIntoTurns } from '../turns'
-import { Composer } from './Composer'
+import { COMPOSER_ID, Composer } from './Composer'
 import {
   ArrowDown,
+  ArrowUpRight,
   BarChart3,
+  Code2,
   Columns2,
   FileText,
   Ghost,
+  Lightbulb,
   PanelLeft,
+  PenLine,
   Plus,
   RefreshCw,
-  Route
+  Route,
+  Sparkles
 } from 'lucide-react'
 import { ICON } from '../icons'
 import { formatBinding } from '../keybinds'
@@ -162,6 +167,7 @@ export function ChatView(): React.JSX.Element {
   const messages = useStore((s) => s.messages)
   const generating = useStore((s) => s.generating)
   const compacting = useStore((s) => s.compacting)
+  const setDraft = useStore((s) => s.setDraft)
   const setOverlay = useStore((s) => s.setOverlay)
   const updateThread = useStore((s) => s.updateThread)
   const toggleSidebar = useStore((s) => s.toggleSidebar)
@@ -1182,19 +1188,53 @@ export function ChatView(): React.JSX.Element {
               </div>
             )}
             {!thread ? (
-              <div className="empty" style={{ height: '50vh' }}>
-                <div className="empty__title">Nothing open</div>
-                <p>Start a thread to begin.</p>
+              <div className="empty welcome">
+                <div className="welcome__mark">
+                  <Sparkles size={26} strokeWidth={1.5} />
+                </div>
+                <h1 className="empty__title">A little space to think.</h1>
+                <p>Start a conversation. See where it takes you.</p>
                 <button className="btn btn--primary" onClick={() => void newThread()} type="button">
                   <Plus {...ICON} />
                   New thread
                 </button>
               </div>
             ) : messages.length === 0 ? (
-              <div className="empty" style={{ height: '46vh' }}>
-                <div className="empty__title">
-                  {thread.temporary ? 'Ask, and forget' : 'Ask anything'}
+              <div className="empty welcome">
+                <div className="welcome__mark">
+                  {thread.temporary ? (
+                    <Ghost size={26} strokeWidth={1.5} />
+                  ) : (
+                    <Sparkles size={26} strokeWidth={1.5} />
+                  )}
                 </div>
+                <h1 className="empty__title">
+                  {thread.temporary ? 'Ask, and forget' : 'What’s on your mind?'}
+                </h1>
+                {!thread.temporary && <p>A question, a rough idea, a fresh perspective. Start here.</p>}
+                {!thread.temporary && (
+                  <div className="welcome__suggestions">
+                    {[
+                      { icon: Lightbulb, label: 'Explore an idea', prompt: 'Help me think through an idea: ' },
+                      { icon: PenLine, label: 'Find the right words', prompt: 'Help me write ' },
+                      { icon: Code2, label: 'Build something', prompt: 'Help me build ' }
+                    ].map(({ icon: Icon, label, prompt }) => (
+                      <button
+                        className="welcome__suggestion"
+                        key={label}
+                        type="button"
+                        onClick={() => {
+                          setDraft(thread.id, prompt)
+                          document.getElementById(COMPOSER_ID)?.focus()
+                        }}
+                      >
+                        <Icon size={18} strokeWidth={1.6} />
+                        <span>{label}</span>
+                        <ArrowUpRight size={14} />
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {thread.temporary && (
                   <p>
                     Nothing said here is kept. It is deleted when you open another

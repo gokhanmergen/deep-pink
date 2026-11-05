@@ -209,6 +209,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
 
   return (
     <Overlay
+      className="panel--models"
       onClose={onClose}
       header={
         <div className="panel__head" style={{ padding: 0 }}>
@@ -292,7 +293,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
         {filtered.slice(0, built).map((model, index) => (
           <button
             key={model.id}
-            className="cmditem"
+            className="cmditem model-option"
             data-active={index === cursor}
             onMouseEnter={() => setCursor(index)}
             onClick={() => void choose(model.id)}
@@ -314,7 +315,7 @@ export function ModelPicker({ mode, onClose }: Props): React.JSX.Element {
               </span>
               <span className="cmditem__sub">{model.id}</span>
             </span>
-            <span className="row" style={{ gap: 6, flex: 'none' }}>
+            <span className="model-option__badges">
               <span className="chip">{model.provider === 'codex' ? 'Codex' : 'OpenRouter'}</span>
               {model.supportsTools && <span className="chip">tools</span>}
               {model.supportsReasoning && <span className="chip">reasoning</span>}
