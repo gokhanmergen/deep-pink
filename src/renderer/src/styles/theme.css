@@ -2654,6 +2654,9 @@ svg.lucide {
   font-size: var(--t-ui);
   display: block;
   overflow-x: auto;
+  /* Keep words and numbers intact when sizing columns. Wide tables can
+     scroll instead of inheriting the message body's character-level wraps. */
+  overflow-wrap: normal;
 }
 
 .md th,
