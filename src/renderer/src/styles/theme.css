@@ -27,7 +27,7 @@
    * colour dropped onto a greyscale interface.
    *
    * Written in HSL because a ramp is only legible as a ramp when the numbers
-   * are: these are one hue, a little saturation, and lightness climbing 6 → 95.
+   * are: these are one hue, a little saturation, and lightness climbing 3 → 95.
    * The same values as hex say nothing about their relationship.
    *
    * `--tint-h` is set from the accent at runtime, so the greys follow a
@@ -37,24 +37,24 @@
    * ---------------------------------------------------------------- */
   --tint-h: 238;
 
-  --bg: hsl(var(--tint-h) 14% 8%);
+  --bg: hsl(var(--tint-h) 14% 4%);
   /* The sidebar sits a step below the content it is beside, not above it: the
      conversation is the lit surface and the chrome recedes from it. */
-  --bg-sidebar: hsl(var(--tint-h) 16% 6%);
-  --bg-panel: hsl(var(--tint-h) 12% 10%);
-  --bg-elevated: hsl(var(--tint-h) 10% 13%);
-  --bg-input: hsl(var(--tint-h) 10% 15%);
+  --bg-sidebar: hsl(var(--tint-h) 16% 3%);
+  --bg-panel: hsl(var(--tint-h) 12% 6%);
+  --bg-elevated: hsl(var(--tint-h) 10% 9%);
+  --bg-input: hsl(var(--tint-h) 9% 11%);
   --bg-hover: rgba(255, 255, 255, 0.045);
   /* Selection lifts a row onto a lighter surface instead of tinting it, so the
      accent stays a mark of things you act on rather than of where you are. */
   --bg-active: var(--bg-elevated);
 
-  --border: hsl(var(--tint-h) 9% 20%);
-  --border-strong: hsl(var(--tint-h) 8% 27%);
+  --border: hsl(var(--tint-h) 9% 14%);
+  --border-strong: hsl(var(--tint-h) 8% 19%);
 
   --text: hsl(var(--tint-h) 10% 95%);
-  --text-muted: hsl(var(--tint-h) 7% 72%);
-  --text-dim: hsl(var(--tint-h) 6% 60%);
+  --text-muted: hsl(var(--tint-h) 7% 63%);
+  --text-dim: hsl(var(--tint-h) 6% 43%);
 
   --green: #4cbf8b;
   --amber: #d9a441;
@@ -101,9 +101,9 @@
   --ink-bleed: 4px;
 
   --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 6px;
+  --radius: 9px;
+  --radius-lg: 14px;
   --radius-pill: 999px;
 
   /* Type. Four sizes and three weights, because a scale with nine of each is
@@ -166,8 +166,8 @@
 
   /* One height for controls that sit in a row together, so a row of them has
      one baseline rather than four. */
-  --control-h: 32px;
-  --control-h-sm: 24px;
+  --control-h: 28px;
+  --control-h-sm: 22px;
 
   /* How long anything takes. Two speeds: one you do not notice, and one you
      just barely do. */
@@ -324,29 +324,6 @@ button {
   outline: none;
 }
 
-input[type='color'] {
-  width: 44px;
-  height: var(--control-h);
-  padding: 4px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-input);
-  cursor: pointer;
-}
-input[type='color']::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-input[type='color']::-webkit-color-swatch {
-  border: 0;
-  border-radius: 4px;
-}
-input[type='range'] {
-  cursor: pointer;
-}
-input[type='range']:disabled {
-  cursor: not-allowed;
-}
-
 /* Scrollbars — present but quiet. */
 ::-webkit-scrollbar {
   width: 10px;
@@ -392,7 +369,7 @@ input[type='range']:disabled {
 
 .app {
   display: grid;
-  grid-template-columns: var(--sidebar-width, 268px) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 268px) 1fr;
   /* Whatever is left, and `min-height: 0` so the transcript inside it can
      scroll rather than growing the page — a flex child defaults to
      `min-height: auto`, which is the same trap in a different place. */
@@ -418,8 +395,9 @@ input[type='range']:disabled {
   display: flex;
   flex-direction: column;
   background: var(--bg-sidebar);
-  /* A quiet boundary keeps navigation distinct from the reading surface. */
-  border-right: 1px solid var(--border);
+  /* Barely there: the step in surface already separates the two columns, and a
+     drawn line across the whole window height reads louder than either. */
+  border-right: 1px solid hsl(var(--tint-h) 11% 8%);
   overflow: hidden;
   /* Grid and flex children default to min-*: auto, which refuses to shrink
      below their content. Every scroll container below depends on this. */
@@ -431,7 +409,7 @@ input[type='range']:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 20px 18px 18px;
+  padding: 14px 14px 10px;
   transition: padding-left 0.15s;
 }
 
@@ -526,11 +504,11 @@ input[type='range']:disabled {
 .sidebar__actions {
   display: flex;
   gap: 6px;
-  padding: 0 14px 12px;
+  padding: 0 10px 10px;
 }
 
 .sidebar__search {
-  padding: 0 14px 12px;
+  padding: 0 10px 8px;
   position: relative;
 }
 
@@ -546,7 +524,7 @@ input[type='range']:disabled {
 
 .sidebar__search .icon {
   position: absolute;
-  left: 23px;
+  left: 19px;
   top: 50%;
   margin-top: -9px;
   color: var(--text-dim);
@@ -560,7 +538,7 @@ input[type='range']:disabled {
      today, so nothing shifts sideways the moment it does, and a list you scroll
      constantly never leaves you guessing where you are in it. */
   overflow-y: scroll;
-  padding: 0 10px 16px;
+  padding: 0 6px 12px;
 }
 
 .sidebar__list::-webkit-scrollbar-track {
@@ -607,7 +585,7 @@ input[type='range']:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 14px 12px;
+  padding: 0 12px 8px;
 }
 
 /* Icons are inline-level SVGs. Inside a flex row their box is centred for them;
@@ -765,8 +743,8 @@ svg.lucide {
 }
 
 .sidebar__footer {
-  border-top: 1px solid var(--border);
-  padding: 10px 12px;
+  border-top: 1px solid hsl(var(--tint-h) 11% 8%);
+  padding: 6px 8px;
   display: flex;
   gap: 2px;
   align-items: center;
@@ -1307,13 +1285,19 @@ svg.lucide {
   height: 100%;
 }
 
-/* The header anchors the conversation; the composer sits on the canvas. */
+/*
+ * The bar over the conversation.
+ *
+ * On the same surface as the composer at the other end of the window, so the
+ * reading sits between two pieces of chrome that are visibly the same thing
+ * rather than three surfaces stacked.
+ */
 .topbar {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  min-height: 58px;
-  padding: var(--s3) var(--s4);
+  min-height: 46px;
+  padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex: none;
@@ -2497,9 +2481,8 @@ svg.lucide {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  min-height: 48px;
-  padding: var(--s2) var(--s3);
-  background: var(--bg-panel);
+  min-height: 40px;
+  padding: var(--s1) var(--s3);
   border-bottom: 1px solid var(--border);
   flex: none;
 }
@@ -2726,8 +2709,8 @@ svg.lucide {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  min-height: 36px;
-  padding: 0 var(--s4);
+  min-height: 30px;
+  padding: 0 var(--s3);
   /* A lighter strip instead of a ruled-off one: it steps up from the code
      under it, which divides them without a line across the top of every
      block. Up rather than down because down is the page's own colour, and a
@@ -2810,9 +2793,9 @@ svg.lucide {
 
 .composer {
   flex: none;
-  border-top: 1px solid transparent;
-  background: var(--bg);
-  padding: var(--s3) var(--s6) var(--s6);
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  padding: var(--s3) var(--s6) var(--s4);
   transition: padding var(--quick);
 }
 
@@ -2842,7 +2825,7 @@ svg.lucide {
 .composer__box {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: var(--bg-panel);
+  background: var(--bg-input);
   /* The lowest thing on the elevation scale, and the one that shows off what
      the tight half of a shadow is for: it is not floating, it is sitting on
      the bar — which is a crisp edge underneath and almost no spread. */
@@ -2861,7 +2844,7 @@ svg.lucide {
   width: 100%;
   border: none;
   background: none;
-  padding: var(--s4) var(--s5);
+  padding: var(--s3) var(--s4);
   resize: none;
   outline: none;
   max-height: 320px;
@@ -2888,7 +2871,7 @@ svg.lucide {
   display: flex;
   align-items: center;
   gap: var(--s1);
-  padding: var(--s2) var(--s3) var(--s3);
+  padding: var(--s1) var(--s2) var(--s2);
   flex-wrap: wrap;
   max-height: 180px;
   opacity: 1;
@@ -2954,7 +2937,7 @@ svg.lucide {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 4, 7, 0.6);
+  background: rgba(4, 4, 7, 0.72);
   /* Enough to push the app behind out of focus without becoming a second
      thing being rendered: this covers the whole window, and the app it covers
      is often mid-reply. */
@@ -3026,16 +3009,16 @@ svg.lucide {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  min-height: 58px;
-  padding: var(--s4) var(--s5);
+  min-height: 48px;
+  padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--border);
   flex: none;
 }
 
 .panel__title {
-  font-size: 15px;
+  font-size: var(--t-ui);
   font-weight: var(--w-strong);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.008em;
 }
 
 .panel__body {
@@ -3058,17 +3041,11 @@ svg.lucide {
 
 .panel__search {
   width: 100%;
-  min-width: 0;
-  color: var(--text);
   padding: 13px 16px;
   border: none;
   background: none;
   outline: none;
   font-size: 15px;
-}
-
-.panel__search::placeholder {
-  color: var(--text-dim);
 }
 
 /* Command list */
@@ -3160,31 +3137,6 @@ svg.lucide {
   color: var(--accent);
   border-radius: 2px;
   padding: 0 1px;
-}
-
-.model-option__badges {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  max-width: 55%;
-}
-.panel--models .panel__foot {
-  flex-wrap: wrap;
-}
-@container panel (max-width: 680px) {
-  .model-option {
-    display: grid;
-    grid-template-columns: 16px minmax(0, 1fr);
-    gap: 8px 10px;
-    contain-intrinsic-size: auto 90px;
-  }
-  .model-option__badges {
-    grid-column: 2;
-    justify-content: flex-start;
-    max-width: 100%;
-  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -3345,10 +3297,10 @@ svg.lucide {
   border-top: none;
 }
 
-/* Bounded sections make long preferences pages easier to scan. */
+/* Settings read as one page: headings and space group the controls. */
 .panel--settings {
-  max-width: 960px;
-  height: min(760px, 86dvh);
+  max-width: 840px;
+  height: min(640px, 82dvh);
   max-height: 88dvh;
 }
 
@@ -3356,7 +3308,7 @@ svg.lucide {
   display: flex;
   align-items: center;
   gap: var(--s4);
-  padding: 16px 20px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   flex: none;
 }
@@ -3422,10 +3374,9 @@ svg.lucide {
 .settings-workspace .tabs {
   display: flex;
   flex-direction: column;
-  width: 200px;
-  padding: 20px 12px;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  width: 184px;
+  padding: 14px 8px;
+  background: transparent;
 }
 
 .settings-workspace .tabs__group + .tabs__group {
@@ -3435,8 +3386,8 @@ svg.lucide {
   padding: 0 8px 4px;
 }
 .settings-workspace .tab {
-  min-height: 34px;
-  margin-bottom: 3px;
+  min-height: 28px;
+  margin-bottom: 1px;
   padding: 4px 8px;
   justify-content: flex-start;
   border: 1px solid transparent;
@@ -3454,8 +3405,8 @@ svg.lucide {
 }
 
 .settings-workspace .settings-content {
-  padding: 28px;
-  background: var(--bg-panel);
+  padding: 16px 20px;
+  background: transparent;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -3464,7 +3415,7 @@ svg.lucide {
   max-width: none;
 }
 .settings-page-heading {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 .settings-page-heading h2 {
   margin: 0;
@@ -3475,17 +3426,14 @@ svg.lucide {
 }
 .settings-page-heading p {
   margin: 4px 0 0;
-  color: var(--text-muted);
+  color: var(--text-dim);
   font-size: 13px;
 }
 
 .settings-card {
   min-width: 0;
   margin-bottom: 20px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg);
+  padding: 0;
 }
 .settings-card:last-child {
   margin-bottom: 0;
@@ -3494,8 +3442,8 @@ svg.lucide {
   margin: 16px 0 4px;
   padding: 0;
   border: none;
-  color: var(--text);
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: 12px;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -3515,7 +3463,7 @@ svg.lucide {
 .settings-card .field,
 .settings-card .switch {
   margin: 0;
-  padding: 10px 0;
+  padding: 6px 0;
 }
 .settings-card > .field:last-child,
 .settings-card > .switch:last-child {
@@ -3771,7 +3719,7 @@ svg.lucide {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-elevated);
-  padding: 16px;
+  padding: 11px 13px;
 }
 
 .stat__label {
@@ -3783,7 +3731,7 @@ svg.lucide {
 }
 
 .stat__value {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: var(--w-strong);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
@@ -4204,17 +4152,6 @@ svg.lucide {
   opacity: 0.75;
 }
 
-@media (max-height: 640px) {
-  .overlay,
-  .overlay--center {
-    padding: 16px;
-  }
-  .panel,
-  .panel--settings {
-    max-height: calc(100dvh - 32px);
-  }
-}
-
 /* ------------------------------------------------------------------ *
  * Misc
  * ------------------------------------------------------------------ */
@@ -4249,79 +4186,6 @@ svg.lucide {
   letter-spacing: -0.016em;
   color: var(--text);
   font-weight: var(--w-strong);
-}
-
-/* A useful starting point, kept inside the same measure as the conversation. */
-.welcome {
-  min-height: 360px;
-  height: min(56vh, 560px);
-  gap: 12px;
-}
-.welcome__mark {
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  margin-bottom: 12px;
-  border: 1px solid var(--accent-line);
-  border-radius: 18px;
-  background: var(--accent-wash);
-  color: var(--accent);
-}
-.welcome .empty__title {
-  margin: 0;
-  font-size: clamp(24px, 2.6vw, 34px);
-  line-height: 1.2;
-  letter-spacing: -0.035em;
-}
-.welcome p {
-  color: var(--text-muted);
-  font-size: var(--t-ui);
-}
-.welcome__suggestions {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 20px;
-}
-.welcome__suggestion {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-  color: var(--text-muted);
-  font-size: var(--t-small);
-  transition: background var(--quick), border-color var(--quick), color var(--quick);
-}
-.welcome__suggestion > svg:first-child {
-  color: var(--accent);
-}
-.welcome__suggestion > svg:last-child {
-  color: var(--text-dim);
-}
-.welcome__suggestion:hover {
-  background: var(--bg-elevated);
-  border-color: var(--accent-line);
-  color: var(--text);
-}
-@media (max-height: 640px) {
-  .welcome {
-    min-height: 240px;
-    height: auto;
-    padding-block: 24px;
-  }
-  .welcome__mark {
-    width: 44px;
-    height: 44px;
-    margin-bottom: 0;
-  }
-  .welcome__suggestions {
-    margin-top: 8px;
-  }
 }
 
 .muted {
@@ -4429,9 +4293,8 @@ svg.lucide {
 .wizard {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px;
-  min-height: 300px;
+  gap: 12px;
+  min-height: 280px;
 }
 
 .wizard .section-title {
@@ -4466,9 +4329,8 @@ svg.lucide {
 .wizard__choice {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-panel);
@@ -4879,8 +4741,7 @@ svg.lucide {
   align-items: center;
   gap: 9px;
   width: 100%;
-  min-height: 34px;
-  padding: 8px 10px;
+  padding: 6px 9px;
   border-radius: var(--radius-sm);
   text-align: left;
   color: var(--text-muted);
