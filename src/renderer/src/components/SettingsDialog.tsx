@@ -1636,12 +1636,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             sectionId="settings-data-2"
             keywords=""
           >
-            <h3 className="section-title">Danger zone</h3>
             <div className="field">
-              <span className="field__hint">
-                Every thread, message and usage record. Settings and keys are kept. With sync on,
-                this travels to your other machines.
-              </span>
               <div className="row">
                 <button
                   className="btn btn--danger"
