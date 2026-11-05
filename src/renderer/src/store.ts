@@ -20,6 +20,7 @@ import type {
   ThreadTotals,
   ToolCall
 } from '@shared/types'
+import type { StagedFile } from './components/attachFiles'
 import { wantKeyPoint } from './keyPoint'
 import { canMoveFolder, folderAncestors } from '@shared/folders'
 
@@ -203,6 +204,7 @@ interface State {
   activeThreadId: string | null
   /** Unsent prompt text, held in memory only and kept with its thread. */
   drafts: Record<string, string>
+  draftAttachments: Record<string, StagedFile[]>
   /**
    * The part of the conversation that has been read in — the end of it, and
    * however much before that the reader has scrolled back to. Never the whole
@@ -481,6 +483,7 @@ interface State {
   closeOverlay: () => void
   setSidebarFilter: (value: string) => void
   setDraft: (threadId: string, value: string) => void
+  setDraftAttachments: (key: string, update: (files: StagedFile[]) => StagedFile[]) => void
   toggleSidebar: () => void
   showToast: (message: string, tone?: Toast['tone']) => void
   approveTool: (approved: boolean) => Promise<void>
@@ -755,6 +758,7 @@ export const useStore = create<State>((set, get) => ({
   draggingThreadId: null,
   activeThreadId: null,
   drafts: {},
+  draftAttachments: {},
   messages: [],
   messageWindowStart: null,
   hasOlderMessages: false,
@@ -912,6 +916,7 @@ export const useStore = create<State>((set, get) => ({
         !get().generating &&
         !get().messages.length &&
         !get().drafts[thread.id]?.trim() &&
+        !get().draftAttachments[thread.id]?.length &&
         !thread.title &&
         thread.messageCount === 0 &&
         !thread.pinned &&
@@ -921,9 +926,12 @@ export const useStore = create<State>((set, get) => ({
         setThreadUnread(thread.id, false, set, get)
         const drafts = { ...get().drafts }
         delete drafts[thread.id]
+        const draftAttachments = { ...get().draftAttachments }
+        delete draftAttachments[thread.id]
         set({
           threads: get().threads.filter((t) => t.id !== thread.id),
-          drafts
+          drafts,
+          draftAttachments
         })
         forgetPlace(thread.id)
         void window.deepPink.threads.remove(thread.id)
@@ -1191,8 +1199,10 @@ export const useStore = create<State>((set, get) => ({
     await api.threads.remove(id)
     const drafts = { ...get().drafts }
     delete drafts[id]
+    const draftAttachments = { ...get().draftAttachments }
+    delete draftAttachments[id]
     const remaining = get().threads.filter((t) => t.id !== id)
-    set({ threads: remaining, drafts })
+    set({ threads: remaining, drafts, draftAttachments })
     if (get().activeThreadId === id) {
       await get().selectThread(remaining[0]?.id ?? null)
     }
@@ -1715,6 +1725,14 @@ export const useStore = create<State>((set, get) => ({
     if (value) drafts[threadId] = value
     else delete drafts[threadId]
     set({ drafts })
+  },
+
+  setDraftAttachments(key, update) {
+    const draftAttachments = { ...get().draftAttachments }
+    const files = update(draftAttachments[key] ?? [])
+    if (files.length) draftAttachments[key] = files
+    else delete draftAttachments[key]
+    set({ draftAttachments })
   },
 
   toggleSidebar() {

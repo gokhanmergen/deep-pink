@@ -35,6 +35,7 @@ import {
 } from '@shared/reasoning'
 
 export const COMPOSER_ID = 'composer-input'
+const EMPTY_FILES: StagedFile[] = []
 
 /**
  * Where what is typed goes, when it is not the open thread.
@@ -84,7 +85,6 @@ interface ComposerProps {
 }
 
 export function Composer({ compact = false, onInteract, target }: ComposerProps): React.JSX.Element {
-  const [images, setImages] = useState<StagedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [attachMenu, setAttachMenu] = useState<{ x: number; y: number } | null>(null)
   const [extraMenu, setExtraMenu] = useState<{ x: number; y: number } | null>(null)
@@ -109,6 +109,11 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
    */
   const activeThreadId = target ? target.threadId : openThreadId
   const draftKey = target ? target.draftKey : openThreadId
+  const images = useStore((s) => (draftKey ? s.draftAttachments[draftKey] : undefined)) ?? EMPTY_FILES
+  const updateAttachments = useStore((s) => s.setDraftAttachments)
+  const setImages = useCallback((update: StagedFile[] | ((current: StagedFile[]) => StagedFile[])) => {
+    if (draftKey) updateAttachments(draftKey, typeof update === 'function' ? update : () => update)
+  }, [draftKey, updateAttachments])
   const generating = target ? target.generating : openGenerating || compacting
   const value = useStore((s) => (draftKey ? (s.drafts[draftKey] ?? '') : ''))
   const setDraft = useStore((s) => s.setDraft)
@@ -213,7 +218,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     const { staged, rejected } = await stageFiles(files, images.length)
     if (staged.length) setImages((current) => [...current, ...staged])
     if (rejected.length) showToast(rejected[0], 'error')
-  }, [images.length, showToast])
+  }, [images.length, showToast, setImages])
 
   // Images can be pasted while the transcript or another non-editable part of
   // the window has focus. Treat that like pasting into the composer, then leave
