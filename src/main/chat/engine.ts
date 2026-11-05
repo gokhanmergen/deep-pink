@@ -613,11 +613,20 @@ async function requestApproval(
   messageId: string,
   call: ToolCall,
   serverName: string,
-  emit: Emit
+  emit: Emit,
+  signal?: AbortSignal
 ): Promise<boolean> {
-  emit({ type: 'tool-approval-request', messageId, toolCall: call, serverName })
+  signal?.throwIfAborted()
   return new Promise<boolean>((resolve) => {
-    pendingApprovals.set(call.id, resolve)
+    const finish = (approved: boolean): void => {
+      pendingApprovals.delete(call.id)
+      signal?.removeEventListener('abort', onAbort)
+      resolve(approved)
+    }
+    const onAbort = (): void => finish(false)
+    pendingApprovals.set(call.id, finish)
+    signal?.addEventListener('abort', onAbort, { once: true })
+    emit({ type: 'tool-approval-request', messageId, toolCall: call, serverName })
   })
 }
 
@@ -752,12 +761,13 @@ async function executeToolCall(
 
     if (mcp.toolRequiresApproval(call.name)) {
       const serverName = mcp.serverNameForTool(call.name) ?? 'an MCP server'
-      const approved = await requestApproval(assistantMessageId, call, serverName, emit)
+      const approved = await requestApproval(assistantMessageId, call, serverName, emit, signal)
       if (!approved) {
         return fail('The user declined this tool call.', 'mcp', null)
       }
     }
 
+    signal?.throwIfAborted()
     const result = await mcp.callTool(call.name, args)
     repo.recordToolInvocation({
       threadId,
@@ -1165,6 +1175,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         systemPromptSnapshot: context.segments
       })
       const turnThreadId = thread.id
+      const turnRepoPaths = thread.config.repoPaths ?? []
+      const turnSkills = skillsFor(thread, settings)
       liveStreams.set(assistant.id, {
         threadId: thread.id,
         messageId: assistant.id,
@@ -1217,13 +1229,13 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
             onImage: (dataUrl) => void keepImage(req.threadId, assistant.id, dataUrl, emit),
             onDynamicToolCall: provider === 'codex'
               ? async (call) => {
-                  const allowed = context.tools.some((tool) => tool.function.name === call.name) &&
-                    (call.name === 'web_search' || call.name === 'web_fetch')
-                  if (!allowed) throw new Error('Codex requested a web tool that is not enabled for this chat.')
+                  const allowed = context.tools.some((tool) => tool.function.name === call.name)
+                  if (!allowed) throw new Error('Codex requested a tool that is not enabled for this chat.')
                   if (codexToolCalls.length >= MAX_TOOL_ROUNDS) {
-                    throw new Error(`Codex reached the ${MAX_TOOL_ROUNDS}-call web search limit for one reply.`)
+                    throw new Error(`Codex reached the ${MAX_TOOL_ROUNDS}-call tool limit for one reply.`)
                   }
 
+                  call = { ...call, id: `codex-tool-${assistant.id}:${call.id}` }
                   codexToolCalls.push(call)
                   repo.updateMessage(assistant.id, { toolCalls: [...codexToolCalls] })
                   emit({ type: 'tool-call', messageId: assistant.id, toolCalls: [...codexToolCalls] })
@@ -1233,8 +1245,8 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
                     call,
                     settings,
                     emit,
-                    [],
-                    [],
+                    turnRepoPaths,
+                    turnSkills,
                     controller.signal
                   )
                   if (controller.signal.aborted) throw controller.signal.reason
@@ -1258,9 +1270,12 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
                     transcriptId = `codex-native-web-${assistant.id}:${call.id}`
                     nativeCodexToolIds.set(call.id, transcriptId)
                     codexToolCalls.push({ ...call, id: transcriptId })
-                    repo.updateMessage(assistant.id, { toolCalls: [...codexToolCalls] })
-                    emit({ type: 'tool-call', messageId: assistant.id, toolCalls: [...codexToolCalls] })
+                  } else {
+                    const index = codexToolCalls.findIndex((saved) => saved.id === transcriptId)
+                    if (index >= 0) codexToolCalls[index] = { ...call, id: transcriptId }
                   }
+                  repo.updateMessage(assistant.id, { toolCalls: [...codexToolCalls] })
+                  emit({ type: 'tool-call', messageId: assistant.id, toolCalls: [...codexToolCalls] })
 
                   if (!toolResult || completedNativeCodexTools.has(call.id)) return
                   completedNativeCodexTools.add(call.id)
@@ -1290,7 +1305,7 @@ export async function sendMessage(req: SendMessageRequest, emit: Emit): Promise<
         )
         result = {
           ...result,
-          toolCalls: result.toolCalls.map((call) => {
+          toolCalls: result.toolCallsHandled ? [...codexToolCalls] : result.toolCalls.map((call) => {
             const transcriptId = nativeCodexToolIds.get(call.id)
             return transcriptId ? { ...call, id: transcriptId } : call
           })
