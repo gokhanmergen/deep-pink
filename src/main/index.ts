@@ -10,6 +10,7 @@ import { shutdownRepoWorker } from './tools/repoService'
 import * as mcp from './mcp/host'
 import { reportUncaught } from './report'
 import * as webServer from './webServer'
+import { registerLinkContextMenu } from './linkContextMenu'
 
 /*
  * Before anything that can fail.
@@ -111,6 +112,7 @@ function createWindow(): BrowserWindow {
     }
   })
   mainWindow = win
+  registerLinkContextMenu(win)
 
   win.on('close', (event) => {
     if (isQuitting || !keepInTray()) return
