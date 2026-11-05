@@ -408,8 +408,7 @@ function SkillsTab({
         </select>
       </div>
       <p className="field__hint">
-        Codex includes enabled skill instructions with each request because it does not expose the
-        on-demand skill loader.
+        On-demand loading works with both OpenRouter and Codex.
       </p>
 
       <div className="section-title">Built in</div>

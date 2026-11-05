@@ -77,3 +77,46 @@ export function groupIntoTurns(messages: Message[]): Block[] {
 function isCostMarker(into: string): boolean {
   return (COST_MARKERS as readonly string[]).includes(into)
 }
+
+const PLUGIN_SEARCH = 'openrouter-search-'
+const CODEX_NATIVE_WEB = 'codex-native-web-'
+
+/** Place provider-executed tools inside their owning reply, before its answer. */
+export function liftProviderTools(messages: Message[]): {
+  sequence: Message[]
+  byOwner: Map<string, Message[]>
+} {
+  const byOwner = new Map<string, Message[]>()
+  const present = new Set(messages.map((m) => m.id))
+
+  const owner = (m: Message): string | null => {
+    const id = m.toolResult?.toolCallId
+    if (m.role !== 'tool' || !id) return null
+    let assistantId: string
+    if (id.startsWith(PLUGIN_SEARCH)) {
+      assistantId = id.slice(PLUGIN_SEARCH.length)
+    } else if (id.startsWith(CODEX_NATIVE_WEB) || id.startsWith('codex-tool-')) {
+      const prefix = id.startsWith(CODEX_NATIVE_WEB) ? CODEX_NATIVE_WEB : 'codex-tool-'
+      const rest = id.slice(prefix.length)
+      const separator = rest.indexOf(':')
+      if (separator < 1) return null
+      assistantId = rest.slice(0, separator)
+    } else {
+      return null
+    }
+
+    // Only if the reply it belongs to is on screen. A window that starts
+    // mid-turn would otherwise drop the search out of the transcript
+    // altogether rather than merely drawing it in the old place.
+    return present.has(assistantId) ? assistantId : null
+  }
+
+  const sequence = messages.filter((m) => {
+    const id = owner(m)
+    if (!id) return true
+    byOwner.set(id, [...(byOwner.get(id) ?? []), m])
+    return false
+  })
+
+  return { sequence, byOwner }
+}

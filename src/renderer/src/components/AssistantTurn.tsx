@@ -7,7 +7,7 @@ import { ImageAttachments } from './ImageAttachments'
 import { LongText } from './LongText'
 import { useStore } from '../store'
 import { useTranscriptActions } from '../transcriptActions'
-import { isEmptyAssistantMessage } from '../turns'
+import { isEmptyAssistantMessage, liftProviderTools } from '../turns'
 import { estimateTurnHeight } from '../messageHeight'
 import { sentencesIn, strokesFor, takeKeyPointWish, type Stroke } from '../keyPoint'
 import { formatCost, formatDuration, formatTokens, modelShortName } from '../format'
@@ -287,70 +287,6 @@ function ReplyBody({ message, ui }: { message: Message; ui: UiSettings }): React
  * "Ran x" or "x failed", because both are how it would be said aloud, and the
  * failing one puts the word that matters where the eye already is.
  */
-/** Provider-owned web activity is stored alongside the assistant reply it informed. */
-const PLUGIN_SEARCH = 'openrouter-search-'
-const CODEX_NATIVE_WEB = 'codex-native-web-'
-
-/**
- * A web search or page read from inside a provider turn, put where it belongs.
- *
- * The `:online` plugin searches before it answers, but says what it read
- * while the answer is already streaming — so the record of it is written
- * after the reply it informed, and the transcript showed the answer first
- * and the sources at the bottom. Read in that order it looks like an
- * afterthought rather than the thing the answer came from.
- *
- * Moving it to the front of the turn traded one wrong place for another: the
- * thinking lives *inside* the assistant message, not as a sibling of it, so
- * anything hoisted ahead of that message lands above the reasoning too — and
- * a search drawn before the thought that prompted it is no more honest than
- * one drawn after the answer it produced.
- *
- * So it is not reordered at all. It is taken out of the sequence and handed
- * to the message it belongs to — the id is in its own `toolCallId` — to be
- * drawn inside that turn, after the thinking and before the reply, exactly
- * where a real tool round would have gone. The stored order is untouched:
- * this is about reading, and the database is right that it learned about the
- * search last.
- */
-function liftWebSearches(messages: Message[]): {
-  sequence: Message[]
-  byOwner: Map<string, Message[]>
-} {
-  const byOwner = new Map<string, Message[]>()
-  const present = new Set(messages.map((m) => m.id))
-
-  const owner = (m: Message): string | null => {
-    const id = m.toolResult?.toolCallId
-    if (m.role !== 'tool' || !id) return null
-    let assistantId: string
-    if (id.startsWith(PLUGIN_SEARCH)) {
-      assistantId = id.slice(PLUGIN_SEARCH.length)
-    } else if (id.startsWith(CODEX_NATIVE_WEB)) {
-      const rest = id.slice(CODEX_NATIVE_WEB.length)
-      const separator = rest.indexOf(':')
-      if (separator < 1) return null
-      assistantId = rest.slice(0, separator)
-    } else {
-      return null
-    }
-
-    // Only if the reply it belongs to is on screen. A window that starts
-    // mid-turn would otherwise drop the search out of the transcript
-    // altogether rather than merely drawing it in the old place.
-    return present.has(assistantId) ? assistantId : null
-  }
-
-  const sequence = messages.filter((m) => {
-    const id = owner(m)
-    if (!id) return true
-    byOwner.set(id, [...(byOwner.get(id) ?? []), m])
-    return false
-  })
-
-  return { sequence, byOwner }
-}
-
 function ToolStep({
   message,
   args
@@ -476,7 +412,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   }
 
   // The rows to draw in order, and the searches that belong inside one of them.
-  const { sequence, byOwner: searchesFor } = liftWebSearches(messages)
+  const { sequence, byOwner: searchesFor } = liftProviderTools(messages)
 
   /**
    * The figures under a finished reply, in the order they read in.
@@ -633,11 +569,15 @@ export const AssistantTurn = memo(function AssistantTurn({
                 <CodexUpdates message={message} />
                 <ReasoningTrace message={message} />
 
-                {/* Web activity performed inside the provider turn, in the
+                {/* Tool activity performed inside the provider turn, in the
                     place a tool round would have gone: after the updates and
-                    before the reply it informed. See `liftWebSearches`. */}
+                    before the reply it informed. See `liftProviderTools`. */}
                 {searchesFor.get(message.id)?.map((search) => (
-                  <ToolStep key={search.id} message={search} />
+                  <ToolStep
+                    key={search.id}
+                    message={search}
+                    args={argumentsOf.get(search.toolResult?.toolCallId ?? '')}
+                  />
                 ))}
 
                 {/*

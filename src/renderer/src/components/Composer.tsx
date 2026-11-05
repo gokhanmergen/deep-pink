@@ -263,7 +263,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   const repoPaths = config?.repoPaths ?? []
 
   useEffect(() => {
-    if (!repoPaths.length || isCodexModel) {
+    if (!repoPaths.length) {
       setRepos([])
       return
     }
@@ -274,7 +274,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
     return () => {
       cancelled = true
     }
-  }, [repoPaths.join('|'), isCodexModel])
+  }, [repoPaths.join('|')])
 
   const attachRepo = async (): Promise<void> => {
     const path = await window.deepPink.repo.choose()
@@ -299,7 +299,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       icon: <ImageIcon {...ICON} />,
       onSelect: () => fileInputRef.current?.click()
     },
-    ...(hideExperimental || isCodexModel ? [] : [{
+    ...(hideExperimental ? [] : [{
       id: 'repo',
       label: 'Code repository…',
       icon: <FolderCode {...ICON} />,
@@ -321,7 +321,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
   // Reading a codebase means reading text the model treats as instructions. If
   // the same thread can also reach the network, anything hidden in that text has
   // a way out. Worth saying plainly rather than quietly forbidding.
-  const repoAndWeb = !isCodexModel && repos.length > 0 && webOn
+  const repoAndWeb = repos.length > 0 && webOn
 
   const pasteThreshold = settings?.ui.pasteAsFileThreshold ?? 2000
 
@@ -441,7 +441,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
       hint: mode === 'auto'
         ? 'the model decides'
         : mode === 'off' && isCodexModel
-          ? 'Codex always reasons; this uses its lowest supported effort'
+          ? 'Use the lowest reasoning effort supported by this Codex model'
           : undefined,
       onSelect: () => {
         writeConfig({ reasoning: { ...reasoning, mode } })
@@ -468,13 +468,10 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
             onClick={() => openSettings('codex')}
             type="button"
           >
-            Codex uses the local Codex App Server. When enabled, Web access allows only search and
-            page reading.
-            Shell, local file access, computer control, repository tools, MCP, plugins, and
-            OpenRouter provider routing are unavailable. Charts and prompt-based skills are
-            supported when experimental features are shown.
-            Codex always reasons; “None” uses its lowest supported effort. Click to open Codex
-            settings.
+            Codex supports web search, attached repositories, MCP tools, charts, and skills through
+            Deep Pink. Shell and computer control are disabled. Image generation and OpenRouter
+            routing are unavailable; temperature and output token limits are not supported by Codex.
+            “None” uses the model’s lowest reasoning effort. Click to open Codex settings.
           </button>
         )}
         {toolsUnsupported && (
@@ -515,7 +512,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
             void add(files)
           }}
         >
-          {!isCodexModel && repos.length > 0 && (
+          {repos.length > 0 && (
             <div className="repos">
               {repos.map((repo) => (
                 <div
@@ -637,7 +634,7 @@ export function Composer({ compact = false, onInteract, target }: ComposerProps)
                 const r = event.currentTarget.getBoundingClientRect()
                 setAttachMenu({ x: Math.round(r.left), y: Math.round(r.top) })
               }}
-              title={isCodexModel ? 'Attach images or text files' : 'Attach images, text files, or a code repository'}
+              title="Attach images, text files, or a code repository"
               type="button"
               disabled={!configurable}
             >
